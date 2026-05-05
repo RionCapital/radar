@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { totalBal, totalAmt, pwBal, commBal, fmt, calcOpp, ini, LOAN_TYPES, BANKS } from '../lib/data'
 import { fmtDate, dateCellStyle, loanFlag, effectiveRpmt } from '../lib/dateUtils'
@@ -6,9 +6,168 @@ import { Panel, PanelTitle, EditBtn, SaveBtn, CancelBtn, ActionBtn, FieldGroup, 
 
 const CONTACT_TYPES = ['Individual','Company','Trust','Partnership','Sole Trader']
 const CONTACT_TYPE_CODES = { Individual:'Ind', Company:'Co', Trust:'Tru', Partnership:'Par', 'Sole Trader':'Sol' }
-
 const thStyle = (extra={}) => ({ textAlign:'left', padding:'6px 8px', background:'#2A3D54', color:'#fff', fontWeight:500, fontSize:10, letterSpacing:'0.03em', whiteSpace:'nowrap', ...extra })
 const tdStyle = (extra={}) => ({ padding:'6px 8px', borderBottom:'0.5px solid var(--border-light)', color:'var(--text-primary)', verticalAlign:'middle', fontSize:11, ...extra })
+
+// ── Proper external components so re-renders don't kill focus ──
+
+function ContactsEdit({ draft, setDraft }) {
+  return (
+    <div>
+      {(draft||[]).map((ct,i) => (
+        <div key={i} style={{background:'var(--bg)',borderRadius:8,padding:10,marginBottom:8,border:'0.5px solid var(--border)'}}>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr 120px auto',gap:6,alignItems:'end'}}>
+            <FieldGroup label="Name">
+              <input style={{width:'100%'}} value={ct.name||''} onChange={e => {
+                const d = draft.map((x,j) => j===i ? {...x, name:e.target.value} : x)
+                setDraft(d)
+              }}/>
+            </FieldGroup>
+            <FieldGroup label="Email">
+              <input style={{width:'100%'}} value={ct.email||''} onChange={e => {
+                const d = draft.map((x,j) => j===i ? {...x, email:e.target.value} : x)
+                setDraft(d)
+              }}/>
+            </FieldGroup>
+            <FieldGroup label="Phone">
+              <input style={{width:'100%'}} value={ct.phone||''} onChange={e => {
+                const d = draft.map((x,j) => j===i ? {...x, phone:e.target.value} : x)
+                setDraft(d)
+              }}/>
+            </FieldGroup>
+            <FieldGroup label="Type">
+              <select style={{width:'100%'}} value={ct.contactType||'Individual'} onChange={e => {
+                const d = draft.map((x,j) => j===i ? {...x, contactType:e.target.value} : x)
+                setDraft(d)
+              }}>
+                {CONTACT_TYPES.map(t => <option key={t}>{t}</option>)}
+              </select>
+            </FieldGroup>
+            <button onClick={() => setDraft(draft.filter((_,j)=>j!==i))}
+              style={{padding:'4px 8px',borderRadius:6,border:'0.5px solid #fde8e8',background:'#fde8e8',color:'#c0392b',cursor:'pointer',alignSelf:'flex-end',marginBottom:2}}>✕</button>
+          </div>
+        </div>
+      ))}
+      <button onClick={() => setDraft([...(draft||[]), {name:'',email:'',phone:'',contactType:'Individual'}])}
+        style={{fontSize:11,padding:'5px 12px',borderRadius:6,border:'0.5px solid var(--pk)',background:'transparent',color:'var(--pk)',cursor:'pointer',marginBottom:10}}>
+        + Add contact
+      </button>
+    </div>
+  )
+}
+
+function ContactsView({ contacts }) {
+  return (
+    <table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
+      <thead><tr>
+        <th style={thStyle()}>Name</th>
+        <th style={thStyle()}>Type</th>
+        <th style={thStyle()}>Email</th>
+        <th style={thStyle()}>Phone</th>
+      </tr></thead>
+      <tbody>
+        {(contacts||[]).length > 0
+          ? (contacts||[]).map((ct,i) => (
+            <tr key={i}>
+              <td style={tdStyle({fontWeight:500})}>{ct.name||'—'}</td>
+              <td style={tdStyle()}>{ct.contactType
+                ? <span style={{background:'#eef1f5',color:'#2A3D54',padding:'1px 6px',borderRadius:20,fontSize:9,fontWeight:500}}>{CONTACT_TYPE_CODES[ct.contactType]||ct.contactType}</span>
+                : '—'}</td>
+              <td style={tdStyle({color:'var(--pk)'})}>{ct.email||'—'}</td>
+              <td style={tdStyle()}>{ct.phone||'—'}</td>
+            </tr>))
+          : <tr><td colSpan={4} style={tdStyle({textAlign:'center',color:'var(--text-tertiary)',padding:16})}>No contacts yet — click Edit to add</td></tr>}
+      </tbody>
+    </table>
+  )
+}
+
+function SecuritiesEdit({ draft, setDraft }) {
+  return (
+    <div>
+      {(draft||[]).map((s,i) => (
+        <div key={i} style={{background:'var(--bg)',borderRadius:8,padding:10,marginBottom:8,border:'0.5px solid var(--border)'}}>
+          <div style={{display:'grid',gridTemplateColumns:'40px 2fr 1fr 1fr 1fr auto',gap:6,alignItems:'end'}}>
+            <FieldGroup label="#">
+              <input style={{width:'100%'}} value={s.num||i+1} onChange={e => {
+                const d = draft.map((x,j) => j===i ? {...x, num:e.target.value} : x)
+                setDraft(d)
+              }}/>
+            </FieldGroup>
+            <FieldGroup label="Address">
+              <input style={{width:'100%'}} value={s.address||''} onChange={e => {
+                const d = draft.map((x,j) => j===i ? {...x, address:e.target.value} : x)
+                setDraft(d)
+              }}/>
+            </FieldGroup>
+            <FieldGroup label="Last val. ($)">
+              <input style={{width:'100%'}} type="number" value={s.lastVal||''} onChange={e => {
+                const d = draft.map((x,j) => j===i ? {...x, lastVal:+e.target.value} : x)
+                setDraft(d)
+              }}/>
+            </FieldGroup>
+            <FieldGroup label="Est. value ($)">
+              <input style={{width:'100%'}} type="number" value={s.estVal||''} onChange={e => {
+                const d = draft.map((x,j) => j===i ? {...x, estVal:+e.target.value} : x)
+                setDraft(d)
+              }}/>
+            </FieldGroup>
+            <FieldGroup label="Val. date">
+              <input style={{width:'100%'}} value={s.valDate||''} placeholder="YYYY-MM-DD" onChange={e => {
+                const d = draft.map((x,j) => j===i ? {...x, valDate:e.target.value} : x)
+                setDraft(d)
+              }}/>
+            </FieldGroup>
+            <button onClick={() => setDraft(draft.filter((_,j)=>j!==i))}
+              style={{padding:'4px 8px',borderRadius:6,border:'0.5px solid #fde8e8',background:'#fde8e8',color:'#c0392b',cursor:'pointer',alignSelf:'flex-end',marginBottom:2}}>✕</button>
+          </div>
+        </div>
+      ))}
+      <button onClick={() => setDraft([...(draft||[]), {num:(draft||[]).length+1,address:'',lastVal:0,estVal:0,valDate:''}])}
+        style={{fontSize:11,padding:'5px 12px',borderRadius:6,border:'0.5px solid var(--pk)',background:'transparent',color:'var(--pk)',cursor:'pointer',marginBottom:10}}>
+        + Add security
+      </button>
+    </div>
+  )
+}
+
+function SecuritiesView({ securities, loans, bal }) {
+  return (
+    <table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
+      <thead><tr>
+        {['#','Address','Last val.','Est. value','Debt','Equity'].map((h,i) => (
+          <th key={h} style={thStyle({textAlign:i>1?'right':'left'})}>{h}</th>
+        ))}
+      </tr></thead>
+      <tbody>
+        {(securities||[]).length > 0
+          ? [...(securities||[]).map((s,i) => {
+              const debt = loans.filter(l=>String(l.security)===String(s.num||i+1)).reduce((x,l)=>x+l.balance,0)
+              const eq = (s.estVal||0) - debt
+              return (
+                <tr key={i}>
+                  <td style={tdStyle({color:'var(--pk)',fontWeight:500})}>{s.num||i+1}</td>
+                  <td style={tdStyle()}>{s.address||'—'}</td>
+                  <td style={tdStyle({textAlign:'right'})}>{s.lastVal?fmt(s.lastVal):'—'}</td>
+                  <td style={tdStyle({textAlign:'right',fontWeight:500})}>{s.estVal?fmt(s.estVal):'—'}</td>
+                  <td style={tdStyle({textAlign:'right'})}>{fmt(debt)}</td>
+                  <td style={tdStyle({textAlign:'right',color:eq>0?'#27ae60':'#c0392b'})}>{s.estVal?fmt(eq):'—'}</td>
+                </tr>
+              )
+            }),
+            <tr key="total" style={{background:'#2A3D54'}}>
+              <td colSpan={3} style={{...tdStyle(),color:'#fff',fontWeight:500}}>Total</td>
+              <td style={{...tdStyle(),color:'#fff',fontWeight:500,textAlign:'right'}}>{fmt((securities||[]).reduce((s,x)=>s+(x.estVal||0),0))}</td>
+              <td style={{...tdStyle(),color:'#fff',fontWeight:500,textAlign:'right'}}>{fmt(bal)}</td>
+              <td style={{...tdStyle(),color:'#EB99C2',fontWeight:500,textAlign:'right'}}>{fmt((securities||[]).reduce((s,x)=>s+(x.estVal||0),0)-bal)}</td>
+            </tr>]
+          : <tr><td colSpan={6} style={tdStyle({textAlign:'center',color:'var(--text-tertiary)',padding:16})}>No securities yet — click Edit to add</td></tr>}
+      </tbody>
+    </table>
+  )
+}
+
+// ── Main component ──
 
 export default function ClientDashboard({ clients, updateClient }) {
   const { name } = useParams()
@@ -22,27 +181,28 @@ export default function ClientDashboard({ clients, updateClient }) {
   const [editReview, setEditReview] = useState(false)
   const [reviewDate, setReviewDate] = useState('')
 
+  // Stable setDraft callback so child edit components don't remount
+  const stableSetDraft = useCallback(val => setDraft(val), [])
+
   if (!client) return <div style={{padding:24}}>Client not found.</div>
 
   const bal = totalBal(client), amt = totalAmt(client)
   const pw = pwBal(client), comm = commBal(client)
-  const { criteria, total: oppAutoTotal } = calcOpp(client)
+  const { criteria } = calcOpp(client)
   const manualOpp = client.manualOpp || {}
   const oppCriteria = criteria.map(c => ({...c,
     score: manualOpp[c.label]!==undefined ? manualOpp[c.label] : (c.met?c.score:0),
-    met: manualOpp[c.label]!==undefined ? manualOpp[c.label]>0 : c.met,
+    met:   manualOpp[c.label]!==undefined ? manualOpp[c.label]>0 : c.met,
   }))
   const oppTotal = oppCriteria.reduce((s,o)=>s+o.score,0)
   const isPriority = oppTotal >= 25
 
-  // Worst flag across all loans
-  const worstFlag = client.loans.reduce((worst, l) => {
+  const worstFlag = client.loans.reduce((worst,l) => {
     const f = loanFlag(l)
     if (f==='overdue') return 'overdue'
     if (f==='warn' && worst!=='overdue') return 'warn'
     return worst
   }, null)
-
   const flagStyle = worstFlag==='overdue' ? {background:'#fde8e8',color:'#a32d2d'} : worstFlag==='warn' ? {background:'#fef9c3',color:'#854F0B'} : null
 
   function startEdit(section) { setEditSection(section); setDraft(JSON.parse(JSON.stringify(client[section]||[]))) }
@@ -56,9 +216,7 @@ export default function ClientDashboard({ clients, updateClient }) {
     setNoteText('')
   }
   function deleteNote(id) { updateClient(client.name, c=>({...c, notes:(c.notes||[]).filter(n=>n.id!==id)})) }
-
-  function saveOpp() { updateClient(client.name, c=>({...c,manualOpp:oppDraft})); setEditOpp(false); setOppDraft(null) }
-
+  function saveOpp() { updateClient(client.name, c=>({...c, manualOpp:oppDraft})); setEditOpp(false); setOppDraft(null) }
   function saveReviewDate() {
     if (!reviewDate) return
     updateClient(client.name, c=>({...c, lastReviewDate:reviewDate, days:0}))
@@ -73,86 +231,6 @@ export default function ClientDashboard({ clients, updateClient }) {
     </div>
   )
 
-  const Contacts = () => editSection==='contacts' ? (
-    <div>
-      {(draft||[]).map((ct,i)=>(
-        <div key={i} style={{background:'var(--bg)',borderRadius:8,padding:10,marginBottom:8,border:'0.5px solid var(--border)'}}>
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr 120px auto',gap:6,alignItems:'end'}}>
-            <FieldGroup label="Name"><input style={{width:'100%'}} value={ct.name||''} onChange={e=>{const d=[...draft];d[i]={...d[i],name:e.target.value};setDraft(d)}}/></FieldGroup>
-            <FieldGroup label="Email"><input style={{width:'100%'}} value={ct.email||''} onChange={e=>{const d=[...draft];d[i]={...d[i],email:e.target.value};setDraft(d)}}/></FieldGroup>
-            <FieldGroup label="Phone"><input style={{width:'100%'}} value={ct.phone||''} onChange={e=>{const d=[...draft];d[i]={...d[i],phone:e.target.value};setDraft(d)}}/></FieldGroup>
-            <FieldGroup label="Type">
-              <select style={{width:'100%'}} value={ct.contactType||'Individual'} onChange={e=>{const d=[...draft];d[i]={...d[i],contactType:e.target.value};setDraft(d)}}>
-                {CONTACT_TYPES.map(t=><option key={t}>{t}</option>)}
-              </select>
-            </FieldGroup>
-            <button onClick={()=>{const d=[...draft];d.splice(i,1);setDraft(d)}} style={{padding:'4px 8px',borderRadius:6,border:'0.5px solid #fde8e8',background:'#fde8e8',color:'#c0392b',cursor:'pointer',alignSelf:'flex-end',marginBottom:2}}>✕</button>
-          </div>
-        </div>
-      ))}
-      <button onClick={()=>setDraft([...(draft||[]),{name:'',email:'',phone:'',contactType:'Individual'}])} style={{fontSize:11,padding:'5px 12px',borderRadius:6,border:'0.5px solid var(--pk)',background:'transparent',color:'var(--pk)',cursor:'pointer',marginBottom:10}}>+ Add contact</button>
-    </div>
-  ) : (
-    <table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
-      <thead><tr><th style={thStyle()}>Name</th><th style={thStyle()}>Type</th><th style={thStyle()}>Email</th><th style={thStyle()}>Phone</th></tr></thead>
-      <tbody>
-        {(client.contacts||[]).length>0
-          ? (client.contacts||[]).map((ct,i)=>(
-            <tr key={i}>
-              <td style={tdStyle({fontWeight:500})}>{ct.name||'—'}</td>
-              <td style={tdStyle()}>{ct.contactType?<span style={{background:'#eef1f5',color:'#2A3D54',padding:'1px 6px',borderRadius:20,fontSize:9,fontWeight:500}}>{CONTACT_TYPE_CODES[ct.contactType]||ct.contactType}</span>:'—'}</td>
-              <td style={tdStyle({color:'var(--pk)'})}>{ct.email||'—'}</td>
-              <td style={tdStyle()}>{ct.phone||'—'}</td>
-            </tr>))
-          : <tr><td colSpan={4} style={tdStyle({textAlign:'center',color:'var(--text-tertiary)',padding:16})}>No contacts yet — click Edit to add</td></tr>}
-      </tbody>
-    </table>
-  )
-
-  const Securities = () => editSection==='securities' ? (
-    <div>
-      {(draft||[]).map((s,i)=>(
-        <div key={i} style={{background:'var(--bg)',borderRadius:8,padding:10,marginBottom:8,border:'0.5px solid var(--border)'}}>
-          <div style={{display:'grid',gridTemplateColumns:'40px 2fr 1fr 1fr 1fr auto',gap:6,alignItems:'end'}}>
-            <FieldGroup label="#"><input style={{width:'100%'}} value={s.num||i+1} onChange={e=>{const d=[...draft];d[i]={...d[i],num:e.target.value};setDraft(d)}}/></FieldGroup>
-            <FieldGroup label="Address"><input style={{width:'100%'}} value={s.address||''} onChange={e=>{const d=[...draft];d[i]={...d[i],address:e.target.value};setDraft(d)}}/></FieldGroup>
-            <FieldGroup label="Last val. ($)"><input style={{width:'100%'}} type="number" value={s.lastVal||''} onChange={e=>{const d=[...draft];d[i]={...d[i],lastVal:+e.target.value};setDraft(d)}}/></FieldGroup>
-            <FieldGroup label="Est. value ($)"><input style={{width:'100%'}} type="number" value={s.estVal||''} onChange={e=>{const d=[...draft];d[i]={...d[i],estVal:+e.target.value};setDraft(d)}}/></FieldGroup>
-            <FieldGroup label="Val. date"><input style={{width:'100%'}} value={s.valDate||''} placeholder="YYYY-MM-DD" onChange={e=>{const d=[...draft];d[i]={...d[i],valDate:e.target.value};setDraft(d)}}/></FieldGroup>
-            <button onClick={()=>{const d=[...draft];d.splice(i,1);setDraft(d)}} style={{padding:'4px 8px',borderRadius:6,border:'0.5px solid #fde8e8',background:'#fde8e8',color:'#c0392b',cursor:'pointer',alignSelf:'flex-end',marginBottom:2}}>✕</button>
-          </div>
-        </div>
-      ))}
-      <button onClick={()=>setDraft([...(draft||[]),{num:(draft||[]).length+1,address:'',lastVal:0,estVal:0,valDate:''}])} style={{fontSize:11,padding:'5px 12px',borderRadius:6,border:'0.5px solid var(--pk)',background:'transparent',color:'var(--pk)',cursor:'pointer',marginBottom:10}}>+ Add security</button>
-    </div>
-  ) : (
-    <table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
-      <thead><tr>{['#','Address','Last val.','Est. value','Debt','Equity'].map((h,i)=><th key={h} style={thStyle({textAlign:i>1?'right':'left'})}>{h}</th>)}</tr></thead>
-      <tbody>
-        {(client.securities||[]).length>0
-          ? [...(client.securities||[]).map((s,i)=>{
-              const debt=client.loans.filter(l=>String(l.security)===String(s.num||i+1)).reduce((x,l)=>x+l.balance,0)
-              const eq=(s.estVal||0)-debt
-              return <tr key={i}>
-                <td style={tdStyle({color:'var(--pk)',fontWeight:500})}>{s.num||i+1}</td>
-                <td style={tdStyle()}>{s.address||'—'}</td>
-                <td style={tdStyle({textAlign:'right'})}>{s.lastVal?fmt(s.lastVal):'—'}</td>
-                <td style={tdStyle({textAlign:'right',fontWeight:500})}>{s.estVal?fmt(s.estVal):'—'}</td>
-                <td style={tdStyle({textAlign:'right'})}>{fmt(debt)}</td>
-                <td style={tdStyle({textAlign:'right',color:eq>0?'#27ae60':'#c0392b'})}>{s.estVal?fmt(eq):'—'}</td>
-              </tr>
-            }),
-            <tr key="total" style={{background:'#2A3D54'}}>
-              <td colSpan={3} style={{...tdStyle(),color:'#fff',fontWeight:500}}>Total</td>
-              <td style={{...tdStyle(),color:'#fff',fontWeight:500,textAlign:'right'}}>{fmt((client.securities||[]).reduce((s,x)=>s+(x.estVal||0),0))}</td>
-              <td style={{...tdStyle(),color:'#fff',fontWeight:500,textAlign:'right'}}>{fmt(bal)}</td>
-              <td style={{...tdStyle(),color:'#EB99C2',fontWeight:500,textAlign:'right'}}>{fmt((client.securities||[]).reduce((s,x)=>s+(x.estVal||0),0)-bal)}</td>
-            </tr>]
-          : <tr><td colSpan={6} style={tdStyle({textAlign:'center',color:'var(--text-tertiary)',padding:16})}>No securities yet — click Edit to add</td></tr>}
-      </tbody>
-    </table>
-  )
-
   return (
     <div style={{padding:'16px 24px'}}>
       <button onClick={()=>navigate('/radar/clients')}
@@ -161,10 +239,10 @@ export default function ClientDashboard({ clients, updateClient }) {
         ← Back to all clients
       </button>
 
-      {/* Header — new layout per mockup */}
+      {/* Header */}
       <div style={{background:'#2A3D54',borderRadius:10,padding:'16px 20px',marginBottom:14}}>
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr 1fr',gap:12,marginBottom:12}}>
-          {/* Left col */}
+          {/* Name + review */}
           <div>
             <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>
               <div style={{width:42,height:42,borderRadius:'50%',background:'var(--pk)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:14,fontWeight:500,color:'#fff',flexShrink:0}}>{ini(client.name)}</div>
@@ -181,14 +259,16 @@ export default function ClientDashboard({ clients, updateClient }) {
               <div style={{fontSize:10,color:'var(--sbl)',marginBottom:4}}>Last review date</div>
               {editReview ? (
                 <div style={{display:'flex',gap:6,alignItems:'center'}}>
-                  <input type="date" value={reviewDate} onChange={e=>setReviewDate(e.target.value)} style={{fontSize:11,padding:'3px 6px',borderRadius:6,border:'0.5px solid var(--border)',background:'rgba(255,255,255,0.1)',color:'#fff',width:130}}/>
+                  <input type="date" value={reviewDate} onChange={e=>setReviewDate(e.target.value)}
+                    style={{fontSize:11,padding:'3px 6px',borderRadius:6,border:'0.5px solid var(--border)',background:'rgba(255,255,255,0.1)',color:'#fff',width:130}}/>
                   <button onClick={saveReviewDate} style={{fontSize:10,padding:'3px 8px',borderRadius:6,background:'#27ae60',border:'none',color:'#fff',cursor:'pointer'}}>Save</button>
                   <button onClick={()=>setEditReview(false)} style={{fontSize:10,padding:'3px 8px',borderRadius:6,background:'transparent',border:'0.5px solid rgba(255,255,255,0.3)',color:'#fff',cursor:'pointer'}}>Cancel</button>
                 </div>
               ) : (
                 <div style={{display:'flex',alignItems:'center',gap:8}}>
                   <span style={{fontSize:13,fontWeight:500,color:'#fff'}}>{client.lastReviewDate?fmtDate(client.lastReviewDate):'Not set'}</span>
-                  <button onClick={()=>{setEditReview(true);setReviewDate(client.lastReviewDate||new Date().toISOString().slice(0,10))}} style={{fontSize:10,padding:'2px 8px',borderRadius:6,border:'0.5px solid rgba(218,64,141,0.5)',background:'transparent',color:'var(--spk)',cursor:'pointer'}}>Update</button>
+                  <button onClick={()=>{setEditReview(true);setReviewDate(client.lastReviewDate||new Date().toISOString().slice(0,10))}}
+                    style={{fontSize:10,padding:'2px 8px',borderRadius:6,border:'0.5px solid rgba(218,64,141,0.5)',background:'transparent',color:'var(--spk)',cursor:'pointer'}}>Update</button>
                 </div>
               )}
             </div>
@@ -196,20 +276,18 @@ export default function ClientDashboard({ clients, updateClient }) {
           {/* Balances */}
           <div style={{background:'rgba(255,255,255,0.08)',borderRadius:8,padding:'10px 14px'}}>
             <div style={{fontSize:10,color:'var(--sbl)',marginBottom:6,textTransform:'uppercase',letterSpacing:'0.05em'}}>Balances</div>
-            <div style={{display:'flex',flexDirection:'column',gap:4}}>
-              {[['Private Wealth',fmt(pw)],['Commercial',fmt(comm)],['Total exposure',fmt(bal)]].map(([l,v])=>(
-                <div key={l} style={{display:'flex',justifyContent:'space-between',fontSize:12}}>
-                  <span style={{color:'var(--sbl)'}}>{l}</span>
-                  <span style={{color:'#fff',fontWeight:500}}>{v}</span>
-                </div>
-              ))}
-            </div>
+            {[['Private Wealth',fmt(pw)],['Commercial',fmt(comm)],['Total exposure',fmt(bal)]].map(([l,v])=>(
+              <div key={l} style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:3}}>
+                <span style={{color:'var(--sbl)'}}>{l}</span>
+                <span style={{color:'#fff',fontWeight:500}}>{v}</span>
+              </div>
+            ))}
           </div>
-          {/* Opp score + accounts */}
+          {/* Portfolio */}
           <div style={{background:'rgba(255,255,255,0.08)',borderRadius:8,padding:'10px 14px'}}>
             <div style={{fontSize:10,color:'var(--sbl)',marginBottom:6,textTransform:'uppercase',letterSpacing:'0.05em'}}>Portfolio</div>
             {[['Opp. score',oppTotal,isPriority?'#EB99C2':'var(--pk)'],['No. of accounts',client.loans.length,'#fff'],['Days since review',client.days>0?client.days+'d':'Today',client.days>365?'#e74c3c':client.days>180?'#e8a020':'#27ae60']].map(([l,v,c])=>(
-              <div key={l} style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:4}}>
+              <div key={l} style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:3}}>
                 <span style={{color:'var(--sbl)'}}>{l}</span>
                 <span style={{color:c||'#fff',fontWeight:500}}>{v}</span>
               </div>
@@ -218,17 +296,19 @@ export default function ClientDashboard({ clients, updateClient }) {
           {/* Flags */}
           <div style={{background:'rgba(255,255,255,0.08)',borderRadius:8,padding:'10px 14px'}}>
             <div style={{fontSize:10,color:'var(--sbl)',marginBottom:6,textTransform:'uppercase',letterSpacing:'0.05em'}}>Flags</div>
-            {client.loans.some(l=>l.fixed||l.io||l.balloon) ? client.loans.map((l,i)=>{
-              const f=loanFlag(l)
-              if(!f) return null
-              return <div key={i} style={{fontSize:11,padding:'3px 0',display:'flex',gap:6,alignItems:'center'}}>
-                <span style={{width:7,height:7,borderRadius:'50%',background:f==='overdue'?'#e74c3c':'#e8a020',display:'inline-block',flexShrink:0}}/>
-                <span style={{color:f==='overdue'?'#fca5a5':'#fde68a',fontSize:10}}>{l.lname||`Loan ${i+1}`}</span>
-              </div>
-            }) : <div style={{fontSize:11,color:'rgba(187,198,218,0.4)'}}>No active flags</div>}
+            {client.loans.some(l=>l.fixed||l.io||l.balloon)
+              ? client.loans.map((l,i)=>{
+                  const f=loanFlag(l)
+                  if(!f) return null
+                  return <div key={i} style={{fontSize:11,padding:'3px 0',display:'flex',gap:6,alignItems:'center'}}>
+                    <span style={{width:7,height:7,borderRadius:'50%',background:f==='overdue'?'#e74c3c':'#e8a020',display:'inline-block',flexShrink:0}}/>
+                    <span style={{color:f==='overdue'?'#fca5a5':'#fde68a',fontSize:10}}>{l.lname||`Loan ${i+1}`}</span>
+                  </div>
+                })
+              : <div style={{fontSize:11,color:'rgba(187,198,218,0.4)'}}>No active flags</div>}
           </div>
         </div>
-        {/* Sub-stats row */}
+        {/* Sub-stats */}
         <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:8}}>
           {[['Current balance',fmt(bal)],['Original limit',fmt(amt)],['Est. equity',fmt(Math.max(0,amt-bal))],['Accounts',client.loans.length],['Opp. score',oppTotal]].map(([label,val],i)=>(
             <div key={label} style={{background:'rgba(255,255,255,0.06)',borderRadius:8,padding:'8px 12px'}}>
@@ -241,11 +321,21 @@ export default function ClientDashboard({ clients, updateClient }) {
 
       {/* Contacts & Securities */}
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14,marginBottom:14}}>
-        <Panel><PanelTitle action={editBtns('contacts')}>Clients & contacts</PanelTitle><Contacts/></Panel>
-        <Panel><PanelTitle action={editBtns('securities')}>Securities & property values</PanelTitle><Securities/></Panel>
+        <Panel>
+          <PanelTitle action={editBtns('contacts')}>Clients & contacts</PanelTitle>
+          {editSection==='contacts'
+            ? <ContactsEdit draft={draft} setDraft={stableSetDraft}/>
+            : <ContactsView contacts={client.contacts}/>}
+        </Panel>
+        <Panel>
+          <PanelTitle action={editBtns('securities')}>Securities & property values</PanelTitle>
+          {editSection==='securities'
+            ? <SecuritiesEdit draft={draft} setDraft={stableSetDraft}/>
+            : <SecuritiesView securities={client.securities} loans={client.loans} bal={bal}/>}
+        </Panel>
       </div>
 
-      {/* Loan facilities — simplified, no fixed/IO/balloon cols, add flag + click to drill down */}
+      {/* Loan facilities */}
       <Panel style={{marginBottom:14}}>
         <PanelTitle>Loan facilities ({client.loans.length})</PanelTitle>
         <div style={{overflowX:'auto'}}>
@@ -304,16 +394,19 @@ export default function ClientDashboard({ clients, updateClient }) {
       {/* Opp score & Notes */}
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}}>
         <Panel>
-          <PanelTitle action={editOpp?<div style={{display:'flex',gap:4}}><SaveBtn onClick={saveOpp}/><CancelBtn onClick={()=>{setEditOpp(false);setOppDraft(null)}}/></div>:<EditBtn onClick={()=>{setEditOpp(true);setOppDraft({...manualOpp})}}/>}>
-            Opportunity score breakdown
-          </PanelTitle>
+          <PanelTitle action={
+            editOpp
+              ? <div style={{display:'flex',gap:4}}><SaveBtn onClick={saveOpp}/><CancelBtn onClick={()=>{setEditOpp(false);setOppDraft(null)}}/></div>
+              : <EditBtn onClick={()=>{setEditOpp(true);setOppDraft({...manualOpp})}}/>
+          }>Opportunity score breakdown</PanelTitle>
           {(editOpp?criteria:oppCriteria).map((o,i)=>{
-            const currentScore=editOpp?(oppDraft[o.label]!==undefined?oppDraft[o.label]:(o.met?o.score:0)):o.score
+            const currentScore = editOpp ? (oppDraft[o.label]!==undefined?oppDraft[o.label]:(o.met?o.score:0)) : o.score
             return (
               <div key={i} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'5px 8px',background:'var(--bg)',borderRadius:6,marginBottom:4,fontSize:11}}>
                 <span>{o.label}</span>
                 {editOpp
-                  ? <select value={currentScore} onChange={e=>setOppDraft(d=>({...d,[o.label]:+e.target.value}))} style={{fontSize:11,padding:'2px 6px',borderRadius:6,border:'0.5px solid var(--border)',background:'var(--surface)',color:'var(--text-primary)',width:60}}>
+                  ? <select value={currentScore} onChange={e=>setOppDraft(d=>({...d,[o.label]:+e.target.value}))}
+                      style={{fontSize:11,padding:'2px 6px',borderRadius:6,border:'0.5px solid var(--border)',background:'var(--surface)',color:'var(--text-primary)',width:60}}>
                       <option value={0}>0</option><option value={5}>5</option>
                     </select>
                   : <span style={{fontWeight:500,padding:'1px 7px',borderRadius:10,fontSize:10,background:o.score>0?'#fce8f3':'var(--bg)',color:o.score>0?'var(--pk)':'var(--text-secondary)',border:o.score>0?'none':'0.5px solid var(--border)'}}>{o.score}</span>}
@@ -345,7 +438,8 @@ export default function ClientDashboard({ clients, updateClient }) {
               : <div style={{color:'var(--text-tertiary)',fontSize:11,padding:'8px 0'}}>No notes yet.</div>}
           </div>
           <div style={{display:'flex',flexDirection:'column',gap:6,marginBottom:12}}>
-            <textarea value={noteText} onChange={e=>setNoteText(e.target.value)} placeholder="Add a note — review outcome, call summary, next steps..."
+            <textarea value={noteText} onChange={e=>setNoteText(e.target.value)}
+              placeholder="Add a note — review outcome, call summary, next steps..."
               style={{width:'100%',fontSize:12,minHeight:60,padding:8,borderRadius:6,border:'0.5px solid var(--border)',background:'var(--bg)',color:'var(--text-primary)',lineHeight:1.6,resize:'vertical'}}/>
             <div style={{display:'flex',gap:6,alignItems:'center'}}>
               <button onClick={addNote} style={{fontSize:10,padding:'4px 12px',borderRadius:6,background:'#27ae60',border:'0.5px solid #27ae60',color:'#fff',cursor:'pointer'}}>Log note</button>
