@@ -6,6 +6,7 @@ import Home from './pages/Home'
 import Dashboard from './pages/Dashboard'
 import ClientList from './pages/ClientList'
 import ClientDashboard from './pages/ClientDashboard'
+import LoanAccount from './pages/LoanAccount'
 import Toast from './components/Toast'
 
 export default function App() {
@@ -26,11 +27,7 @@ export default function App() {
   }, [])
 
   function addClient(newClient) {
-    setClients(prev => {
-      const next = [...prev, newClient]
-      saveClients(next)
-      return next
-    })
+    setClients(prev => { const next = [...prev, newClient]; saveClients(next); return next })
     showToast('Client added')
   }
 
@@ -41,9 +38,7 @@ export default function App() {
         loans: c.loans.map(l => {
           const acc = String(l.acc || '').trim()
           const found = stmtMap[acc]
-          if (found && Math.abs((found.bal || 0) - l.balance) > 1) {
-            return { ...l, balance: found.bal }
-          }
+          if (found && Math.abs((found.bal||0) - l.balance) > 1) return {...l, balance: found.bal}
           return l
         })
       }))
@@ -54,14 +49,15 @@ export default function App() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: isHome ? '#1e2d3f' : 'var(--bg)' }}>
+    <div style={{ minHeight:'100vh', background: isHome ? '#1e2d3f' : 'var(--bg)' }}>
       {!isHome && <Topbar />}
       <Toast message={toast} />
       <Routes>
         <Route path="/" element={<Home />} />
-        <Route path="/radar/dashboard" element={<Dashboard clients={clients} onAddClient={addClient} onImport={handleImport} />} />
+        <Route path="/radar/dashboard" element={<Dashboard clients={clients} onImport={handleImport} />} />
         <Route path="/radar/clients" element={<ClientList clients={clients} onAddClient={addClient} />} />
         <Route path="/radar/clients/:name" element={<ClientDashboard clients={clients} updateClient={updateClient} />} />
+        <Route path="/radar/clients/:name/loan/:loanIdx" element={<LoanAccount clients={clients} updateClient={updateClient} />} />
       </Routes>
     </div>
   )

@@ -1,10 +1,9 @@
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { totalBal, fmt } from '../lib/data'
-import { fmtDate } from '../lib/dateUtils'
+import { fmtDate, rollingYTD, quarterlyIncome } from '../lib/dateUtils'
 import { Panel, PanelTitle, DayBadge } from '../components/UI'
 import CommissionImport from './CommissionImport'
-import AddClient from './AddClient'
 
 const COMMISSION = [
   { month:'Mar 25', trail:4509.09,  upfront:18295.28, total:22804.37, balance:29164475 },
@@ -24,25 +23,24 @@ const COMMISSION = [
 
 const RADAR_FIXED_IO = [
   { conn:'Ricciulli', client:'RICCIULLI GUEVARA PROPERTY Pty Ltd', acc:'734136417', balance:229600, days:137, score:0 },
-  { conn:'Ricciulli', client:'RICCIULLI R A — Raymond & Jessica', acc:'746989193', balance:515950, days:137, score:0 },
-  { conn:'Ricciulli', client:'RJSO Pty Ltd atf RJSO Trust', acc:'200021390438', balance:360000, days:137, score:0 },
-  { conn:'Russell',   client:'MARTIN RUSSELL', acc:'568038183', balance:396133, days:1, score:15 },
+  { conn:'Ricciulli', client:'RICCIULLI R A — Raymond & Jessica',  acc:'746989193', balance:515950, days:137, score:0 },
+  { conn:'Ricciulli', client:'RJSO Pty Ltd atf RJSO Trust',        acc:'200021390438', balance:360000, days:137, score:0 },
+  { conn:'Russell',   client:'MARTIN RUSSELL',                     acc:'568038183', balance:396133, days:1,   score:15 },
 ]
-
 const RADAR_BALLOONS = [
-  { conn:'Quartiero', client:'Hydro Solutions NSW Pty Ltd', acc:'—', balance:74489, days:1079, score:0 },
-  { conn:'Smith',     client:'Command Plumbing Services Pty Ltd', acc:'—', balance:28620, days:978, score:0 },
-  { conn:'Borg',      client:'JMB Plumbing', acc:'—', balance:77241, days:1056, score:0 },
-  { conn:'Synergy IT',client:'Synergy IT Group Pty Ltd', acc:'—', balance:83094, days:67, score:0 },
+  { conn:'Quartiero', client:'Hydro Solutions NSW Pty Ltd',        acc:'—', balance:74489,  days:1079, score:0 },
+  { conn:'Smith',     client:'Command Plumbing Services Pty Ltd',  acc:'—', balance:28620,  days:978,  score:0 },
+  { conn:'Borg',      client:'JMB Plumbing',                       acc:'—', balance:77241,  days:1056, score:0 },
+  { conn:'Synergy IT',client:'Synergy IT Group Pty Ltd',           acc:'—', balance:83094,  days:67,   score:0 },
 ]
 
 function BarChart({ data, keys, colors, title, formatY }) {
   const maxVal = Math.max(...data.map(d => keys.reduce((s,k)=>s+(d[k]||0),0))) * 1.1 || 1
-  const h = 130, barW = Math.max(12, Math.floor(420/data.length)-3)
+  const h = 120, barW = Math.max(12, Math.floor(420/data.length)-3)
   return (
     <div style={{flex:1}}>
       <div style={{fontSize:11,fontWeight:500,color:'var(--text-secondary)',textAlign:'center',marginBottom:6}}>{title}</div>
-      <svg width="100%" viewBox={`0 0 ${data.length*(barW+3)+42} ${h+36}`} style={{overflow:'visible',display:'block'}}>
+      <svg width="100%" viewBox={`0 0 ${data.length*(barW+3)+42} ${h+34}`} style={{overflow:'visible',display:'block'}}>
         {[0,0.25,0.5,0.75,1].map(p=>(
           <g key={p}>
             <line x1={38} x2={data.length*(barW+3)+38} y1={h-p*h} y2={h-p*h} stroke="var(--border-light)" strokeWidth={0.5}/>
@@ -53,8 +51,7 @@ function BarChart({ data, keys, colors, title, formatY }) {
           const x=40+i*(barW+3); let yOff=h
           return <g key={i}>
             {keys.map((k,ki)=>{
-              const val=d[k]||0, bh=(val/maxVal)*h
-              yOff-=bh
+              const val=d[k]||0, bh=(val/maxVal)*h; yOff-=bh
               return <rect key={ki} x={x} y={yOff} width={barW} height={bh} fill={colors[ki]} rx={1.5}><title>{`${d.month}: $${val.toLocaleString()}`}</title></rect>
             })}
             <text x={x+barW/2} y={h+14} textAnchor="middle" fontSize={8} fill="var(--text-secondary)">{d.month}</text>
@@ -73,7 +70,48 @@ function BarChart({ data, keys, colors, title, formatY }) {
   )
 }
 
-function RadarTable({ title, rows, navigate }) {
+// Pie chart for PW vs Commercial
+function PieChart({ pw, comm }) {
+  const total = pw + comm
+  if (!total) return null
+  const pwAngle = (pw / total) * 360
+  const r = 70, cx = 90, cy = 80
+  function polarToXY(deg, radius) {
+    const rad = (deg - 90) * Math.PI / 180
+    return { x: cx + radius * Math.cos(rad), y: cy + radius * Math.sin(rad) }
+  }
+  function arc(startDeg, endDeg, color) {
+    const start = polarToXY(startDeg, r)
+    const end = polarToXY(endDeg, r)
+    const large = (endDeg - startDeg) > 180 ? 1 : 0
+    return <path d={`M${cx},${cy} L${start.x},${start.y} A${r},${r} 0 ${large},1 ${end.x},${end.y} Z`} fill={color} />
+  }
+  const mid1 = polarToXY(pwAngle/2 - 90 + 90, r*0.6)
+  const mid2 = polarToXY(pwAngle + (360-pwAngle)/2 - 90 + 90, r*0.6)
+  return (
+    <div style={{display:'flex',flexDirection:'column',alignItems:'center'}}>
+      <div style={{fontSize:11,fontWeight:500,color:'var(--text-secondary)',marginBottom:8}}>Portfolio Split</div>
+      <svg width={180} height={160} viewBox="0 0 180 160">
+        {arc(0, pwAngle, '#DA408D')}
+        {arc(pwAngle, 360, '#2A3D54')}
+        {/* Labels inside */}
+        <text x={mid1.x} y={mid1.y} textAnchor="middle" fontSize={9} fill="#fff" fontWeight={500}>
+          {`$${(pw/1e6).toFixed(1)}m`}
+        </text>
+        <text x={mid2.x} y={mid2.y} textAnchor="middle" fontSize={9} fill="#fff" fontWeight={500}>
+          {`$${(comm/1e6).toFixed(1)}m`}
+        </text>
+      </svg>
+      <div style={{display:'flex',gap:10,justifyContent:'center',fontSize:10,color:'var(--text-secondary)',marginTop:-8}}>
+        <div style={{display:'flex',alignItems:'center',gap:4}}><div style={{width:8,height:8,borderRadius:2,background:'#DA408D'}}/> Private Wealth</div>
+        <div style={{display:'flex',alignItems:'center',gap:4}}><div style={{width:8,height:8,borderRadius:2,background:'#2A3D54'}}/> Commercial</div>
+      </div>
+      <div style={{fontSize:12,fontWeight:500,color:'var(--text-primary)',marginTop:6}}>Total: ${(total/1e6).toFixed(1)}m</div>
+    </div>
+  )
+}
+
+function RadarTable({ title, rows, navigate, onTick }) {
   const th = { padding:'6px 8px', textAlign:'left', fontSize:10, color:'var(--text-secondary)', fontWeight:500, borderBottom:'0.5px solid var(--border)', whiteSpace:'nowrap', background:'var(--bg)' }
   const td = (extra={}) => ({ padding:'6px 8px', borderBottom:'0.5px solid var(--border-light)', verticalAlign:'middle', fontSize:11, ...extra })
   return (
@@ -82,23 +120,26 @@ function RadarTable({ title, rows, navigate }) {
       <div style={{overflowX:'auto'}}>
         <table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
           <thead><tr>
-            {['Connection','Client','Account No.','Balance','Days Since Review','Opp. Score','Pipeline'].map(h=>(
+            <th style={{...th,width:32,textAlign:'center'}}>✓</th>
+            {['Connection','Client','Account No.','Balance','Days Since Review','Opp. Score'].map(h=>(
               <th key={h} style={{...th,textAlign:['Balance','Days Since Review','Opp. Score'].includes(h)?'right':'left'}}>{h}</th>
             ))}
           </tr></thead>
           <tbody>
             {rows.length>0 ? rows.map((r,i)=>(
-              <tr key={i} style={{cursor:'pointer'}}
+              <tr key={i}
                 onMouseOver={e=>e.currentTarget.style.background='#fce8f3'}
-                onMouseOut={e=>e.currentTarget.style.background='transparent'}
-                onClick={()=>navigate(`/radar/clients/${encodeURIComponent(r.conn)}`)}>
-                <td style={td({fontWeight:500,color:'var(--pk)'})}>{r.conn}</td>
+                onMouseOut={e=>e.currentTarget.style.background='transparent'}>
+                <td style={td({textAlign:'center'})}>
+                  <input type="checkbox" onChange={()=>onTick&&onTick(i)}
+                    style={{cursor:'pointer',accentColor:'var(--pk)',width:14,height:14}}/>
+                </td>
+                <td style={td({fontWeight:500,color:'var(--pk)',cursor:'pointer'})} onClick={()=>navigate(`/radar/clients/${encodeURIComponent(r.conn)}`)}>{r.conn}</td>
                 <td style={{...td(),maxWidth:160,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.client}</td>
                 <td style={{...td(),fontFamily:'DM Mono,monospace',fontSize:10,color:'var(--text-secondary)'}}>{r.acc}</td>
                 <td style={td({textAlign:'right',fontWeight:500})}>{fmt(r.balance)}</td>
                 <td style={{...td(),textAlign:'right'}}><DayBadge days={r.days}/></td>
                 <td style={td({textAlign:'right'})}>{r.score>0?<span style={{background:'#fce8f3',color:'var(--pk)',padding:'2px 7px',borderRadius:20,fontSize:9,fontWeight:500}}>{r.score}</span>:'—'}</td>
-                <td style={td({color:'var(--text-tertiary)'})}> — </td>
               </tr>
             )) : <tr><td colSpan={7} style={td({textAlign:'center',color:'var(--text-tertiary)',padding:14})}>No items</td></tr>}
           </tbody>
@@ -108,10 +149,10 @@ function RadarTable({ title, rows, navigate }) {
   )
 }
 
-export default function Dashboard({ clients, onAddClient, onImport }) {
+export default function Dashboard({ clients, onImport }) {
   const navigate = useNavigate()
   const [showImport, setShowImport] = useState(false)
-  const [showAdd, setShowAdd] = useState(false)
+  const [tickedRows, setTickedRows] = useState({})
 
   const latest = COMMISSION[COMMISSION.length-1]
   const allLoans = clients.flatMap(c=>c.loans)
@@ -120,15 +161,8 @@ export default function Dashboard({ clients, onAddClient, onImport }) {
   const commTotal = clients.filter(c=>c.stream==='Commercial').flatMap(c=>c.loans).reduce((s,l)=>s+(l.balance||0),0)
   const overdue = clients.filter(c=>c.days>=365).length
   const triggers = clients.filter(c=>c.loans.some(l=>l.io||l.fixed||l.balloon)).length
-
-  // YTD — sum all 2026 months
-  const ytd = COMMISSION.filter(m=>m.month.includes('26')).reduce((s,m)=>s+m.total,0)
-
-  const annualRows = clients
-    .filter(c=>c.days>=180&&c.loans.length>0)
-    .sort((a,b)=>b.days-a.days)
-    .slice(0,8)
-    .flatMap(c=>c.loans.slice(0,1).map(l=>({conn:c.name,client:l.lname,acc:l.acc||'—',balance:l.balance,days:c.days,score:c.score})))
+  const rolling12 = rollingYTD(COMMISSION)
+  const quarters = quarterlyIncome(COMMISSION)
 
   const pwRatio = pwTotal/(pwTotal+commTotal||1)
   const balData = COMMISSION.map(d=>({
@@ -137,71 +171,91 @@ export default function Dashboard({ clients, onAddClient, onImport }) {
     commercial:Math.round(d.balance*(1-pwRatio)),
   }))
 
-  const stat = (label, value, color, bg) => (
-    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'6px 0',borderBottom:'0.5px solid var(--border-light)'}}>
+  const annualRows = clients
+    .filter(c=>c.days>=180&&c.loans.length>0)
+    .sort((a,b)=>b.days-a.days)
+    .slice(0,8)
+    .flatMap(c=>c.loans.slice(0,1).map(l=>({conn:c.name,client:l.lname,acc:l.acc||'—',balance:l.balance,days:c.days,score:c.score})))
+
+  function handleTick(tableKey, idx) {
+    setTickedRows(prev => ({...prev, [`${tableKey}-${idx}`]: true}))
+  }
+
+  const stat = (label, value, color) => (
+    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'5px 0',borderBottom:'0.5px solid var(--border-light)'}}>
       <span style={{fontSize:11,color:'var(--text-secondary)'}}>{label}</span>
-      <span style={{fontSize:12,fontWeight:500,color:color||'var(--text-primary)',background:bg||'transparent',padding:bg?'1px 8px':'0',borderRadius:6}}>{value}</span>
+      <span style={{fontSize:12,fontWeight:500,color:color||'var(--text-primary)'}}>{value}</span>
     </div>
   )
 
   return (
     <div style={{padding:'16px 24px'}}>
 
-      {/* TOP SECTION */}
-      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 240px',gap:14,marginBottom:16,alignItems:'start'}}>
+      {/* TOP ROW — charts + pie + summary stats */}
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 180px 200px',gap:14,marginBottom:16,alignItems:'start'}}>
 
-        {/* Portfolio balance chart */}
         <Panel style={{display:'flex',flexDirection:'column'}}>
-          <BarChart data={balData} keys={['private','commercial']} colors={['#2A3D54','#DA408D']} title="Portfolio Balances" formatY={v=>v>=1000000?`$${(v/1000000).toFixed(1)}m`:`$${Math.round(v/1000)}k`} />
+          <BarChart data={balData} keys={['private','commercial']} colors={['#2A3D54','#DA408D']} title="Portfolio Balances" formatY={v=>v>=1e6?`$${(v/1e6).toFixed(1)}m`:`$${Math.round(v/1000)}k`}/>
         </Panel>
 
-        {/* Income chart */}
         <Panel style={{display:'flex',flexDirection:'column'}}>
-          <BarChart data={COMMISSION} keys={['trail','upfront']} colors={['#2A3D54','#DA408D']} title="Commission Income" formatY={v=>`$${Math.round(v/1000)}k`} />
+          <BarChart data={COMMISSION} keys={['trail','upfront']} colors={['#2A3D54','#DA408D']} title="Commission Income" formatY={v=>`$${Math.round(v/1000)}k`}/>
         </Panel>
 
-        {/* Stats panel — two columns */}
-        <Panel style={{padding:'14px 16px'}}>
-          <div style={{fontSize:10,fontWeight:500,color:'var(--text-secondary)',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:8}}>Portfolio Summary</div>
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0 12px'}}>
-            <div>
-              {stat('Month', latest.month)}
-              {stat('Private Wealth', `$${(pwTotal/1e6).toFixed(1)}m`, '#2A3D54')}
-              {stat('Commercial', `$${(commTotal/1e6).toFixed(1)}m`, 'var(--pk)')}
-              {stat('Total Balances', `$${(portfolio/1e6).toFixed(1)}m`)}
-            </div>
-            <div>
-              {stat('Connections', clients.length)}
-              {stat('Accounts', allLoans.length)}
-              {stat('Needs Attention', overdue, '#e8a020')}
-              {stat('Active Triggers', triggers, 'var(--pk)')}
-            </div>
-          </div>
-          <div style={{borderTop:'0.5px solid var(--border-light)',marginTop:8,paddingTop:8}}>
-            <div style={{fontSize:10,fontWeight:500,color:'var(--text-secondary)',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:6}}>Income</div>
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0 12px'}}>
-              <div>
-                {stat('Trail', `$${latest.trail.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`)}
-                {stat('Upfront', `$${latest.upfront.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`)}
+        {/* Pie chart */}
+        <Panel style={{display:'flex',alignItems:'center',justifyContent:'center',padding:'12px 8px'}}>
+          <PieChart pw={pwTotal} comm={commTotal}/>
+        </Panel>
+
+        {/* Stats */}
+        <Panel style={{padding:'12px 14px'}}>
+          <div style={{fontSize:10,fontWeight:500,color:'var(--text-secondary)',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:6}}>Summary</div>
+          {stat('Month', latest.month)}
+          {stat('Connections', clients.length)}
+          {stat('Accounts', allLoans.length)}
+          {stat('Needs Attention', overdue, '#e8a020')}
+          {stat('Active Triggers', triggers, 'var(--pk)')}
+          <button onClick={()=>setShowImport(true)} style={{width:'100%',marginTop:12,padding:'7px',borderRadius:7,border:'1.5px solid var(--pk)',background:'transparent',color:'var(--pk)',fontWeight:500,fontSize:11,cursor:'pointer'}}
+            onMouseOver={e=>{e.currentTarget.style.background='var(--pk)';e.currentTarget.style.color='#fff'}}
+            onMouseOut={e=>{e.currentTarget.style.background='transparent';e.currentTarget.style.color='var(--pk)'}}>
+            ↑ Import statement
+          </button>
+        </Panel>
+      </div>
+
+      {/* INCOME SECTION — fills gap below charts */}
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14,marginBottom:16}}>
+        <Panel>
+          <div style={{fontSize:10,fontWeight:500,color:'var(--text-secondary)',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:10}}>Income — This Month</div>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10}}>
+            {[
+              {label:'Trail', val:`$${latest.trail.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`},
+              {label:'Upfront', val:`$${latest.upfront.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`},
+              {label:'Total', val:`$${latest.total.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`, color:'#27ae60'},
+            ].map(s=>(
+              <div key={s.label} style={{background:'var(--bg)',borderRadius:8,padding:'10px 12px'}}>
+                <div style={{fontSize:10,color:'var(--text-secondary)',marginBottom:3}}>{s.label}</div>
+                <div style={{fontSize:14,fontWeight:500,color:s.color||'var(--text-primary)'}}>{s.val}</div>
               </div>
-              <div>
-                {stat('This month', `$${latest.total.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`, '#27ae60')}
-                {stat('YTD', `$${Math.round(ytd).toLocaleString()}`, '#27ae60')}
-              </div>
-            </div>
+            ))}
           </div>
-          {/* Action buttons */}
-          <div style={{display:'flex',gap:6,marginTop:12,flexWrap:'wrap'}}>
-            <button onClick={()=>setShowImport(true)} style={{flex:1,padding:'7px 10px',borderRadius:7,border:'1.5px solid var(--pk)',background:'transparent',color:'var(--pk)',fontWeight:500,fontSize:11,cursor:'pointer'}}
-              onMouseOver={e=>{e.target.style.background='var(--pk)';e.target.style.color='#fff'}}
-              onMouseOut={e=>{e.target.style.background='transparent';e.target.style.color='var(--pk)'}}>
-              ↑ Import statement
-            </button>
-            <button onClick={()=>setShowAdd(true)} style={{flex:1,padding:'7px 10px',borderRadius:7,border:'1.5px solid #2A3D54',background:'transparent',color:'#2A3D54',fontWeight:500,fontSize:11,cursor:'pointer'}}
-              onMouseOver={e=>{e.target.style.background='#2A3D54';e.target.style.color='#fff'}}
-              onMouseOut={e=>{e.target.style.background='transparent';e.target.style.color='#2A3D54'}}>
-              + Add client
-            </button>
+        </Panel>
+        <Panel>
+          <div style={{fontSize:10,fontWeight:500,color:'var(--text-secondary)',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:10}}>
+            Rolling 12-Month Income &amp; Quarterly Breakdown
+          </div>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr 1fr 1fr',gap:8}}>
+            <div style={{background:'var(--bg)',borderRadius:8,padding:'10px 12px',gridColumn:'1/2'}}>
+              <div style={{fontSize:10,color:'var(--text-secondary)',marginBottom:3}}>Rolling 12m</div>
+              <div style={{fontSize:13,fontWeight:500,color:'#27ae60'}}>${Math.round(rolling12).toLocaleString()}</div>
+            </div>
+            {quarters.slice(-4).map((q,i)=>(
+              <div key={i} style={{background:'var(--bg)',borderRadius:8,padding:'10px 12px'}}>
+                <div style={{fontSize:10,color:'var(--text-secondary)',marginBottom:3}}>{q.label} ({q.months.split('–')[0]})</div>
+                <div style={{fontSize:12,fontWeight:500,color:'var(--text-primary)'}}>${Math.round(q.total).toLocaleString()}</div>
+                <div style={{fontSize:9,color:'var(--text-tertiary)',marginTop:1}}>T: ${Math.round(q.trail/1000)}k U: ${Math.round(q.upfront/1000)}k</div>
+              </div>
+            ))}
           </div>
         </Panel>
       </div>
@@ -212,17 +266,15 @@ export default function Dashboard({ clients, onAddClient, onImport }) {
         Opportunity Radar
       </div>
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14,marginBottom:14}}>
-        <RadarTable title="Annual Reviews (A)" rows={annualRows.slice(0,6)} navigate={navigate}/>
-        <RadarTable title="IO Term Review (C)" rows={RADAR_FIXED_IO} navigate={navigate}/>
+        <RadarTable title="Annual Reviews (A)" rows={annualRows.filter((_,i)=>!tickedRows[`A-${i}`]).slice(0,6)} navigate={navigate} onTick={i=>handleTick('A',i)}/>
+        <RadarTable title="IO Term Review (C)" rows={RADAR_FIXED_IO.filter((_,i)=>!tickedRows[`C-${i}`])} navigate={navigate} onTick={i=>handleTick('C',i)}/>
       </div>
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}}>
-        <RadarTable title="Fixed Term & Maturities Review (B)" rows={[]} navigate={navigate}/>
-        <RadarTable title="Asset Finance Balloons (D)" rows={RADAR_BALLOONS} navigate={navigate}/>
+        <RadarTable title="Fixed Term & Maturities Review (B)" rows={[]} navigate={navigate} onTick={i=>handleTick('B',i)}/>
+        <RadarTable title="Asset Finance Balloons (D)" rows={RADAR_BALLOONS.filter((_,i)=>!tickedRows[`D-${i}`])} navigate={navigate} onTick={i=>handleTick('D',i)}/>
       </div>
 
-      {/* Modals */}
-      {showImport && <CommissionImport clients={clients} onImport={(updates,map)=>{onImport&&onImport(updates,map);setShowImport(false)}} onClose={()=>setShowImport(false)}/>}
-      {showAdd && <AddClient clients={clients} onSave={(c)=>{onAddClient&&onAddClient(c);setShowAdd(false)}} onClose={()=>setShowAdd(false)}/>}
+      {showImport && <CommissionImport clients={clients} onImport={(u,m)=>{onImport&&onImport(u,m);setShowImport(false)}} onClose={()=>setShowImport(false)}/>}
     </div>
   )
 }
