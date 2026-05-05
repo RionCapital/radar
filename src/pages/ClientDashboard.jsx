@@ -212,7 +212,7 @@ export default function ClientDashboard({ clients, updateClient }) {
 
   return (
     <div style={{padding:'16px 24px'}}>
-      <button onClick={()=>navigate('/clients')} style={{display:'flex',alignItems:'center',gap:5,background:'none',border:'none',cursor:'pointer',fontSize:12,color:'var(--text-secondary)',marginBottom:14}}
+      <button onClick={()=>navigate('/radar/clients')} style={{display:'flex',alignItems:'center',gap:5,background:'none',border:'none',cursor:'pointer',fontSize:12,color:'var(--text-secondary)',marginBottom:14}}
         onMouseOver={e=>e.currentTarget.style.color='var(--pk)'} onMouseOut={e=>e.currentTarget.style.color='var(--text-secondary)'}>
         ← Back to all clients
       </button>

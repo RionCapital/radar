@@ -1,7 +1,8 @@
 import React, { useState, useCallback } from 'react'
-import { Routes, Route } from 'react-router-dom'
+import { Routes, Route, useLocation } from 'react-router-dom'
 import { loadClients, saveClients } from './lib/data'
 import Topbar from './components/Topbar'
+import Home from './pages/Home'
 import Dashboard from './pages/Dashboard'
 import ClientList from './pages/ClientList'
 import ClientDashboard from './pages/ClientDashboard'
@@ -10,6 +11,8 @@ import Toast from './components/Toast'
 export default function App() {
   const [clients, setClients] = useState(() => loadClients())
   const [toast, setToast] = useState(null)
+  const location = useLocation()
+  const isHome = location.pathname === '/'
 
   function showToast(msg) { setToast(msg); setTimeout(() => setToast(null), 2500) }
 
@@ -47,17 +50,18 @@ export default function App() {
       saveClients(next)
       return next
     })
-    showToast(`Balances updated`)
+    showToast('Balances updated')
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
-      <Topbar />
+    <div style={{ minHeight: '100vh', background: isHome ? '#1e2d3f' : 'var(--bg)' }}>
+      {!isHome && <Topbar />}
       <Toast message={toast} />
       <Routes>
-        <Route path="/" element={<Dashboard clients={clients} onAddClient={addClient} onImport={handleImport} />} />
-        <Route path="/clients" element={<ClientList clients={clients} onAddClient={addClient} />} />
-        <Route path="/clients/:name" element={<ClientDashboard clients={clients} updateClient={updateClient} />} />
+        <Route path="/" element={<Home />} />
+        <Route path="/radar/dashboard" element={<Dashboard clients={clients} onAddClient={addClient} onImport={handleImport} />} />
+        <Route path="/radar/clients" element={<ClientList clients={clients} onAddClient={addClient} />} />
+        <Route path="/radar/clients/:name" element={<ClientDashboard clients={clients} updateClient={updateClient} />} />
       </Routes>
     </div>
   )

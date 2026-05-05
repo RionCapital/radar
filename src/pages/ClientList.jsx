@@ -42,7 +42,7 @@ export default function ClientList({ clients, onAddClient }) {
           </div>
         </div>
         {list.map(c => (
-          <ClientRow key={c.name} client={c} onClick={() => navigate(`/clients/${encodeURIComponent(c.name)}`)} />
+          <ClientRow key={c.name} client={c} onClick={() => navigate(`/radar/clients/${encodeURIComponent(c.name)}`)} />
         ))}
       </Panel>
       {showAdd && <AddClient clients={clients} onSave={c => { onAddClient&&onAddClient(c); setShowAdd(false) }} onClose={() => setShowAdd(false)} />}

@@ -91,7 +91,7 @@ function RadarTable({ title, rows, navigate }) {
               <tr key={i} style={{cursor:'pointer'}}
                 onMouseOver={e=>e.currentTarget.style.background='#fce8f3'}
                 onMouseOut={e=>e.currentTarget.style.background='transparent'}
-                onClick={()=>navigate(`/clients/${encodeURIComponent(r.conn)}`)}>
+                onClick={()=>navigate(`/radar/clients/${encodeURIComponent(r.conn)}`)}>
                 <td style={td({fontWeight:500,color:'var(--pk)'})}>{r.conn}</td>
                 <td style={{...td(),maxWidth:160,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.client}</td>
                 <td style={{...td(),fontFamily:'DM Mono,monospace',fontSize:10,color:'var(--text-secondary)'}}>{r.acc}</td>
