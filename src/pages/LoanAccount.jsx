@@ -76,7 +76,7 @@ export default function LoanAccount({ clients, updateClient }) {
               <span>Security #{loan.security||'—'}</span>
             </div>
           </div>
-          <div style={{display:'flex',gap:16'}}>
+          <div style={{display:'flex',gap:16}}>
             {!editing && <EditBtn onClick={startEdit} />}
             {editing && <><SaveBtn onClick={save}/><CancelBtn onClick={cancel}/></>}
           </div>
