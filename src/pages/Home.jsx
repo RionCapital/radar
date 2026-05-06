@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { icon_lead, icon_team, icon_network, icon_notebook, logo_rion } from '../lib/icons'
+import { icon_lead, icon_radar, icon_network, icon_notebook, logo_rion } from '../lib/icons'
 
 const APPS = [
   { name: 'Mercury',    url: 'https://mercury.connective.com.au', color: '#4A90D9' },
@@ -13,7 +13,7 @@ const APPS = [
 
 const TOOLS = [
   { id: 'crm',       label: 'CRM',       icon: icon_lead,     desc: 'Pipeline management',       path: null,              active: false },
-  { id: 'radar',     label: 'Radar',     icon: icon_team,     desc: 'Back book & dashboard',     path: '/radar/dashboard',active: true  },
+  { id: 'radar',     label: 'Radar',     icon: icon_radar,    desc: 'Back book & dashboard',     path: '/radar/dashboard',active: true  },
   { id: 'marketing', label: 'Marketing', icon: icon_network,  desc: 'Client & referral lists',   path: null,              active: false },
   { id: 'planner',   label: 'Planner',   icon: icon_notebook, desc: 'Weekly & monthly organiser',path: null,              active: false },
 ]
