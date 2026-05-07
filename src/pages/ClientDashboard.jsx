@@ -198,6 +198,9 @@ export default function ClientDashboard({ clients, updateClient }) {
   const [oppDraft, setOppDraft] = useState(null)
   const [editReview, setEditReview] = useState(false)
   const [reviewDate, setReviewDate] = useState('')
+  const [loanTab, setLoanTab] = useState('current')
+  const [editingLoanIdx, setEditingLoanIdx] = useState(null)
+  const [loanDraft, setLoanDraft] = useState(null)
 
   // Stable setDraft callback so child edit components don't remount
   const stableSetDraft = useCallback(val => setDraft(val), [])
@@ -355,16 +358,63 @@ export default function ClientDashboard({ clients, updateClient }) {
 
       {/* Loan facilities */}
       <Panel style={{marginBottom:14}}>
-        <PanelTitle>Loan facilities ({client.loans.length})</PanelTitle>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10,paddingBottom:8,borderBottom:'0.5px solid var(--border-light)'}}>
+          <div style={{display:'flex',gap:2}}>
+            {[['current','Current'],['historic','Historic / Discharged']].map(([key,label])=>(
+              <button key={key} onClick={()=>setLoanTab(key)} style={{padding:'5px 14px',borderRadius:6,border:'none',cursor:'pointer',fontSize:11,fontWeight:500,background:loanTab===key?'#2A3D54':'transparent',color:loanTab===key?'#fff':'var(--text-secondary)',transition:'all 0.15s'}}>
+                {label}
+              </button>
+            ))}
+          </div>
+          <div style={{display:'flex',gap:6}}>
+            {editingLoanIdx!==null && <>
+              <button onClick={()=>{updateClient(client.name,c=>{const ls=[...c.loans];ls[editingLoanIdx]=loanDraft;return{...c,loans:ls}});setEditingLoanIdx(null);setLoanDraft(null)}} style={{fontSize:10,padding:'3px 10px',borderRadius:6,background:'#27ae60',border:'none',color:'#fff',cursor:'pointer'}}>Save</button>
+              <button onClick={()=>{setEditingLoanIdx(null);setLoanDraft(null)}} style={{fontSize:10,padding:'3px 10px',borderRadius:6,background:'transparent',border:'0.5px solid var(--border)',color:'var(--text-secondary)',cursor:'pointer'}}>Cancel</button>
+            </>}
+            <button onClick={()=>{const newLoan={acc:'',lname:'',type:'Home Loan (OO)',bank:'',security:'',amount:0,balance:0,rate:0,rateType:'Var',rpmt:'P&I',term:30,ioTerm:0,fixed:'',io:'',balloon:'',settled:new Date().toISOString().slice(0,10),closed:false};updateClient(client.name,c=>({...c,loans:[...c.loans,newLoan]}))}} style={{fontSize:10,padding:'3px 10px',borderRadius:6,border:'0.5px solid var(--pk)',background:'transparent',color:'var(--pk)',cursor:'pointer'}}>+ Add loan</button>
+          </div>
+        </div>
         <div style={{overflowX:'auto'}}>
           <table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
             <thead><tr>
-              {[['#',24],['Acc. no.',90],['Loan name',140],['Type',110],['Bank',55],['Asset / Security',130],['Sec.',35],['Orig. limit',90],['Balance',90],['Rate',55],['Rate type',60],['Rpmt',55],['Est. repay/mo',90],['Settled',85],['Flag',50]].map(([h,w])=>(
+              {[['#',24],['Acc. no.',90],['Loan name',140],['Type',110],['Bank',55],['Asset / Security',130],['Sec.',35],['Orig. limit',90],['Balance',90],['Rate',55],['Rate type',60],['Rpmt',55],['Est. repay/mo',90],['Settled',85],['Flag / Edit',80]].map(([h,w])=>(
                 <th key={h} style={thStyle({width:w,textAlign:['Orig. limit','Balance','Rate','Est. repay/mo'].includes(h)?'right':'left'})}>{h}</th>
               ))}
             </tr></thead>
             <tbody>
-              {client.loans.length>0 ? client.loans.map((l,i)=>{
+              {(() => {
+                const filteredLoans = client.loans.map((l,i)=>({...l,_origIdx:i})).filter(l=> loanTab==='historic' ? l.closed : !l.closed)
+                if (!filteredLoans.length) return <tr><td colSpan={15} style={tdStyle({textAlign:'center',color:'var(--text-tertiary)',padding:20})}>{loanTab==='historic'?'No discharged loans':'No active loans'}</td></tr>
+                return filteredLoans.map((l)=>{
+                const i = l._origIdx
+                const isEditing = editingLoanIdx === i
+                if (isEditing && loanDraft) {
+                  const ld = loanDraft
+                  return <tr key={i} style={{background:'#fdf5fa'}}>
+                    <td style={tdStyle({color:'var(--pk)',fontWeight:500})}>{i+1}</td>
+                    <td style={tdStyle()}><input value={ld.acc||''} onChange={e=>{const d={...loanDraft,acc:e.target.value};setLoanDraft(d)}} style={{width:85,fontSize:10,padding:'2px 4px',borderRadius:4,border:'0.5px solid var(--border)',background:'var(--bg)'}}/></td>
+                    <td style={tdStyle()}><input value={ld.lname||''} onChange={e=>setLoanDraft({...loanDraft,lname:e.target.value})} style={{width:120,fontSize:10,padding:'2px 4px',borderRadius:4,border:'0.5px solid var(--border)',background:'var(--bg)'}}/></td>
+                    <td style={tdStyle()}><select value={ld.type||''} onChange={e=>setLoanDraft({...loanDraft,type:e.target.value})} style={{width:110,fontSize:10,padding:'2px 4px',borderRadius:4,border:'0.5px solid var(--border)',background:'var(--bg)'}}>
+                      {['Home Loan (OO)','Home Loan (Inv)','SMSF','Commercial Property','Lease Doc','Term','Asset Finance','Trade Finance','Business Loan','Other'].map(t=><option key={t}>{t}</option>)}
+                    </select></td>
+                    <td style={tdStyle()}><input value={ld.bank||''} onChange={e=>setLoanDraft({...loanDraft,bank:e.target.value})} style={{width:50,fontSize:10,padding:'2px 4px',borderRadius:4,border:'0.5px solid var(--border)',background:'var(--bg)'}}/></td>
+                    <td style={tdStyle()}><input value={ld.assetDesc||''} onChange={e=>setLoanDraft({...loanDraft,assetDesc:e.target.value})} style={{width:120,fontSize:10,padding:'2px 4px',borderRadius:4,border:'0.5px solid var(--border)',background:'var(--bg)'}}/></td>
+                    <td style={tdStyle({textAlign:'center'})}><input value={ld.security||''} onChange={e=>setLoanDraft({...loanDraft,security:e.target.value})} style={{width:30,fontSize:10,padding:'2px 4px',borderRadius:4,border:'0.5px solid var(--border)',background:'var(--bg)',textAlign:'center'}}/></td>
+                    <td style={tdStyle({textAlign:'right'})}><input type="number" value={ld.amount||''} onChange={e=>setLoanDraft({...loanDraft,amount:+e.target.value})} style={{width:80,fontSize:10,padding:'2px 4px',borderRadius:4,border:'0.5px solid var(--border)',background:'var(--bg)',textAlign:'right'}}/></td>
+                    <td style={tdStyle({textAlign:'right'})}><input type="number" value={ld.balance||''} onChange={e=>setLoanDraft({...loanDraft,balance:+e.target.value})} style={{width:80,fontSize:10,padding:'2px 4px',borderRadius:4,border:'0.5px solid var(--border)',background:'var(--bg)',textAlign:'right'}}/></td>
+                    <td style={tdStyle({textAlign:'right'})}><input type="number" step="0.01" value={ld.rate||''} onChange={e=>setLoanDraft({...loanDraft,rate:+e.target.value})} style={{width:50,fontSize:10,padding:'2px 4px',borderRadius:4,border:'0.5px solid var(--border)',background:'var(--bg)',textAlign:'right'}}/></td>
+                    <td style={tdStyle()}><select value={ld.rateType||'Var'} onChange={e=>setLoanDraft({...loanDraft,rateType:e.target.value})} style={{width:55,fontSize:10,padding:'2px 4px',borderRadius:4,border:'0.5px solid var(--border)',background:'var(--bg)'}}><option value="Var">Var</option><option value="Fix">Fix</option></select></td>
+                    <td style={tdStyle()}><select value={ld.rpmt||'P&I'} onChange={e=>setLoanDraft({...loanDraft,rpmt:e.target.value})} style={{width:50,fontSize:10,padding:'2px 4px',borderRadius:4,border:'0.5px solid var(--border)',background:'var(--bg)'}}><option>P&I</option><option>IO</option></select></td>
+                    <td style={tdStyle({textAlign:'right',color:'var(--text-tertiary)',fontSize:10})}>—</td>
+                    <td style={tdStyle()}><input value={ld.settled||''} onChange={e=>setLoanDraft({...loanDraft,settled:e.target.value})} style={{width:82,fontSize:10,padding:'2px 4px',borderRadius:4,border:'0.5px solid var(--border)',background:'var(--bg)'}}/></td>
+                    <td style={tdStyle({textAlign:'center'})}>
+                      <label style={{fontSize:10,color:'var(--text-secondary)',display:'flex',alignItems:'center',gap:4,cursor:'pointer'}}>
+                        <input type="checkbox" checked={!!ld.closed} onChange={e=>setLoanDraft({...loanDraft,closed:e.target.checked})} style={{accentColor:'var(--pk)'}}/>Discharged
+                      </label>
+                    </td>
+                  </tr>
+                }
+                return (
                 const flag = loanFlag(l)
                 const eRpmt = effectiveRpmt(l)
                 const repay = (() => {
@@ -375,7 +425,7 @@ export default function ClientDashboard({ clients, updateClient }) {
                   return Math.round((l.balance*r*Math.pow(1+r,n))/(Math.pow(1+r,n)-1))
                 })()
                 return (
-                  <tr key={i} style={{cursor:'pointer'}}
+                  <tr key={i} style={{cursor:'pointer',opacity:l.closed?0.6:1}}
                     onMouseOver={e=>e.currentTarget.style.background='#fdf5fa'}
                     onMouseOut={e=>e.currentTarget.style.background='transparent'}
                     onClick={()=>navigate(`/radar/clients/${encodeURIComponent(client.name)}/loan/${i}`)}>
@@ -395,14 +445,18 @@ export default function ClientDashboard({ clients, updateClient }) {
                     <td style={tdStyle()}><Pill label={eRpmt} variant={eRpmt==='P&I*'?'flag':eRpmt==='IO'?'io':'pi'}/></td>
                     <td style={tdStyle({textAlign:'right',color:'var(--text-secondary)'})}>{repay?'$'+repay.toLocaleString():'—'}</td>
                     <td style={tdStyle()}>{fmtDate(l.settled)}</td>
-                    <td style={tdStyle({textAlign:'center'})}>
-                      {flag ? <span style={{padding:'2px 6px',borderRadius:20,fontSize:9,fontWeight:500,background:flag==='overdue'?'#fde8e8':'#fef9c3',color:flag==='overdue'?'#a32d2d':'#854F0B'}}>
-                        {flag==='overdue'?'Overdue':'< 120d'}
-                      </span> : '—'}
+                    <td style={tdStyle({textAlign:'center'})} onClick={e=>{e.stopPropagation();setEditingLoanIdx(i);setLoanDraft({...l})}}>
+                      <div style={{display:'flex',alignItems:'center',gap:4,justifyContent:'center'}}>
+                        {flag ? <span style={{padding:'2px 6px',borderRadius:20,fontSize:9,fontWeight:500,background:flag==='overdue'?'#fde8e8':'#fef9c3',color:flag==='overdue'?'#a32d2d':'#854F0B'}}>
+                          {flag==='overdue'?'Overdue':'< 120d'}
+                        </span> : null}
+                        <span style={{fontSize:9,color:'var(--pk)',padding:'1px 5px',borderRadius:4,border:'0.5px solid var(--pk)',cursor:'pointer'}}>✎</span>
+                      </div>
                     </td>
                   </tr>
                 )
-              }) : <tr><td colSpan={15} style={tdStyle({textAlign:'center',color:'var(--text-tertiary)',padding:20})}>No loan accounts</td></tr>}
+                )})
+              })()}
             </tbody>
           </table>
         </div>

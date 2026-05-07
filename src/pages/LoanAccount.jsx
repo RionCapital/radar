@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { fmt } from '../lib/data'
 import { fmtDate, dateCellStyle, expiryBadge, calcRepayment, effectiveRpmt, buildBalanceHistory } from '../lib/dateUtils'
+import { fmt as fmtNum } from '../lib/data'
 import { Panel, PanelTitle, EditBtn, SaveBtn, CancelBtn, FieldGroup, Pill } from '../components/UI'
 
 export default function LoanAccount({ clients, updateClient }) {
@@ -19,7 +20,17 @@ export default function LoanAccount({ clients, updateClient }) {
 
   const eRpmt = effectiveRpmt(loan)
   const estRepayment = calcRepayment(loan)
-  const history = buildBalanceHistory(loan)
+  // Use real commission statement history if available, else calculate
+  const realHistory = (loan.balanceHistory || []).map((h, i, arr) => {
+    const prevBal = i > 0 ? arr[i-1].balance : loan.amount
+    const estInterest = loan.rate ? Math.round(prevBal * loan.rate / 100 / 12) : 0
+    return { date: h.month, balance: h.balance, interest: estInterest, repayment: 0, isPast: true }
+  })
+  const calcHistory = buildBalanceHistory(loan).filter(h => !h.isPast === true).map(h => ({...h, isPast: false}))
+  // Merge: real history + projected from last known balance
+  const history = realHistory.length > 0
+    ? [...realHistory, ...buildBalanceHistory({...loan, amount: realHistory[realHistory.length-1].balance}).filter(h => !h.isPast).slice(1, 25).map(h => ({...h, isPast: false}))]
+    : buildBalanceHistory(loan)
   const security = (client.securities||[]).find(s=>String(s.num)===String(loan.security))
 
   function startEdit() { setEditing(true); setDraft({...loan}) }
@@ -98,6 +109,7 @@ export default function LoanAccount({ clients, updateClient }) {
           <div>
             <div style={{fontSize:16,fontWeight:500,color:'#fff',marginBottom:4}}>{loan.lname||'Loan account'}</div>
             <div style={{fontSize:11,color:'var(--sbl)',display:'flex',gap:12,flexWrap:'wrap'}}>
+              <span style={{color:'#EB99C2',fontWeight:500}}>{loan.lname||'Loan account'}</span>
               <span>{client.name} · #{client.connNo}</span>
               <span style={{fontFamily:'DM Mono,monospace'}}>{loan.acc||'—'}</span>
               <span>{loan.bank||'—'}</span>
@@ -157,12 +169,12 @@ export default function LoanAccount({ clients, updateClient }) {
               <FieldGroup label="Balloon / residual"><input style={inp} value={l.balloon||''} onChange={e=>set('balloon',e.target.value)}/></FieldGroup>
               <FieldGroup label="Est. repayment override ($)"><input style={inp} type="number" value={l.estRepayment||''} placeholder="Auto-calculated" onChange={e=>set('estRepayment',e.target.value?+e.target.value:null)}/></FieldGroup>
               <FieldGroup label="Asset / security description"><input style={inp} value={l.assetDesc||''} onChange={e=>set('assetDesc',e.target.value)}/></FieldGroup>
-              <FieldGroup label="Borrowing entity"><input style={inp} value={l.borrowingEntity||''} onChange={e=>set('borrowingEntity',e.target.value)}/></FieldGroup>
+              <FieldGroup label="Loan name"><input style={inp} value={l.lname||''} onChange={e=>set('lname',e.target.value)}/></FieldGroup>
             </div>
           ) : (
             <div>
               {[
-                ['Borrowing entity', loan.borrowingEntity||'—'],
+                ['Loan name', loan.lname||'—'],
                 ['Account no.', loan.acc||'—'],
                 ['Loan type', loan.type||'—'],
                 ['Bank', loan.bank||'—'],
