@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { totalBal, fmt } from '../lib/data'
-import { fmtDate, rollingYTD, quarterlyIncome } from '../lib/dateUtils'
+import { fmtDate, rollingYTD, quarterlyIncome, expiryBadge, daysUntil } from '../lib/dateUtils'
 import { Panel, PanelTitle, DayBadge } from '../components/UI'
 import CommissionImport from './CommissionImport'
 
@@ -22,16 +22,16 @@ const COMMISSION = [
 ]
 
 const RADAR_FIXED_IO = [
-  { conn:'Ricciulli', client:'RICCIULLI GUEVARA PROPERTY Pty Ltd', acc:'734136417', balance:229600, days:137, score:0 },
-  { conn:'Ricciulli', client:'RICCIULLI R A — Raymond & Jessica',  acc:'746989193', balance:515950, days:137, score:0 },
-  { conn:'Ricciulli', client:'RJSO Pty Ltd atf RJSO Trust',        acc:'200021390438', balance:360000, days:137, score:0 },
-  { conn:'Russell',   client:'MARTIN RUSSELL',                     acc:'568038183', balance:396133, days:1,   score:15 },
+  { conn:'Ricciulli', client:'RICCIULLI GUEVARA PROPERTY Pty Ltd', acc:'734136417', balance:229600, days:137, score:0, expiryDate:'2026-06-04' },
+  { conn:'Ricciulli', client:'RICCIULLI R A — Raymond & Jessica',  acc:'746989193', balance:515950, days:137, score:0, expiryDate:'2027-09-08' },
+  { conn:'Ricciulli', client:'RJSO Pty Ltd atf RJSO Trust',        acc:'200021390438', balance:360000, days:137, score:0, expiryDate:'2029-06-19' },
+  { conn:'Russell',   client:'MARTIN RUSSELL',                     acc:'568038183', balance:396133, days:1,   score:15, expiryDate:'2028-06-01' },
 ]
 const RADAR_BALLOONS = [
-  { conn:'Quartiero', client:'Hydro Solutions NSW Pty Ltd',        acc:'—', balance:74489,  days:1079, score:0 },
-  { conn:'Smith',     client:'Command Plumbing Services Pty Ltd',  acc:'—', balance:28620,  days:978,  score:0 },
-  { conn:'Borg',      client:'JMB Plumbing',                       acc:'—', balance:77241,  days:1056, score:0 },
-  { conn:'Synergy IT',client:'Synergy IT Group Pty Ltd',           acc:'—', balance:83094,  days:67,   score:0 },
+  { conn:'Quartiero', client:'Hydro Solutions NSW Pty Ltd',        acc:'—', balance:74489,  days:1079, score:0, expiryDate:'2023-05-22' },
+  { conn:'Smith',     client:'Command Plumbing Services Pty Ltd',  acc:'—', balance:28620,  days:978,  score:0, expiryDate:'2028-08-31' },
+  { conn:'Borg',      client:'JMB Plumbing',                       acc:'—', balance:77241,  days:1056, score:0, expiryDate:'2027-06-14' },
+  { conn:'Synergy IT',client:'Synergy IT Group Pty Ltd',           acc:'—', balance:83094,  days:67,   score:0, expiryDate:'2031-04-23' },
 ]
 
 function BarChart({ data, keys, colors, title, formatY }) {
@@ -111,9 +111,12 @@ function PieChart({ pw, comm }) {
   )
 }
 
-function RadarTable({ title, rows, navigate, onTick }) {
+function RadarTable({ title, rows, navigate, onTick, showExpiry }) {
   const th = { padding:'6px 8px', textAlign:'left', fontSize:10, color:'var(--text-secondary)', fontWeight:500, borderBottom:'0.5px solid var(--border)', whiteSpace:'nowrap', background:'var(--bg)' }
   const td = (extra={}) => ({ padding:'6px 8px', borderBottom:'0.5px solid var(--border-light)', verticalAlign:'middle', fontSize:11, ...extra })
+  const cols = showExpiry
+    ? ['Connection','Client','Account No.','Balance','Expiry date','Days to expiry','Opp. Score']
+    : ['Connection','Client','Account No.','Balance','Days Since Review','Opp. Score']
   return (
     <div style={{border:'0.5px solid var(--border)',borderRadius:8,overflow:'hidden'}}>
       <div style={{background:'#2A3D54',padding:'8px 12px',fontSize:10,fontWeight:500,color:'#fff',textTransform:'uppercase',letterSpacing:'0.05em'}}>{title}</div>
@@ -121,8 +124,8 @@ function RadarTable({ title, rows, navigate, onTick }) {
         <table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
           <thead><tr>
             <th style={{...th,width:32,textAlign:'center'}}>✓</th>
-            {['Connection','Client','Account No.','Balance','Days Since Review','Opp. Score'].map(h=>(
-              <th key={h} style={{...th,textAlign:['Balance','Days Since Review','Opp. Score'].includes(h)?'right':'left'}}>{h}</th>
+            {cols.map(h=>(
+              <th key={h} style={{...th,textAlign:['Balance','Days Since Review','Days to expiry','Opp. Score'].includes(h)?'right':'left'}}>{h}</th>
             ))}
           </tr></thead>
           <tbody>
@@ -135,13 +138,25 @@ function RadarTable({ title, rows, navigate, onTick }) {
                     style={{cursor:'pointer',accentColor:'var(--pk)',width:14,height:14}}/>
                 </td>
                 <td style={td({fontWeight:500,color:'var(--pk)',cursor:'pointer'})} onClick={()=>navigate(`/radar/clients/${encodeURIComponent(r.conn)}`)}>{r.conn}</td>
-                <td style={{...td(),maxWidth:160,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.client}</td>
+                <td style={{...td(),maxWidth:140,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.client}</td>
                 <td style={{...td(),fontFamily:'DM Mono,monospace',fontSize:10,color:'var(--text-secondary)'}}>{r.acc}</td>
                 <td style={td({textAlign:'right',fontWeight:500})}>{fmt(r.balance)}</td>
-                <td style={{...td(),textAlign:'right'}}><DayBadge days={r.days}/></td>
+                {showExpiry ? (
+                  <>
+                    <td style={td()}>{fmtDate(r.expiryDate)}</td>
+                    <td style={td({textAlign:'right'})}>
+                      {r.expiryDate ? (() => {
+                        const b = expiryBadge(r.expiryDate)
+                        return b ? <span style={{padding:'2px 8px',borderRadius:20,fontSize:10,fontWeight:500,background:b.bg,color:b.color}}>{b.label}</span> : '—'
+                      })() : '—'}
+                    </td>
+                  </>
+                ) : (
+                  <td style={{...td(),textAlign:'right'}}><DayBadge days={r.days}/></td>
+                )}
                 <td style={td({textAlign:'right'})}>{r.score>0?<span style={{background:'#fce8f3',color:'var(--pk)',padding:'2px 7px',borderRadius:20,fontSize:9,fontWeight:500}}>{r.score}</span>:'—'}</td>
               </tr>
-            )) : <tr><td colSpan={7} style={td({textAlign:'center',color:'var(--text-tertiary)',padding:14})}>No items</td></tr>}
+            )) : <tr><td colSpan={8} style={td({textAlign:'center',color:'var(--text-tertiary)',padding:14})}>No items</td></tr>}
           </tbody>
         </table>
       </div>
@@ -267,11 +282,11 @@ export default function Dashboard({ clients, onImport }) {
       </div>
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14,marginBottom:14}}>
         <RadarTable title="Annual Reviews (A)" rows={annualRows.filter((_,i)=>!tickedRows[`A-${i}`]).slice(0,6)} navigate={navigate} onTick={i=>handleTick('A',i)}/>
-        <RadarTable title="IO Term Review (C)" rows={RADAR_FIXED_IO.filter((_,i)=>!tickedRows[`C-${i}`])} navigate={navigate} onTick={i=>handleTick('C',i)}/>
+        <RadarTable title="IO Term Review (C)" rows={RADAR_FIXED_IO.filter((_,i)=>!tickedRows[`C-${i}`])} navigate={navigate} onTick={i=>handleTick('C',i)} showExpiry/>
       </div>
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}}>
-        <RadarTable title="Fixed Term & Maturities Review (B)" rows={[]} navigate={navigate} onTick={i=>handleTick('B',i)}/>
-        <RadarTable title="Asset Finance Balloons (D)" rows={RADAR_BALLOONS.filter((_,i)=>!tickedRows[`D-${i}`])} navigate={navigate} onTick={i=>handleTick('D',i)}/>
+        <RadarTable title="Fixed Term & Maturities Review (B)" rows={[]} navigate={navigate} onTick={i=>handleTick('B',i)} showExpiry/>
+        <RadarTable title="Asset Finance Balloons (D)" rows={RADAR_BALLOONS.filter((_,i)=>!tickedRows[`D-${i}`])} navigate={navigate} onTick={i=>handleTick('D',i)} showExpiry/>
       </div>
 
       {showImport && <CommissionImport clients={clients} onImport={(u,m)=>{onImport&&onImport(u,m);setShowImport(false)}} onClose={()=>setShowImport(false)}/>}

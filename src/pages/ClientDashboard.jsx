@@ -87,7 +87,7 @@ function SecuritiesEdit({ draft, setDraft }) {
     <div>
       {(draft||[]).map((s,i) => (
         <div key={i} style={{background:'var(--bg)',borderRadius:8,padding:10,marginBottom:8,border:'0.5px solid var(--border)'}}>
-          <div style={{display:'grid',gridTemplateColumns:'40px 2fr 1fr 1fr 1fr auto',gap:6,alignItems:'end'}}>
+          <div style={{display:'grid',gridTemplateColumns:'40px 2fr 1fr 1fr 1fr 60px 120px auto',gap:6,alignItems:'end'}}>
             <FieldGroup label="#">
               <input style={{width:'100%'}} value={s.num||i+1} onChange={e => {
                 const d = draft.map((x,j) => j===i ? {...x, num:e.target.value} : x)
@@ -118,6 +118,18 @@ function SecuritiesEdit({ draft, setDraft }) {
                 setDraft(d)
               }}/>
             </FieldGroup>
+            <FieldGroup label="LVR %">
+              <input style={{width:'100%'}} type="number" step="1" min="0" max="100" value={s.lvr!==undefined?s.lvr:80} onChange={e => {
+                const d = draft.map((x,j) => j===i ? {...x, lvr:+e.target.value} : x)
+                setDraft(d)
+              }}/>
+            </FieldGroup>
+            <FieldGroup label="Crossed securities (sec #s, comma separated)">
+              <input style={{width:'100%'}} value={s.crossed||''} placeholder="e.g. 1,2" onChange={e => {
+                const d = draft.map((x,j) => j===i ? {...x, crossed:e.target.value} : x)
+                setDraft(d)
+              }}/>
+            </FieldGroup>
             <button onClick={() => setDraft(draft.filter((_,j)=>j!==i))}
               style={{padding:'4px 8px',borderRadius:6,border:'0.5px solid #fde8e8',background:'#fde8e8',color:'#c0392b',cursor:'pointer',alignSelf:'flex-end',marginBottom:2}}>✕</button>
           </div>
@@ -135,7 +147,7 @@ function SecuritiesView({ securities, loans, bal }) {
   return (
     <table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
       <thead><tr>
-        {['#','Address','Last val.','Est. value','Debt','Equity'].map((h,i) => (
+        {['#','Address','Last val.','Est. value','LVR','Debt','Lending equity','Crossed'].map((h,i) => (
           <th key={h} style={thStyle({textAlign:i>1?'right':'left'})}>{h}</th>
         ))}
       </tr></thead>
@@ -144,22 +156,28 @@ function SecuritiesView({ securities, loans, bal }) {
           ? [...(securities||[]).map((s,i) => {
               const debt = loans.filter(l=>String(l.security)===String(s.num||i+1)).reduce((x,l)=>x+l.balance,0)
               const eq = (s.estVal||0) - debt
+              const lvr = s.lvr !== undefined ? s.lvr : 80
+              const lendingEquity = s.estVal ? Math.round(s.estVal * lvr / 100 - debt) : null
               return (
                 <tr key={i}>
                   <td style={tdStyle({color:'var(--pk)',fontWeight:500})}>{s.num||i+1}</td>
                   <td style={tdStyle()}>{s.address||'—'}</td>
                   <td style={tdStyle({textAlign:'right'})}>{s.lastVal?fmt(s.lastVal):'—'}</td>
                   <td style={tdStyle({textAlign:'right',fontWeight:500})}>{s.estVal?fmt(s.estVal):'—'}</td>
+                  <td style={tdStyle({textAlign:'right'})}>{lvr}%</td>
                   <td style={tdStyle({textAlign:'right'})}>{fmt(debt)}</td>
-                  <td style={tdStyle({textAlign:'right',color:eq>0?'#27ae60':'#c0392b'})}>{s.estVal?fmt(eq):'—'}</td>
+                  <td style={tdStyle({textAlign:'right',color:lendingEquity>0?'#27ae60':'#c0392b'})}>{lendingEquity!==null?fmt(lendingEquity):'—'}</td>
+                  <td style={tdStyle({fontSize:10,color:'var(--text-secondary)'})}>{s.crossed||'—'}</td>
                 </tr>
               )
             }),
             <tr key="total" style={{background:'#2A3D54'}}>
               <td colSpan={3} style={{...tdStyle(),color:'#fff',fontWeight:500}}>Total</td>
               <td style={{...tdStyle(),color:'#fff',fontWeight:500,textAlign:'right'}}>{fmt((securities||[]).reduce((s,x)=>s+(x.estVal||0),0))}</td>
+              <td style={{...tdStyle(),color:'var(--sbl)',fontSize:10}}></td>
               <td style={{...tdStyle(),color:'#fff',fontWeight:500,textAlign:'right'}}>{fmt(bal)}</td>
               <td style={{...tdStyle(),color:'#EB99C2',fontWeight:500,textAlign:'right'}}>{fmt((securities||[]).reduce((s,x)=>s+(x.estVal||0),0)-bal)}</td>
+              <td style={tdStyle()}></td>
             </tr>]
           : <tr><td colSpan={6} style={tdStyle({textAlign:'center',color:'var(--text-tertiary)',padding:16})}>No securities yet — click Edit to add</td></tr>}
       </tbody>
@@ -366,7 +384,9 @@ export default function ClientDashboard({ clients, updateClient }) {
                     <td style={{...tdStyle(),maxWidth:140,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{l.lname||'—'}</td>
                     <td style={tdStyle()}><Pill label={l.type||'—'} variant={['Commercial Property','Lease Doc','Term'].includes(l.type)?'comm':'pw'}/></td>
                     <td style={tdStyle()}>{l.bank||'—'}</td>
-                    <td style={{...tdStyle(),maxWidth:130,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',color:'var(--text-secondary)',fontSize:10}}>{l.assetDesc||'—'}</td>
+                    <td style={{...tdStyle(),maxWidth:140,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',color:'var(--text-secondary)',fontSize:10}}>
+                      {(() => { const sec = (client.securities||[]).find(s=>String(s.num)===String(l.security)); return sec?.address || l.assetDesc || '—' })()}
+                    </td>
                     <td style={tdStyle({textAlign:'center'})}>{l.security||'—'}</td>
                     <td style={tdStyle({textAlign:'right'})}>{fmt(l.amount)}</td>
                     <td style={tdStyle({textAlign:'right',color:'var(--pk)',fontWeight:500})}>{fmt(l.balance)}</td>
