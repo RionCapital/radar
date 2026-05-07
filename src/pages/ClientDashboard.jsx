@@ -454,7 +454,7 @@ export default function ClientDashboard({ clients, updateClient }) {
                     </td>
                   </tr>
                 )
-                )})
+                })
               })()}
             </tbody>
           </table>
