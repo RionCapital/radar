@@ -414,7 +414,6 @@ export default function ClientDashboard({ clients, updateClient }) {
                     </td>
                   </tr>
                 }
-                return (
                 const flag = loanFlag(l)
                 const eRpmt = effectiveRpmt(l)
                 const repay = (() => {
