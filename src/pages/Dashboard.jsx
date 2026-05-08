@@ -191,7 +191,7 @@ function RadarTable({ title, rows, navigate, onTick, showExpiry }) {
                   <input type="checkbox" onChange={()=>onTick&&onTick(i)}
                     style={{cursor:'pointer',accentColor:'var(--pk)',width:14,height:14}}/>
                 </td>
-                <td style={td({fontWeight:500,color:'var(--pk)',cursor:'pointer'})} onClick={()=>navigate(`/radar/clients/${encodeURIComponent(r.conn)}`)}>{r.conn}</td>
+                <td style={td({fontWeight:500,color:'var(--pk)',cursor:'pointer'})} onClick={()=>{navigate(`/radar/clients/${encodeURIComponent(r.conn)}`);window.scrollTo(0,0)}}>{r.conn}</td>
                 <td style={{...td(),maxWidth:140,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.client}</td>
                 <td style={{...td(),fontFamily:'DM Mono,monospace',fontSize:10,color:'var(--text-secondary)'}}>{r.acc}</td>
                 <td style={td({textAlign:'right',fontWeight:500})}>{fmt(r.balance)}</td>
@@ -264,23 +264,21 @@ export default function Dashboard({ clients, onImport }) {
   return (
     <div style={{padding:'16px 24px'}}>
 
-      {/* TOP ROW — charts + pie + summary stats */}
-      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 200px',gap:14,marginBottom:14,alignItems:'start'}}>
+      {/* TOP ROW — Portfolio | Pie | Income | Stats */}
+      <div style={{display:'grid',gridTemplateColumns:'1fr 180px 1fr 200px',gap:14,marginBottom:14,alignItems:'start'}}>
 
-        {/* Portfolio balances + pie below */}
         <Panel style={{display:'flex',flexDirection:'column'}}>
           <BarChart data={balData} keys={['private','commercial']} colors={['#2A3D54','#DA408D']} title="Portfolio Balances" formatY={v=>v>=1e6?`$${(v/1e6).toFixed(1)}m`:`$${Math.round(v/1000)}k`}/>
-          <div style={{borderTop:'0.5px solid var(--border-light)',marginTop:10,paddingTop:10,display:'flex',justifyContent:'center'}}>
-            <PieChart pw={pwTotal} comm={commTotal}/>
-          </div>
         </Panel>
 
-        {/* Commission income */}
+        <Panel style={{display:'flex',alignItems:'center',justifyContent:'center',padding:'10px 6px'}}>
+          <PieChart pw={pwTotal} comm={commTotal}/>
+        </Panel>
+
         <Panel style={{display:'flex',flexDirection:'column'}}>
           <BarChart data={COMMISSION} keys={['trail','upfront']} colors={['#2A3D54','#DA408D']} title="Commission Income" formatY={v=>`$${Math.round(v/1000)}k`}/>
         </Panel>
 
-        {/* Stats */}
         <Panel style={{padding:'12px 14px'}}>
           <div style={{fontSize:10,fontWeight:500,color:'var(--text-secondary)',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:6}}>Summary</div>
           {stat('Month', latest.month)}

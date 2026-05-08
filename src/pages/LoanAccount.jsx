@@ -25,7 +25,11 @@ export default function LoanAccount({ clients, updateClient }) {
     const estInterest = loan.rate?Math.round(prevBal*loan.rate/100/12):0
     return {date:h.month,balance:h.balance,interest:estInterest,isPast:true}
   })
+  // Find primary security + all crossed securities
   const security = (client.securities||[]).find(s=>String(s.num)===String(loan.security))
+  const crossedNums = loan.crossed&&loan.crossed.trim() ? loan.crossed.split(',').map(x=>x.trim()) : []
+  const crossedSecurities = crossedNums.map(n=>(client.securities||[]).find(s=>String(s.num)===n)).filter(Boolean)
+  const allSecurities = crossedSecurities.length > 0 ? crossedSecurities : (security ? [security] : [])
   const rateHistory = loan.rateHistory||[]
 
   function startEdit() { setEditing(true); setDraft({...loan}) }
@@ -94,7 +98,11 @@ export default function LoanAccount({ clients, updateClient }) {
               <span>{client.name} · #{client.connNo}</span>
               <span style={{fontFamily:'DM Mono,monospace'}}>{loan.acc||'—'}</span>
               <span>{loan.bank||'—'}</span>
-              {security&&<span style={{color:'#EB99C2'}}>Security #{loan.security}: {security.address}</span>}
+              {allSecurities.length>0&&(
+                crossedSecurities.length>0
+                  ? <span style={{color:'#EB99C2'}}>Cross-col: {crossedNums.join(', ')} — {crossedSecurities.map(s=>s.address).join(' | ')}</span>
+                  : <span style={{color:'#EB99C2'}}>Security #{loan.security}: {security.address}</span>
+              )}
             </div>
           </div>
           <div style={{display:'flex',gap:6}}>
@@ -226,16 +234,22 @@ export default function LoanAccount({ clients, updateClient }) {
             ))}
           </div>
 
-          {/* Security */}
-          {security&&(
+          {/* Securities */}
+          {allSecurities.length>0&&(
             <div style={{marginTop:10,background:'var(--bg)',borderRadius:8,padding:'10px 12px'}}>
-              <div style={{fontSize:10,fontWeight:500,color:'var(--text-secondary)',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:6}}>Linked security</div>
-              <div style={{fontSize:12,fontWeight:500,color:'var(--text-primary)',marginBottom:4}}>{security.address}</div>
-              <div style={{display:'flex',gap:16,fontSize:11,color:'var(--text-secondary)'}}>
-                <span>Est. value: <strong style={{color:'var(--text-primary)'}}>{security.estVal?fmt(security.estVal):'—'}</strong></span>
-                <span>LVR: <strong style={{color:'var(--text-primary)'}}>{security.lvr||80}%</strong></span>
-                <span>Equity: <strong style={{color:'#27ae60'}}>{security.estVal?fmt(Math.round(security.estVal*(security.lvr||80)/100-loan.balance)):'—'}</strong></span>
+              <div style={{fontSize:10,fontWeight:500,color:'var(--text-secondary)',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:8}}>
+                {crossedSecurities.length>0?'Cross-collateralised securities':'Linked security'}
               </div>
+              {allSecurities.map((sec,si)=>(
+                <div key={si} style={{marginBottom:si<allSecurities.length-1?10:0,paddingBottom:si<allSecurities.length-1?10:0,borderBottom:si<allSecurities.length-1?'0.5px solid var(--border)':'none'}}>
+                  <div style={{fontSize:12,fontWeight:500,color:'var(--text-primary)',marginBottom:4}}>#{sec.num} — {sec.address}</div>
+                  <div style={{display:'flex',gap:16,fontSize:11,color:'var(--text-secondary)'}}>
+                    <span>Est. value: <strong style={{color:'var(--text-primary)'}}>{sec.estVal?fmt(sec.estVal):'—'}</strong></span>
+                    <span>LVR: <strong style={{color:'var(--text-primary)'}}>{sec.lvr||80}%</strong></span>
+                    <span>Equity: <strong style={{color:'#27ae60'}}>{sec.estVal?fmt(Math.round(sec.estVal*(sec.lvr||80)/100-loan.balance)):'—'}</strong></span>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </Panel>

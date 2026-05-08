@@ -31,14 +31,13 @@ export default function Login() {
 
   return (
     <div style={{
-      minHeight:'100vh', background:'#3D5570',
-      backgroundImage:'radial-gradient(ellipse at 30% 50%, rgba(235,153,194,0.08) 0%, transparent 60%)',
+      minHeight:'100vh', background:'#ffffff',
       display:'flex', alignItems:'center', justifyContent:'center',
       fontFamily:"'DM Sans',system-ui,sans-serif",
     }}>
       <div style={{
-        background:'rgba(255,255,255,0.05)', backdropFilter:'blur(12px)',
-        border:'0.5px solid rgba(187,198,218,0.2)', borderRadius:16,
+        background:'#3D5570',
+        border:'none', borderRadius:16,
         padding:'40px 44px', width:400,
         boxShadow:'0 20px 60px rgba(0,0,0,0.3)',
       }}>
@@ -61,8 +60,8 @@ export default function Login() {
               placeholder="your@email.com" required
               style={{
                 width:'100%', padding:'10px 14px', borderRadius:8, fontSize:13,
-                border: error ? '1px solid rgba(220,80,80,0.6)' : '1px solid rgba(187,198,218,0.2)',
-                background:'rgba(255,255,255,0.08)', color:'#fff',
+                border: error ? '1px solid rgba(220,80,80,0.6)' : '1px solid rgba(187,198,218,0.3)',
+                background:'rgba(255,255,255,0.1)', color:'#fff',
                 outline:'none', transition:'border 0.15s',
               }}
               onFocus={e=>e.target.style.border='1px solid rgba(235,153,194,0.6)'}
@@ -78,8 +77,8 @@ export default function Login() {
               placeholder="••••••••" required
               style={{
                 width:'100%', padding:'10px 14px', borderRadius:8, fontSize:13,
-                border: error ? '1px solid rgba(220,80,80,0.6)' : '1px solid rgba(187,198,218,0.2)',
-                background:'rgba(255,255,255,0.08)', color:'#fff',
+                border: error ? '1px solid rgba(220,80,80,0.6)' : '1px solid rgba(187,198,218,0.3)',
+                background:'rgba(255,255,255,0.1)', color:'#fff',
                 outline:'none', transition:'border 0.15s',
               }}
               onFocus={e=>e.target.style.border='1px solid rgba(235,153,194,0.6)'}

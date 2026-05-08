@@ -346,8 +346,11 @@ export default function ClientDashboard({ clients, updateClient }) {
           {/* Portfolio */}
           <div style={{background:'rgba(255,255,255,0.08)',borderRadius:8,padding:'10px 14px'}}>
             <div style={{fontSize:10,color:'var(--sbl)',marginBottom:6,textTransform:'uppercase',letterSpacing:'0.05em'}}>Portfolio</div>
-            {[['Opp. score',oppTotal,isPriority?'#EB99C2':'var(--pk)'],['No. of accounts',client.loans.length,'#fff'],['Days since review',client.days>0?client.days+'d':'Today',client.days>365?'#e74c3c':client.days>180?'#e8a020':'#27ae60']].map(([l,v,c])=>(
-              <div key={l} style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:3}}>
+            {[['Opp. score ↗',oppTotal,isPriority?'#EB99C2':'var(--pk)'],['No. of accounts',client.loans.length,'#fff'],['Days since review',client.days>0?client.days+'d':'Today',client.days>365?'#e74c3c':client.days>180?'#e8a020':'#27ae60']].map(([l,v,c])=>(
+              <div key={l} onClick={l.includes('↗')?()=>navigate(`/radar/clients/${encodeURIComponent(client.name)}/opportunity`):undefined}
+                style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:3,cursor:l.includes('↗')?'pointer':'default',borderRadius:4,padding:'1px 3px',transition:'background 0.15s'}}
+                onMouseOver={e=>l.includes('↗')&&(e.currentTarget.style.background='rgba(218,64,141,0.2)')}
+                onMouseOut={e=>e.currentTarget.style.background='transparent'}>
                 <span style={{color:'var(--sbl)'}}>{l}</span>
                 <span style={{color:c||'#fff',fontWeight:500}}>{v}</span>
               </div>
