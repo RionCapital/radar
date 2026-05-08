@@ -7,6 +7,7 @@ import Dashboard from './pages/Dashboard'
 import ClientList from './pages/ClientList'
 import ClientDashboard from './pages/ClientDashboard'
 import LoanAccount from './pages/LoanAccount'
+import OpportunityScore from './pages/OpportunityScore'
 import Toast from './components/Toast'
 
 export default function App() {
@@ -58,6 +59,7 @@ export default function App() {
         <Route path="/radar/clients" element={<ClientList clients={clients} onAddClient={addClient} />} />
         <Route path="/radar/clients/:name" element={<ClientDashboard clients={clients} updateClient={updateClient} />} />
         <Route path="/radar/clients/:name/loan/:loanIdx" element={<LoanAccount clients={clients} updateClient={updateClient} />} />
+        <Route path="/radar/clients/:name/opportunity" element={<OpportunityScore clients={clients} updateClient={updateClient} />} />
       </Routes>
     </div>
   )

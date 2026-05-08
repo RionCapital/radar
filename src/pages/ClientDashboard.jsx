@@ -124,7 +124,7 @@ function SecuritiesEdit({ draft, setDraft }) {
                 setDraft(d)
               }}/>
             </FieldGroup>
-            <FieldGroup label="Crossed securities (sec #s, comma separated)">
+            <FieldGroup label="Crossed with securities (comma-sep, e.g. 1,2,3)">
               <input style={{width:'100%'}} value={s.crossed||''} placeholder="e.g. 1,2" onChange={e => {
                 const d = draft.map((x,j) => j===i ? {...x, crossed:e.target.value} : x)
                 setDraft(d)
@@ -202,8 +202,6 @@ export default function ClientDashboard({ clients, updateClient }) {
   const [editSection, setEditSection] = useState(null)
   const [draft, setDraft] = useState(null)
   const [noteText, setNoteText] = useState('')
-  const [editOpp, setEditOpp] = useState(false)
-  const [oppDraft, setOppDraft] = useState(null)
   const [editReview, setEditReview] = useState(false)
   const [reviewDate, setReviewDate] = useState('')
   const [loanTab, setLoanTab] = useState('current')
@@ -245,7 +243,6 @@ export default function ClientDashboard({ clients, updateClient }) {
     setNoteText('')
   }
   function deleteNote(id) { updateClient(client.name, c=>({...c, notes:(c.notes||[]).filter(n=>n.id!==id)})) }
-  function saveOpp() { updateClient(client.name, c=>({...c, manualOpp:oppDraft})); setEditOpp(false); setOppDraft(null) }
   function saveReviewDate() {
     if (!reviewDate) return
     updateClient(client.name, c=>({...c, lastReviewDate:reviewDate, days:0}))
@@ -385,7 +382,7 @@ export default function ClientDashboard({ clients, updateClient }) {
         <div style={{overflowX:'auto'}}>
           <table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
             <thead><tr>
-              {[['#',24],['Acc. no.',90],['Loan name',140],['Type',110],['Bank',55],['Asset / Security',130],['Sec.',35],['Orig. limit',90],['Balance',90],['Rate',55],['Rate type',60],['Rpmt',55],['Est. repay/mo',90],['Settled',85],['Flag / Edit',80]].map(([h,w])=>(
+              {[['#',24],['Acc. no.',90],['Loan name',140],['Type',110],['Bank',55],['Asset / Security',130],['Sec.',35],['Crossed',65],['Orig. limit',90],['Balance',90],['Rate',55],['Rate type',60],['Rpmt',55],['Est. repay/mo',90],['Settled',85],['Flag / Edit',80]].map(([h,w])=>(
                 <th key={h} style={thStyle({width:w,textAlign:['Orig. limit','Balance','Rate','Est. repay/mo'].includes(h)?'right':'left'})}>{h}</th>
               ))}
             </tr></thead>
@@ -454,6 +451,7 @@ export default function ClientDashboard({ clients, updateClient }) {
                       })()}
                     </td>
                     <td style={tdStyle({textAlign:'center'})}>{l.security||'—'}</td>
+                    <td style={tdStyle({fontSize:10})}>{l.crossed?<span style={{background:'#fef9c3',color:'#854F0B',padding:'1px 5px',borderRadius:3,fontSize:9,fontWeight:500}}>{l.crossed}</span>:'—'}</td>
                     <td style={tdStyle({textAlign:'right'})}>{fmt(l.amount)}</td>
                     <td style={tdStyle({textAlign:'right',color:'var(--pk)',fontWeight:500})}>{fmt(l.balance)}</td>
                     <td style={tdStyle({textAlign:'right'})}>{l.rate>0?l.rate.toFixed(2)+'%':'—'}</td>
@@ -483,32 +481,31 @@ export default function ClientDashboard({ clients, updateClient }) {
 
       {/* Opp score & Notes */}
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}}>
-        <Panel>
-          <PanelTitle action={
-            editOpp
-              ? <div style={{display:'flex',gap:4}}><SaveBtn onClick={saveOpp}/><CancelBtn onClick={()=>{setEditOpp(false);setOppDraft(null)}}/></div>
-              : <EditBtn onClick={()=>{setEditOpp(true);setOppDraft({...manualOpp})}}/>
-          }>Opportunity score breakdown</PanelTitle>
-          {(editOpp?criteria:oppCriteria).map((o,i)=>{
-            const currentScore = editOpp ? (oppDraft[o.label]!==undefined?oppDraft[o.label]:(o.met?o.score:0)) : o.score
-            return (
-              <div key={i} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'5px 8px',background:'var(--bg)',borderRadius:6,marginBottom:4,fontSize:11}}>
-                <span>{o.label}</span>
-                {editOpp
-                  ? <select value={currentScore} onChange={e=>setOppDraft(d=>({...d,[o.label]:+e.target.value}))}
-                      style={{fontSize:11,padding:'2px 6px',borderRadius:6,border:'0.5px solid var(--border)',background:'var(--surface)',color:'var(--text-primary)',width:60}}>
-                      <option value={0}>0</option><option value={5}>5</option>
-                    </select>
-                  : <span style={{fontWeight:500,padding:'1px 7px',borderRadius:10,fontSize:10,background:o.score>0?'#fce8f3':'var(--bg)',color:o.score>0?'var(--pk)':'var(--text-secondary)',border:o.score>0?'none':'0.5px solid var(--border)'}}>{o.score}</span>}
-              </div>
-            )
-          })}
-          <div style={{background:'#2A3D54',borderRadius:8,padding:'10px 14px',display:'flex',alignItems:'center',justifyContent:'space-between',marginTop:10}}>
-            <span style={{fontSize:12,color:'var(--sbl)'}}>Total opportunity score</span>
-            <div style={{textAlign:'right'}}>
-              <span style={{fontSize:20,fontWeight:500,color:isPriority?'#EB99C2':'var(--pk)'}}>{editOpp?Object.values(oppDraft).reduce((s,v)=>s+v,0):oppTotal}</span>
-              {isPriority&&!editOpp&&<div style={{fontSize:9,color:'#EB99C2'}}>Priority client ★</div>}
+        <Panel style={{cursor:'pointer'}} onClick={()=>navigate(`/radar/clients/${encodeURIComponent(client.name)}/opportunity`)}>
+          <PanelTitle>Opportunity score</PanelTitle>
+          <div style={{display:'flex',alignItems:'center',gap:16,marginBottom:12}}>
+            <div style={{width:64,height:64,borderRadius:'50%',background:isPriority?'#fce8f3':'var(--bg)',border:`2px solid ${isPriority?'var(--pk)':'var(--border)'}`,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+              <span style={{fontSize:22,fontWeight:500,color:isPriority?'var(--pk)':'var(--text-secondary)'}}>{oppTotal}</span>
             </div>
+            <div style={{flex:1}}>
+              <div style={{fontSize:13,fontWeight:500,color:'var(--text-primary)',marginBottom:4}}>
+                {isPriority?'★ Priority client':'Score not yet set'}
+              </div>
+              <div style={{height:6,background:'var(--bg)',borderRadius:3,overflow:'hidden',border:'0.5px solid var(--border)'}}>
+                <div style={{height:'100%',width:`${(oppTotal/40)*100}%`,background:isPriority?'var(--pk)':'#BBC6DA',borderRadius:3,transition:'width 0.3s'}}/>
+              </div>
+              <div style={{fontSize:10,color:'var(--text-tertiary)',marginTop:3}}>{oppTotal} / 40 points</div>
+            </div>
+          </div>
+          <div style={{display:'flex',flexWrap:'wrap',gap:4,marginBottom:12}}>
+            {oppCriteria.filter(o=>o.score>0).map((o,i)=>(
+              <span key={i} style={{background:'#fce8f3',color:'var(--pk)',padding:'2px 8px',borderRadius:20,fontSize:10,fontWeight:500}}>+{o.score} {o.label}</span>
+            ))}
+            {oppCriteria.filter(o=>o.score>0).length===0 && <span style={{fontSize:11,color:'var(--text-tertiary)'}}>Click to score this client's opportunities</span>}
+          </div>
+          <div style={{display:'flex',alignItems:'center',gap:6,padding:'8px 12px',background:'var(--bg)',borderRadius:8,border:'0.5px solid var(--border)'}}>
+            <span style={{fontSize:11,color:'var(--pk)',fontWeight:500}}>Open opportunity score →</span>
+            <span style={{fontSize:10,color:'var(--text-tertiary)',marginLeft:'auto'}}>Private — not visible to clients</span>
           </div>
         </Panel>
 
