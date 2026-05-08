@@ -417,8 +417,8 @@ export default function ClientDashboard({ clients, updateClient }) {
             <button onClick={()=>{const newLoan={acc:'',lname:'',type:'Home Loan (OO)',bank:'',security:'',amount:0,balance:0,rate:0,rateType:'Var',rpmt:'P&I',term:30,ioTerm:0,fixed:'',io:'',balloon:'',settled:new Date().toISOString().slice(0,10),closed:false};updateClient(client.name,c=>({...c,loans:[...c.loans,newLoan]}))}} style={{fontSize:10,padding:'3px 10px',borderRadius:6,border:'0.5px solid var(--pk)',background:'transparent',color:'var(--pk)',cursor:'pointer'}}>+ Add loan</button>
           </div>
         </div>
-        <div style={{overflowX:'auto'}}>
-          <table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
+        <div style={{overflowX:'auto',overflowY:'visible'}}>
+          <table style={{width:'100%',borderCollapse:'collapse',fontSize:11,tableLayout:'auto',overflow:'visible'}}>
             <thead><tr>
               {[['#',24],['Acc. no.',90],['Loan name',140],['Type',110],['Bank',55],['Asset / Security',130],['Sec.',55],['Orig. limit',90],['Balance',90],['Rate',55],['Rate type',60],['Rpmt',55],['Est. repay/mo',90],['Settled',85],['Flag / Edit',80]].map(([h,w])=>(
                 <th key={h} style={thStyle({width:w,textAlign:['Orig. limit','Balance','Rate','Est. repay/mo'].includes(h)?'right':'left'})}>{h}</th>
@@ -442,13 +442,13 @@ export default function ClientDashboard({ clients, updateClient }) {
                     </select></td>
                     <td style={tdStyle()}><input value={ld.bank||''} onChange={e=>setLoanDraft({...loanDraft,bank:e.target.value})} style={{width:50,fontSize:10,padding:'2px 4px',borderRadius:4,border:'0.5px solid var(--border)',background:'var(--bg)'}}/></td>
                     <td style={tdStyle()}><input value={ld.assetDesc||''} onChange={e=>setLoanDraft({...loanDraft,assetDesc:e.target.value})} style={{width:120,fontSize:10,padding:'2px 4px',borderRadius:4,border:'0.5px solid var(--border)',background:'var(--bg)'}}/></td>
-                    <td style={{...tdStyle(),position:'relative'}}>
+                    <td style={{...tdStyle(),position:'relative',overflow:'visible'}}>
                       <button onClick={e=>{e.stopPropagation();setSecPicker(secPicker===i?null:i)}}
                         style={{fontSize:10,padding:'3px 8px',borderRadius:5,border:'0.5px solid var(--pk)',background:'transparent',color:'var(--pk)',cursor:'pointer',whiteSpace:'nowrap'}}>
                         {ld.crossed&&ld.crossed.trim()?<span style={{color:'#854F0B'}}>{ld.crossed}</span>:ld.security?`#${ld.security}`:'Select ▾'}
                       </button>
                       {secPicker===i&&(
-                        <div onClick={e=>e.stopPropagation()} style={{position:'fixed',zIndex:9999,background:'var(--surface)',border:'0.5px solid var(--border)',borderRadius:8,padding:'10px 12px',minWidth:260,boxShadow:'0 4px 20px rgba(0,0,0,0.15)'}}>
+                        <div onClick={e=>e.stopPropagation()} style={{position:'absolute',bottom:'calc(100% + 4px)',left:0,zIndex:9999,background:'var(--surface)',border:'0.5px solid var(--border)',borderRadius:8,padding:'10px 12px',minWidth:260,boxShadow:'0 4px 20px rgba(0,0,0,0.15)'}}>
                           <div style={{fontSize:10,fontWeight:500,color:'var(--text-secondary)',marginBottom:8,textTransform:'uppercase',letterSpacing:'0.05em'}}>Select securities for this loan</div>
                           {(client.securities||[]).length===0&&<div style={{fontSize:11,color:'var(--text-tertiary)',padding:'8px 0'}}>No securities added yet — add them in the Securities section first</div>}
                           {(client.securities||[]).map(s=>{
