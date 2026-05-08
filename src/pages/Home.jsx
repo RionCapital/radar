@@ -5,16 +5,19 @@ import { icon_crm, icon_radar, icon_marketing, icon_planner, logo_rion } from '.
 const BG = '#3D5570'
 
 const APPS = [
-  { name: 'Mercury',     url: 'https://login.connective.com.au/',      domain: 'login.connective.com.au' },
-  { name: 'CoreLogic',   url: 'https://propertyhub.corelogic.asia/',   domain: 'propertyhub.corelogic.asia' },
-  { name: 'Brokerpedia', url: 'https://brokerpedia.com.au/',            domain: 'brokerpedia.com.au' },
-  { name: 'Quickli',     url: 'https://app.quickli.com.au/',            domain: 'app.quickli.com.au' },
-  { name: 'MyCRM',       url: 'https://mycrm.com.au/',                  domain: 'mycrm.com.au' },
-  { name: 'XPLAN',       url: 'https://iress.com/',                     domain: 'iress.com' },
-  { name: 'ValEX',       url: 'https://valstatus.rpdata.com/',          domain: 'valstatus.rpdata.com' },
-  { name: 'ABN Lookup',  url: 'https://abr.business.gov.au/',           domain: 'abr.business.gov.au' },
-  { name: 'SFL Lookup',  url: 'https://superfundlookup.gov.au/',        domain: 'superfundlookup.gov.au' },
-  { name: 'Equifax',     url: 'https://www.vedacheck.com/',             domain: 'www.vedacheck.com' },
+  { name: 'Mercury',     url: 'https://login.connective.com.au/',          domain: 'login.connective.com.au' },
+  { name: 'CoreLogic',   url: 'https://propertyhub.corelogic.asia/',       domain: 'propertyhub.corelogic.asia' },
+  { name: 'Brokerpedia', url: 'https://brokerpedia.com.au/',                domain: 'brokerpedia.com.au' },
+  { name: 'Quickli',     url: 'https://app.quickli.com.au/',                domain: 'app.quickli.com.au' },
+  { name: 'ValEX',       url: 'https://valstatus.rpdata.com/',              domain: 'valstatus.rpdata.com' },
+  { name: 'ABN Lookup',  url: 'https://abr.business.gov.au/',               domain: 'abr.business.gov.au' },
+  { name: 'SFL Lookup',  url: 'https://superfundlookup.gov.au/',            domain: 'superfundlookup.gov.au' },
+  { name: 'Equifax',     url: 'https://www.vedacheck.com/',                 domain: 'www.vedacheck.com' },
+  { name: 'Tax Calc',    url: 'https://jaws.tips/stuff/taxcalc.html',       domain: 'jaws.tips' },
+  { name: 'LinkedIn',    url: 'https://www.linkedin.com/',                  domain: 'linkedin.com' },
+  { name: 'Facebook',    url: 'https://www.facebook.com/',                  domain: 'facebook.com' },
+  { name: 'Instagram',   url: 'https://www.instagram.com/',                 domain: 'instagram.com' },
+  { name: 'YouTube',     url: 'https://www.youtube.com/',                   domain: 'youtube.com' },
 ]
 
 const TOOLS = [

@@ -166,14 +166,14 @@ function PieChart({ pw, comm }) {
 }
 
 function RadarTable({ title, rows, navigate, onTick, showExpiry }) {
-  const th = { padding:'6px 8px', textAlign:'left', fontSize:10, color:'var(--text-secondary)', fontWeight:500, borderBottom:'0.5px solid var(--border)', whiteSpace:'nowrap', background:'var(--bg)' }
+  const th = { padding:'6px 8px', textAlign:'left', fontSize:10, color:'var(--text-secondary)', fontWeight:500, borderBottom:'0.5px solid var(--border)', whiteSpace:'nowrap', background:'#f8fafc' }
   const td = (extra={}) => ({ padding:'6px 8px', borderBottom:'0.5px solid var(--border-light)', verticalAlign:'middle', fontSize:11, ...extra })
   const cols = showExpiry
     ? ['Connection','Client','Account No.','Balance','Expiry date','Days to expiry','Opp. Score']
     : ['Connection','Client','Account No.','Balance','Days Since Review','Opp. Score']
   return (
-    <div style={{border:'0.5px solid var(--border)',borderRadius:8,overflow:'hidden'}}>
-      <div style={{background:'#2A3D54',padding:'8px 12px',fontSize:10,fontWeight:500,color:'#fff',textTransform:'uppercase',letterSpacing:'0.05em'}}>{title}</div>
+    <div style={{border:'0.5px solid var(--border)',borderRadius:8,overflow:'hidden',background:'#fff'}}>
+      <div style={{background:'#3D5570',padding:'8px 12px',fontSize:10,fontWeight:500,color:'#fff',textTransform:'uppercase',letterSpacing:'0.05em'}}>{title}</div>
       <div style={{overflowX:'auto'}}>
         <table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
           <thead><tr>
@@ -262,7 +262,7 @@ export default function Dashboard({ clients, onImport }) {
   )
 
   return (
-    <div style={{padding:'16px 24px', minHeight:'calc(100vh - 52px)', background:'#3D5570'}}>
+    <div style={{padding:'16px 24px'}}>
 
       {/* TOP ROW — charts + pie + summary stats */}
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 180px 200px',gap:14,marginBottom:16,alignItems:'start'}}>
@@ -275,13 +275,7 @@ export default function Dashboard({ clients, onImport }) {
           <BarChart data={COMMISSION} keys={['trail','upfront']} colors={['#2A3D54','#DA408D']} title="Commission Income" formatY={v=>`$${Math.round(v/1000)}k`}/>
         </Panel>
 
-        {/* Pie chart */}
-        <Panel style={{display:'flex',alignItems:'center',justifyContent:'center',padding:'12px 8px'}}>
-          <PieChart pw={pwTotal} comm={commTotal}/>
-        </Panel>
 
-        {/* Stats */}
-        <Panel style={{padding:'12px 14px'}}>
           <div style={{fontSize:10,fontWeight:500,color:'var(--text-secondary)',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:6}}>Summary</div>
           {stat('Month', latest.month)}
           {stat('Connections', clients.length)}

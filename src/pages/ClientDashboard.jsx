@@ -240,6 +240,7 @@ export default function ClientDashboard({ clients, updateClient }) {
   const [editingLoanIdx, setEditingLoanIdx] = useState(null)
   const [loanDraft, setLoanDraft] = useState(null)
   const [secPicker, setSecPicker] = useState(null) // loanIdx for picker open
+  const [pickerPos, setPickerPos] = useState({top:0,left:0})
 
   // Stable setDraft callback so child edit components don't remount
   const stableSetDraft = useCallback(val => setDraft(val), [])
@@ -431,12 +432,18 @@ export default function ClientDashboard({ clients, updateClient }) {
                     <td style={tdStyle()}><input value={ld.bank||''} onChange={e=>setLoanDraft({...loanDraft,bank:e.target.value})} style={{width:50,fontSize:10,padding:'2px 4px',borderRadius:4,border:'0.5px solid var(--border)',background:'var(--bg)'}}/></td>
                     <td style={tdStyle()}><input value={ld.assetDesc||''} onChange={e=>setLoanDraft({...loanDraft,assetDesc:e.target.value})} style={{width:120,fontSize:10,padding:'2px 4px',borderRadius:4,border:'0.5px solid var(--border)',background:'var(--bg)'}}/></td>
                     <td style={{...tdStyle(),position:'relative',overflow:'visible'}}>
-                      <button onClick={e=>{e.stopPropagation();setSecPicker(secPicker===i?null:i)}}
+                      <button onClick={e=>{
+                          e.stopPropagation()
+                          if(secPicker===i){setSecPicker(null);return}
+                          const rect=e.currentTarget.getBoundingClientRect()
+                          setPickerPos({top:rect.bottom+6,left:Math.max(8,rect.left-60)})
+                          setSecPicker(i)
+                        }}
                         style={{fontSize:10,padding:'3px 8px',borderRadius:5,border:'0.5px solid var(--pk)',background:'transparent',color:'var(--pk)',cursor:'pointer',whiteSpace:'nowrap'}}>
                         {ld.crossed&&ld.crossed.trim()?<span style={{color:'#854F0B'}}>{ld.crossed}</span>:ld.security?`#${ld.security}`:'Select ▾'}
                       </button>
                       {secPicker===i&&(
-                        <div onClick={e=>e.stopPropagation()} style={{position:'fixed',zIndex:99999,background:'var(--surface)',border:'1px solid var(--pk)',borderRadius:8,padding:'10px 12px',minWidth:280,maxHeight:300,overflowY:'auto',boxShadow:'0 8px 32px rgba(0,0,0,0.25)',marginTop:4}}>
+                        <div onClick={e=>e.stopPropagation()} style={{position:'fixed',top:pickerPos.top,left:pickerPos.left,zIndex:99999,background:'var(--surface)',border:'1px solid var(--pk)',borderRadius:8,padding:'10px 12px',minWidth:280,maxHeight:280,overflowY:'auto',boxShadow:'0 8px 32px rgba(0,0,0,0.25)'}}>
                           <div style={{fontSize:10,fontWeight:500,color:'var(--text-secondary)',marginBottom:8,textTransform:'uppercase',letterSpacing:'0.05em'}}>Select securities for this loan</div>
                           {(client.securities||[]).length===0&&<div style={{fontSize:11,color:'var(--text-tertiary)',padding:'8px 0'}}>No securities added yet — add them in the Securities section first</div>}
                           {(client.securities||[]).map(s=>{

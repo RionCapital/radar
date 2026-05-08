@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { logo_rion } from '../lib/icons'
+import { logo_rion_login } from '../lib/icons'
 
 const USERS = [
   { email: 'cameron@rion-capital.com', password: 'RionDash2', name: 'Cameron Finlayson' },
@@ -44,7 +44,7 @@ export default function Login() {
       }}>
         {/* Logo */}
         <div style={{textAlign:'center', marginBottom:32}}>
-          <img src={logo_rion} alt="RION Capital" style={{height:56, objectFit:'contain'}}/>
+          <img src={logo_rion_login} alt="RION Capital" style={{height:56, objectFit:'contain'}}/>
           <div style={{fontSize:12, color:'rgba(187,198,218,0.5)', marginTop:10, letterSpacing:'0.08em', textTransform:'uppercase'}}>
             Welcome to RION Capital Live
           </div>
