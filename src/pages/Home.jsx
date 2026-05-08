@@ -42,7 +42,7 @@ export default function Home() {
 
   return (
     <div style={{ minHeight:'100vh', background:'#ffffff', display:'flex', flexDirection:'column', fontFamily:"'DM Sans',system-ui,sans-serif" }}>
-      <header style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'20px 48px', borderBottom:'0.5px solid rgba(187,198,218,0.15)', opacity:visible?1:0, transform:visible?'translateY(0)':'translateY(-10px)', transition:'all 0.5s ease' }}>
+      <header style={{ background:'#3D5570', display:'flex', alignItems:'center', justifyContent:'space-between', padding:'20px 48px', opacity:visible?1:0, transform:visible?'translateY(0)':'translateY(-10px)', transition:'all 0.5s ease' }}>
         <img src={logo_rion} alt="RION Capital" style={{ height:52, width:'auto', objectFit:'contain' }}/>
         <div style={{display:'flex',alignItems:'center',gap:16}}>
           <div style={{fontSize:11,color:'rgba(187,198,218,0.7)'}}>Welcome, {auth.name}</div>
