@@ -2,6 +2,8 @@ import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { totalBal, fmt } from '../lib/data'
 import { fmtDate, rollingYTD, quarterlyIncome, expiryBadge, daysUntil } from '../lib/dateUtils'
+
+const DASH_BG = '#3D5570'
 import { Panel, PanelTitle, DayBadge } from '../components/UI'
 import CommissionImport from './CommissionImport'
 
@@ -37,12 +39,53 @@ function buildRadarRows(clients, field) {
       })
     })
   })
-  // Sort: overdue first, then soonest
-  return rows.sort((a,b) => {
-    const da = new Date(a.expiryDate) - new Date()
-    const db = new Date(b.expiryDate) - new Date()
-    return da - db
+  return rows.sort((a,b) => new Date(a.expiryDate) - new Date(b.expiryDate))
+}
+
+// Asset finance balloon rows — balloon is a year or residual amount, NOT a date
+// Only show loans where balloon is a year (4 digits) or "overdue"
+function buildBalloonRows(clients) {
+  const rows = []
+  clients.forEach(c => {
+    c.loans.filter(l => {
+      if (l.closed) return false
+      const b = String(l.balloon||'').trim()
+      if (!b) return false
+      // Balloon should be a year (e.g. "2027") or "overdue" — not a full date
+      // If it's a 4-digit year or "overdue", it's an asset finance balloon
+      return /^\d{4}$/.test(b) || b.toLowerCase()==='overdue'
+    }).forEach(l => {
+      const b = String(l.balloon).trim()
+      rows.push({
+        conn: c.name,
+        client: l.lname || c.name,
+        acc: l.acc || '—',
+        balance: l.balance || 0,
+        days: c.days || 0,
+        score: c.score || 0,
+        expiryDate: b==='overdue' ? '2000-01-01' : `${b}-12-31`,
+      })
+    })
   })
+  return rows.sort((a,b) => new Date(a.expiryDate) - new Date(b.expiryDate))
+}
+
+// Fixed/maturity rows — include both fixed date AND maturity date
+function buildFixedRows(clients) {
+  const rows = []
+  clients.forEach(c => {
+    c.loans.filter(l => !l.closed).forEach(l => {
+      // Add maturity date entry
+      if (l.maturity && l.maturity.trim()) {
+        rows.push({ conn:c.name, client:l.lname||c.name, acc:l.acc||'—', balance:l.balance||0, days:c.days||0, score:c.score||0, expiryDate:l.maturity, label:'Maturity' })
+      }
+      // Add fixed rate expiry (only if not also a maturity)
+      if (l.fixed && l.fixed.trim() && l.fixed !== l.maturity) {
+        rows.push({ conn:c.name, client:l.lname||c.name, acc:l.acc||'—', balance:l.balance||0, days:c.days||0, score:c.score||0, expiryDate:l.fixed, label:'Fixed' })
+      }
+    })
+  })
+  return rows.sort((a,b) => new Date(a.expiryDate) - new Date(b.expiryDate))
 }
 
 function BarChart({ data, keys, colors, title, formatY }) {
@@ -204,8 +247,8 @@ export default function Dashboard({ clients, onImport }) {
     .flatMap(c=>c.loans.filter(l=>!l.closed).slice(0,1).map(l=>({conn:c.name,client:l.lname,acc:l.acc||'—',balance:l.balance,days:c.days,score:c.score})))
 
   const radarIO = buildRadarRows(clients, 'io')
-  const radarFixed = buildRadarRows(clients, 'fixed')
-  const radarBalloons = buildRadarRows(clients, 'balloon')
+  const radarFixed = buildFixedRows(clients)
+  const radarBalloons = buildBalloonRows(clients)
 
   function handleTick(tableKey, idx) {
     setTickedRows(prev => ({...prev, [`${tableKey}-${idx}`]: true}))
@@ -219,7 +262,7 @@ export default function Dashboard({ clients, onImport }) {
   )
 
   return (
-    <div style={{padding:'16px 24px'}}>
+    <div style={{padding:'16px 24px', minHeight:'calc(100vh - 52px)', background:'#3D5570'}}>
 
       {/* TOP ROW — charts + pie + summary stats */}
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 180px 200px',gap:14,marginBottom:16,alignItems:'start'}}>
@@ -301,7 +344,7 @@ export default function Dashboard({ clients, onImport }) {
       </div>
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}}>
         <RadarTable title="Fixed Term & Maturities Review (B)" rows={radarFixed.filter((_,i)=>!tickedRows[`B-${i}`])} navigate={navigate} onTick={i=>handleTick('B',i)} showExpiry/>
-        <RadarTable title="Asset Finance Balloons (D)" rows={radarBalloons.filter((_,i)=>!tickedRows[`D-${i}`])} navigate={navigate} onTick={i=>handleTick('D',i)} showExpiry/>
+        <RadarTable title="Asset Finance (D)" rows={radarBalloons.filter((_,i)=>!tickedRows[`D-${i}`])} navigate={navigate} onTick={i=>handleTick('D',i)} showExpiry/>
       </div>
 
       {showImport && <CommissionImport clients={clients} onImport={(u,m)=>{onImport&&onImport(u,m);setShowImport(false)}} onClose={()=>setShowImport(false)}/>}

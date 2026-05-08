@@ -1,7 +1,8 @@
 import React, { useState, useCallback } from 'react'
-import { Routes, Route, useLocation } from 'react-router-dom'
+import { Routes, Route, useLocation, Navigate } from 'react-router-dom'
 import { loadClients, saveClients } from './lib/data'
 import Topbar from './components/Topbar'
+import Login from './pages/Login'
 import Home from './pages/Home'
 import Dashboard from './pages/Dashboard'
 import ClientList from './pages/ClientList'
@@ -10,11 +11,17 @@ import LoanAccount from './pages/LoanAccount'
 import OpportunityScore from './pages/OpportunityScore'
 import Toast from './components/Toast'
 
+function RequireAuth({ children }) {
+  const auth = sessionStorage.getItem('rion-auth')
+  return auth ? children : <Navigate to="/login" replace />
+}
+
 export default function App() {
   const [clients, setClients] = useState(() => loadClients())
   const [toast, setToast] = useState(null)
   const location = useLocation()
   const isHome = location.pathname === '/'
+  const isLogin = location.pathname === '/login'
 
   function showToast(msg) { setToast(msg); setTimeout(() => setToast(null), 2500) }
 
@@ -50,16 +57,17 @@ export default function App() {
   }
 
   return (
-    <div style={{ minHeight:'100vh', background: isHome ? '#1e2d3f' : 'var(--bg)' }}>
-      {!isHome && <Topbar />}
+    <div style={{ minHeight:'100vh', background: isHome||isLogin ? '#3D5570' : 'var(--bg)' }}>
+      {!isHome && !isLogin && <Topbar />}
       <Toast message={toast} />
       <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/radar/dashboard" element={<Dashboard clients={clients} onImport={handleImport} />} />
-        <Route path="/radar/clients" element={<ClientList clients={clients} onAddClient={addClient} />} />
-        <Route path="/radar/clients/:name" element={<ClientDashboard clients={clients} updateClient={updateClient} />} />
-        <Route path="/radar/clients/:name/loan/:loanIdx" element={<LoanAccount clients={clients} updateClient={updateClient} />} />
-        <Route path="/radar/clients/:name/opportunity" element={<OpportunityScore clients={clients} updateClient={updateClient} />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/" element={<RequireAuth><Home /></RequireAuth>} />
+        <Route path="/radar/dashboard" element={<RequireAuth><Dashboard clients={clients} onImport={handleImport} /></RequireAuth>} />
+        <Route path="/radar/clients" element={<RequireAuth><ClientList clients={clients} onAddClient={addClient} /></RequireAuth>} />
+        <Route path="/radar/clients/:name" element={<RequireAuth><ClientDashboard clients={clients} updateClient={updateClient} /></RequireAuth>} />
+        <Route path="/radar/clients/:name/loan/:loanIdx" element={<RequireAuth><LoanAccount clients={clients} updateClient={updateClient} /></RequireAuth>} />
+        <Route path="/radar/clients/:name/opportunity" element={<RequireAuth><OpportunityScore clients={clients} updateClient={updateClient} /></RequireAuth>} />
       </Routes>
     </div>
   )

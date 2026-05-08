@@ -19,15 +19,12 @@ export default function LoanAccount({ clients, updateClient }) {
 
   const eRpmt = effectiveRpmt(loan)
   const estRepayment = calcRepayment(loan)
-  const history = (() => {
-    const real = (loan.balanceHistory||[]).map((h,i,arr) => {
-      const prevBal = i>0?arr[i-1].balance:loan.amount
-      const estInterest = loan.rate?Math.round(prevBal*loan.rate/100/12):0
-      return {date:h.month,balance:h.balance,interest:estInterest,repayment:0,isPast:true}
-    })
-    const projected = buildBalanceHistory(loan).filter(h=>!h.isPast).slice(1,25).map(h=>({...h,isPast:false}))
-    return real.length>0?[...real,...projected]:buildBalanceHistory(loan)
-  })()
+  // Historic only — no projections
+  const history = (loan.balanceHistory||[]).map((h,i,arr) => {
+    const prevBal = i>0?arr[i-1].balance:loan.amount
+    const estInterest = loan.rate?Math.round(prevBal*loan.rate/100/12):0
+    return {date:h.month,balance:h.balance,interest:estInterest,isPast:true}
+  })
   const security = (client.securities||[]).find(s=>String(s.num)===String(loan.security))
   const rateHistory = loan.rateHistory||[]
 
@@ -290,19 +287,14 @@ export default function LoanAccount({ clients, updateClient }) {
                   <text x={pad.l-4} y={pad.t+plotH*(1-p)+4} textAnchor="end" fontSize={8} fill="var(--text-tertiary)">{p>0?`$${Math.round(maxBal*p/1000)}k`:'$0'}</text>
                 </g>
               ))}
-              {todayX&&<line x1={todayX} x2={todayX} y1={pad.t} y2={pad.t+plotH} stroke="rgba(187,198,218,0.4)" strokeWidth={1} strokeDasharray="3,3"/>}
-              {todayX&&<text x={todayX+3} y={pad.t+10} fontSize={8} fill="var(--text-tertiary)">Today</text>}
               {propPath&&<path d={propPath} fill="none" stroke="#27ae60" strokeWidth={1.5} strokeDasharray="4,3" opacity={0.7}/>}
-              {todayIdx>0&&<path d={graphData.slice(0,todayIdx+1).map((d,i)=>`${i===0?'M':'L'}${toX(i)},${toY(d.balance)}`).join(' ')} fill="none" stroke="#2A3D54" strokeWidth={2}/>}
-              {todayIdx>0&&<path d={graphData.slice(todayIdx).map((d,i)=>`${i===0?'M':'L'}${toX(todayIdx+i)},${toY(d.balance)}`).join(' ')} fill="none" stroke="#EB99C2" strokeWidth={1.5} strokeDasharray="5,3"/>}
-              {!todayX&&<path d={balPath} fill="none" stroke="#DA408D" strokeWidth={2}/>}
-              {todayIdx>0&&<path d={`${graphData.slice(0,todayIdx+1).map((d,i)=>`${i===0?'M':'L'}${toX(i)},${toY(d.balance)}`).join(' ')} L${toX(todayIdx)},${pad.t+plotH} L${pad.l},${pad.t+plotH} Z`} fill="#2A3D54" opacity={0.08}/>}
+              <path d={balPath} fill="none" stroke="#2A3D54" strokeWidth={2}/>
+              <path d={`${balPath} L${toX(graphData.length-1)},${pad.t+plotH} L${pad.l},${pad.t+plotH} Z`} fill="#2A3D54" opacity={0.08}/>
               {yearLabels.filter((_,i)=>i%2===0).map((yl,i)=><text key={i} x={yl.x} y={gH-4} textAnchor="middle" fontSize={8} fill="var(--text-tertiary)">{yl.label}</text>)}
             </svg>
           </div>
           <div style={{display:'flex',gap:16,marginTop:8,fontSize:10,color:'var(--text-secondary)'}}>
-            <div style={{display:'flex',alignItems:'center',gap:4}}><div style={{width:20,height:2,background:'#2A3D54'}}/> Historic</div>
-            <div style={{display:'flex',alignItems:'center',gap:4}}><div style={{width:20,height:0,borderTop:'1.5px dashed #EB99C2'}}/> Projected</div>
+            <div style={{display:'flex',alignItems:'center',gap:4}}><div style={{width:20,height:2,background:'#2A3D54'}}/> Balance</div>
             {propStart>0&&<div style={{display:'flex',alignItems:'center',gap:4}}><div style={{width:20,height:0,borderTop:'1.5px dashed #27ae60'}}/> Est. property value</div>}
           </div>
         </Panel>
@@ -325,7 +317,7 @@ export default function LoanAccount({ clients, updateClient }) {
                     <td style={td()}>{row.date}{!row.isPast&&i===history.findIndex(r=>!r.isPast)?<span style={{fontSize:9,marginLeft:6,color:'var(--pk)'}}>← today</span>:''}</td>
                     <td style={td({textAlign:'right',fontWeight:500,color:'var(--pk)'})}>${row.balance.toLocaleString()}</td>
                     <td style={td({textAlign:'right'})}>{row.interest?'$'+row.interest.toLocaleString():'—'}</td>
-                    <td style={td({color:row.isPast?'var(--text-tertiary)':'var(--pk)',fontSize:10})}>{row.isPast?'Historic':'Projected'}</td>
+                    <td style={td({color:'var(--text-tertiary)',fontSize:10})}>Historic</td>
                   </tr>
                 ))}
               </tbody>

@@ -367,19 +367,7 @@ export default function ClientDashboard({ clients, updateClient }) {
               : <div style={{fontSize:11,color:'rgba(187,198,218,0.4)'}}>No active flags</div>}
           </div>
         </div>
-        {/* Sub-stats */}
-        <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:8}}>
-          {[['Current balance',fmt(bal)],['Original limit',fmt(amt)],['Est. equity',fmt(Math.max(0,amt-bal))],['Accounts',client.loans.length],['Opp. score',oppTotal]].map(([label,val],i)=>(
-            <div key={label}
-              onClick={i===4?()=>navigate(`/radar/clients/${encodeURIComponent(client.name)}/opportunity`):undefined}
-              style={{background:'rgba(255,255,255,0.06)',borderRadius:8,padding:'8px 12px',cursor:i===4?'pointer':'default',transition:'background 0.15s'}}
-              onMouseOver={e=>i===4&&(e.currentTarget.style.background='rgba(218,64,141,0.25)')}
-              onMouseOut={e=>i===4&&(e.currentTarget.style.background='rgba(255,255,255,0.06)')}>
-              <div style={{fontSize:13,fontWeight:500,color:i===4?(isPriority?'#EB99C2':'var(--pk)'):'#fff'}}>{val}{i===4&&<span style={{fontSize:9,color:'var(--spk)',marginLeft:4}}>↗</span>}</div>
-              <div style={{fontSize:10,color:'var(--sbl)',marginTop:2}}>{label}</div>
-            </div>
-          ))}
-        </div>
+
       </div>
 
       {/* Contacts & Securities */}
@@ -448,7 +436,7 @@ export default function ClientDashboard({ clients, updateClient }) {
                         {ld.crossed&&ld.crossed.trim()?<span style={{color:'#854F0B'}}>{ld.crossed}</span>:ld.security?`#${ld.security}`:'Select ▾'}
                       </button>
                       {secPicker===i&&(
-                        <div onClick={e=>e.stopPropagation()} style={{position:'absolute',top:'calc(100% + 4px)',left:'-60px',zIndex:9999,background:'var(--surface)',border:'0.5px solid var(--border)',borderRadius:8,padding:'10px 12px',minWidth:280,maxHeight:320,overflowY:'auto',boxShadow:'0 8px 24px rgba(0,0,0,0.18)'}}>
+                        <div onClick={e=>e.stopPropagation()} style={{position:'fixed',zIndex:99999,background:'var(--surface)',border:'1px solid var(--pk)',borderRadius:8,padding:'10px 12px',minWidth:280,maxHeight:300,overflowY:'auto',boxShadow:'0 8px 32px rgba(0,0,0,0.25)',marginTop:4}}>
                           <div style={{fontSize:10,fontWeight:500,color:'var(--text-secondary)',marginBottom:8,textTransform:'uppercase',letterSpacing:'0.05em'}}>Select securities for this loan</div>
                           {(client.securities||[]).length===0&&<div style={{fontSize:11,color:'var(--text-tertiary)',padding:'8px 0'}}>No securities added yet — add them in the Securities section first</div>}
                           {(client.securities||[]).map(s=>{
