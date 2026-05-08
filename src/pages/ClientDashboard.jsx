@@ -144,6 +144,149 @@ function SecuritiesEdit({ draft, setDraft }) {
 }
 
 function SecuritiesView({ securities, loans, bal }) {
+  if (!(securities||[]).length) return (
+    <div style={{textAlign:'center',color:'var(--text-tertiary)',padding:16,fontSize:11}}>No securities yet — click Edit to add</div>
+  )
+  const crossLoans = loans.filter(l => l.crossed && l.crossed.trim() && !l.closed)
+  const crossDebt = crossLoans.reduce((s,l) => s + (l.balance||0), 0)
+  const totalEstVal = (securities||[]).reduce((s,x) => s + (x.estVal||0), 0)
+  const totalLendingEquity = (securities||[]).reduce((s,x) => {
+    const secNum = String(x.num||'')
+    const directDebt = loans.filter(l => !l.closed && String(l.security)===secNum && !(l.crossed&&l.crossed.trim())).reduce((t,l)=>t+l.balance,0)
+    return s + Math.round((x.estVal||0) * ((x.lvr!==undefined?x.lvr:80)/100) - directDebt)
+  }, 0) - crossDebt
+  const totalActualLVR = totalEstVal > 0 ? Math.round(bal / totalEstVal * 100) : 0
+
+  return (
+    <div>
+      <table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
+        <thead>
+          <tr>
+            {['#','Address','Last val.','Est. value','Debt balance','Lending equity','LVR',crossLoans.length?'Actual LVR *':'Actual LVR'].map((h,i)=>(
+              <th key={i} style={thStyle({textAlign:i>1?'right':'left'})}>{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {(securities||[]).map((s,i) => {
+            const secNum = String(s.num||i+1)
+            const isCrossed = crossLoans.some(l => l.crossed.split(',').map(x=>x.trim()).includes(secNum))
+            const directDebt = loans.filter(l => !l.closed && String(l.security)===secNum && !(l.crossed&&l.crossed.trim())).reduce((t,l)=>t+l.balance,0)
+            const lvr = s.lvr !== undefined ? s.lvr : 80
+            const lendingEquity = s.estVal ? Math.round(s.estVal * lvr/100 - directDebt) : null
+            const actualLVR = s.estVal && directDebt > 0 ? Math.round(directDebt/s.estVal*100) : 0
+            return (
+              <tr key={i} onMouseOver={e=>e.currentTarget.style.background='var(--bg)'} onMouseOut={e=>e.currentTarget.style.background='transparent'}>
+                <td style={tdStyle({color:'var(--pk)',fontWeight:500})}>{secNum}</td>
+                <td style={tdStyle()}>{s.address||'—'}</td>
+                <td style={tdStyle({textAlign:'right'})}>{s.lastVal?fmt(s.lastVal):'—'}</td>
+                <td style={tdStyle({textAlign:'right',fontWeight:500})}>{s.estVal?fmt(s.estVal):'—'}</td>
+                <td style={tdStyle({textAlign:'right'})}>
+                  {fmt(directDebt)}{isCrossed && <span style={{color:'#e8a020',fontSize:10,marginLeft:3,fontWeight:700}}>*</span>}
+                </td>
+                <td style={tdStyle({textAlign:'right',color:lendingEquity>0?'#27ae60':'#c0392b'})}>{lendingEquity!==null?fmt(lendingEquity):'—'}</td>
+                <td style={tdStyle({textAlign:'right'})}>{lvr}%</td>
+                <td style={tdStyle({textAlign:'right'})}>
+                  {actualLVR>0?actualLVR+'%':'—'}{isCrossed && <span style={{color:'#e8a020',fontSize:10,marginLeft:3,fontWeight:700}}>*</span>}
+                </td>
+              </tr>
+            )
+          })}
+          {crossLoans.length > 0 && (
+            <tr style={{background:'#fef9c3'}}>
+              <td style={{...tdStyle(),color:'#854F0B',fontWeight:700,fontSize:12}}>*</td>
+              <td style={{...tdStyle(),color:'#854F0B',fontSize:11}}>
+                <strong>Shared</strong> — Crossed security loan (securities {crossLoans[0].crossed})
+              </td>
+              <td style={tdStyle({textAlign:'right',color:'#854F0B'})}>—</td>
+              <td style={tdStyle({textAlign:'right',color:'#854F0B'})}>—</td>
+              <td style={{...tdStyle(),textAlign:'right',color:'#854F0B',fontWeight:500}}>{fmt(crossDebt)}</td>
+              <td style={{...tdStyle(),textAlign:'right',color:'#854F0B'}}>— {fmt(crossDebt)}</td>
+              <td style={tdStyle({color:'#854F0B'})}>—</td>
+              <td style={tdStyle({color:'#854F0B'})}>—</td>
+            </tr>
+          )}
+          <tr style={{background:'#2A3D54'}}>
+            <td colSpan={3} style={{...tdStyle(),color:'#fff',fontWeight:500}}>Total</td>
+            <td style={{...tdStyle(),color:'#fff',fontWeight:500,textAlign:'right'}}>{fmt(totalEstVal)}</td>
+            <td style={{...tdStyle(),color:'#fff',fontWeight:500,textAlign:'right'}}>{fmt(bal)}</td>
+            <td style={{...tdStyle(),color:'#EB99C2',fontWeight:500,textAlign:'right'}}>{fmt(totalLendingEquity)}</td>
+            <td style={{...tdStyle(),color:'var(--sbl)',fontSize:10}}>—</td>
+            <td style={{...tdStyle(),color:'#EB99C2',fontWeight:500,textAlign:'right'}}>{totalActualLVR}%</td>
+          </tr>
+        </tbody>
+      </table>
+      {crossLoans.length > 0 && (
+        <div style={{fontSize:10,color:'#854F0B',marginTop:6,padding:'6px 10px',background:'#FAEEDA',borderRadius:6,borderLeft:'3px solid #e8a020',lineHeight:1.5}}>
+          * Debt balance and actual LVR for crossed securities exclude the shared facility ({fmt(crossDebt)} — acc. {crossLoans.map(l=>l.acc||l.lname).join(', ')}). Shared debt is included in the total. Actual LVR is indicative only.
+        </div>
+      )}
+    </div>
+  )
+}
+
+function SecuritiesEdit({ draft, setDraft }) {
+  return (
+    <div>
+      {(draft||[]).map((s,i) => (
+        <div key={i} style={{background:'var(--bg)',borderRadius:8,padding:10,marginBottom:8,border:'0.5px solid var(--border)'}}>
+          <div style={{display:'grid',gridTemplateColumns:'40px 2fr 1fr 1fr 1fr 60px 120px auto',gap:6,alignItems:'end'}}>
+            <FieldGroup label="#">
+              <input style={{width:'100%'}} value={s.num||i+1} onChange={e => {
+                const d = draft.map((x,j) => j===i ? {...x, num:e.target.value} : x)
+                setDraft(d)
+              }}/>
+            </FieldGroup>
+            <FieldGroup label="Address">
+              <input style={{width:'100%'}} value={s.address||''} onChange={e => {
+                const d = draft.map((x,j) => j===i ? {...x, address:e.target.value} : x)
+                setDraft(d)
+              }}/>
+            </FieldGroup>
+            <FieldGroup label="Last val. ($)">
+              <input style={{width:'100%'}} type="number" value={s.lastVal||''} onChange={e => {
+                const d = draft.map((x,j) => j===i ? {...x, lastVal:+e.target.value} : x)
+                setDraft(d)
+              }}/>
+            </FieldGroup>
+            <FieldGroup label="Est. value ($)">
+              <input style={{width:'100%'}} type="number" value={s.estVal||''} onChange={e => {
+                const d = draft.map((x,j) => j===i ? {...x, estVal:+e.target.value} : x)
+                setDraft(d)
+              }}/>
+            </FieldGroup>
+            <FieldGroup label="Val. date">
+              <input style={{width:'100%'}} value={s.valDate||''} placeholder="YYYY-MM-DD" onChange={e => {
+                const d = draft.map((x,j) => j===i ? {...x, valDate:e.target.value} : x)
+                setDraft(d)
+              }}/>
+            </FieldGroup>
+            <FieldGroup label="LVR %">
+              <input style={{width:'100%'}} type="number" step="1" min="0" max="100" value={s.lvr!==undefined?s.lvr:80} onChange={e => {
+                const d = draft.map((x,j) => j===i ? {...x, lvr:+e.target.value} : x)
+                setDraft(d)
+              }}/>
+            </FieldGroup>
+            <FieldGroup label="Crossed with securities (comma-sep, e.g. 1,2,3)">
+              <input style={{width:'100%'}} value={s.crossed||''} placeholder="e.g. 1,2" onChange={e => {
+                const d = draft.map((x,j) => j===i ? {...x, crossed:e.target.value} : x)
+                setDraft(d)
+              }}/>
+            </FieldGroup>
+            <button onClick={() => setDraft(draft.filter((_,j)=>j!==i))}
+              style={{padding:'4px 8px',borderRadius:6,border:'0.5px solid #fde8e8',background:'#fde8e8',color:'#c0392b',cursor:'pointer',alignSelf:'flex-end',marginBottom:2}}>✕</button>
+          </div>
+        </div>
+      ))}
+      <button onClick={() => setDraft([...(draft||[]), {num:(draft||[]).length+1,address:'',lastVal:0,estVal:0,valDate:''}])}
+        style={{fontSize:11,padding:'5px 12px',borderRadius:6,border:'0.5px solid var(--pk)',background:'transparent',color:'var(--pk)',cursor:'pointer',marginBottom:10}}>
+        + Add security
+      </button>
+    </div>
+  )
+}
+
+function SecuritiesView({ securities, loans, bal }) {
   return (
     <table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
       <thead><tr>
@@ -337,8 +480,12 @@ export default function ClientDashboard({ clients, updateClient }) {
         {/* Sub-stats */}
         <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:8}}>
           {[['Current balance',fmt(bal)],['Original limit',fmt(amt)],['Est. equity',fmt(Math.max(0,amt-bal))],['Accounts',client.loans.length],['Opp. score',oppTotal]].map(([label,val],i)=>(
-            <div key={label} style={{background:'rgba(255,255,255,0.06)',borderRadius:8,padding:'8px 12px'}}>
-              <div style={{fontSize:13,fontWeight:500,color:i===4?(isPriority?'#EB99C2':'var(--pk)'):'#fff'}}>{val}</div>
+            <div key={label}
+              onClick={i===4?()=>navigate(`/radar/clients/${encodeURIComponent(client.name)}/opportunity`):undefined}
+              style={{background:'rgba(255,255,255,0.06)',borderRadius:8,padding:'8px 12px',cursor:i===4?'pointer':'default',transition:'background 0.15s'}}
+              onMouseOver={e=>i===4&&(e.currentTarget.style.background='rgba(218,64,141,0.25)')}
+              onMouseOut={e=>i===4&&(e.currentTarget.style.background='rgba(255,255,255,0.06)')}>
+              <div style={{fontSize:13,fontWeight:500,color:i===4?(isPriority?'#EB99C2':'var(--pk)'):'#fff'}}>{val}{i===4&&<span style={{fontSize:9,color:'var(--spk)',marginLeft:4}}>↗</span>}</div>
               <div style={{fontSize:10,color:'var(--sbl)',marginTop:2}}>{label}</div>
             </div>
           ))}
@@ -438,16 +585,25 @@ export default function ClientDashboard({ clients, updateClient }) {
                     <td style={{...tdStyle(),maxWidth:140,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{l.lname||'—'}</td>
                     <td style={tdStyle()}><Pill label={l.type||'—'} variant={['Commercial Property','Lease Doc','Term'].includes(l.type)?'comm':'pw'}/></td>
                     <td style={tdStyle()}>{l.bank||'—'}</td>
-                    <td style={{...tdStyle(),maxWidth:160,fontSize:10}}>
+                    <td style={{...tdStyle(),fontSize:10,maxWidth:160}}>
                       {(() => {
-                        if (l.crossed) {
-                          return <span style={{background:'#fef9c3',color:'#854F0B',padding:'2px 7px',borderRadius:4,fontSize:9,fontWeight:500}}>
-                            ✕ Cross-col: {l.crossed}
-                          </span>
+                        if (l.crossed && l.crossed.trim()) {
+                          const crossedNums = l.crossed.split(',').map(x=>x.trim())
+                          const addrs = crossedNums.map(n => {
+                            const sec = (client.securities||[]).find(s=>String(s.num)===n)
+                            return sec?.address || n
+                          })
+                          return (
+                            <div>
+                              {addrs.map((addr,ai) => (
+                                <div key={ai} style={{color:'var(--text-secondary)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',maxWidth:155}}>{addr}</div>
+                              ))}
+                            </div>
+                          )
                         }
                         const sec = (client.securities||[]).find(s=>String(s.num)===String(l.security))
                         const addr = sec?.address || l.assetDesc || '—'
-                        return <span style={{color:'var(--text-secondary)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',display:'block',maxWidth:150}}>{addr}</span>
+                        return <span style={{color:'var(--text-secondary)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',display:'block',maxWidth:155}}>{addr}</span>
                       })()}
                     </td>
                     <td style={tdStyle({textAlign:'center'})}>{l.security||'—'}</td>
@@ -481,33 +637,7 @@ export default function ClientDashboard({ clients, updateClient }) {
 
       {/* Opp score & Notes */}
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}}>
-        <Panel style={{cursor:'pointer'}} onClick={()=>navigate(`/radar/clients/${encodeURIComponent(client.name)}/opportunity`)}>
-          <PanelTitle>Opportunity score</PanelTitle>
-          <div style={{display:'flex',alignItems:'center',gap:16,marginBottom:12}}>
-            <div style={{width:64,height:64,borderRadius:'50%',background:isPriority?'#fce8f3':'var(--bg)',border:`2px solid ${isPriority?'var(--pk)':'var(--border)'}`,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
-              <span style={{fontSize:22,fontWeight:500,color:isPriority?'var(--pk)':'var(--text-secondary)'}}>{oppTotal}</span>
-            </div>
-            <div style={{flex:1}}>
-              <div style={{fontSize:13,fontWeight:500,color:'var(--text-primary)',marginBottom:4}}>
-                {isPriority?'★ Priority client':'Score not yet set'}
-              </div>
-              <div style={{height:6,background:'var(--bg)',borderRadius:3,overflow:'hidden',border:'0.5px solid var(--border)'}}>
-                <div style={{height:'100%',width:`${(oppTotal/40)*100}%`,background:isPriority?'var(--pk)':'#BBC6DA',borderRadius:3,transition:'width 0.3s'}}/>
-              </div>
-              <div style={{fontSize:10,color:'var(--text-tertiary)',marginTop:3}}>{oppTotal} / 40 points</div>
-            </div>
-          </div>
-          <div style={{display:'flex',flexWrap:'wrap',gap:4,marginBottom:12}}>
-            {oppCriteria.filter(o=>o.score>0).map((o,i)=>(
-              <span key={i} style={{background:'#fce8f3',color:'var(--pk)',padding:'2px 8px',borderRadius:20,fontSize:10,fontWeight:500}}>+{o.score} {o.label}</span>
-            ))}
-            {oppCriteria.filter(o=>o.score>0).length===0 && <span style={{fontSize:11,color:'var(--text-tertiary)'}}>Click to score this client's opportunities</span>}
-          </div>
-          <div style={{display:'flex',alignItems:'center',gap:6,padding:'8px 12px',background:'var(--bg)',borderRadius:8,border:'0.5px solid var(--border)'}}>
-            <span style={{fontSize:11,color:'var(--pk)',fontWeight:500}}>Open opportunity score →</span>
-            <span style={{fontSize:10,color:'var(--text-tertiary)',marginLeft:'auto'}}>Private — not visible to clients</span>
-          </div>
-        </Panel>
+
 
         <Panel>
           <PanelTitle>Contact notes & history</PanelTitle>
