@@ -151,8 +151,8 @@ function SecuritiesView({ securities, loans, bal }) {
   const crossDebt = crossLoans.reduce((s,l) => s + (l.balance||0), 0)
   const totalEstVal = (securities||[]).reduce((s,x) => s + (x.estVal||0), 0)
   const totalLendingEquity = (securities||[]).reduce((s,x) => {
-    const secNum = String(x.num||'')
-    const directDebt = loans.filter(l => !l.closed && String(l.security)===secNum && !(l.crossed&&l.crossed.trim())).reduce((t,l)=>t+l.balance,0)
+    const secNum = String(x.num||'').trim()
+    const directDebt = loans.filter(l => !l.closed && String(l.security||'').trim()===secNum && !(l.crossed&&l.crossed.trim())).reduce((t,l)=>t+l.balance,0)
     return s + Math.round((x.estVal||0) * ((x.lvr!==undefined?x.lvr:80)/100) - directDebt)
   }, 0) - crossDebt
   const totalActualLVR = totalEstVal > 0 ? Math.round(bal / totalEstVal * 100) : 0
@@ -170,8 +170,8 @@ function SecuritiesView({ securities, loans, bal }) {
         <tbody>
           {(securities||[]).map((s,i) => {
             const secNum = String(s.num||i+1)
-            const isCrossed = crossLoans.some(l => l.crossed.split(',').map(x=>x.trim()).includes(secNum))
-            const directDebt = loans.filter(l => !l.closed && String(l.security)===secNum && !(l.crossed&&l.crossed.trim())).reduce((t,l)=>t+l.balance,0)
+            const isCrossed = crossLoans.some(l => l.crossed && l.crossed.split(',').map(x=>x.trim()).includes(secNum))
+            const directDebt = loans.filter(l => !l.closed && String(l.security||'').trim()===secNum && !(l.crossed&&l.crossed.trim())).reduce((t,l)=>t+l.balance,0)
             const lvr = s.lvr !== undefined ? s.lvr : 80
             const lendingEquity = s.estVal ? Math.round(s.estVal * lvr/100 - directDebt) : null
             const actualLVR = s.estVal && directDebt > 0 ? Math.round(directDebt/s.estVal*100) : 0
@@ -477,22 +477,25 @@ export default function ClientDashboard({ clients, updateClient }) {
                     <td style={tdStyle()}>{l.bank||'—'}</td>
                     <td style={{...tdStyle(),fontSize:10,maxWidth:160}}>
                       {(() => {
+                        // Cross-col: show all stacked addresses
                         if (l.crossed && l.crossed.trim()) {
                           const crossedNums = l.crossed.split(',').map(x=>x.trim())
                           const addrs = crossedNums.map(n => {
-                            const sec = (client.securities||[]).find(s=>String(s.num)===n)
-                            return sec?.address || n
+                            const sec = (client.securities||[]).find(s=>String(s.num)===String(n).trim())
+                            return sec?.address || ('Security #' + n)
                           })
                           return (
                             <div>
                               {addrs.map((addr,ai) => (
-                                <div key={ai} style={{color:'var(--text-secondary)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',maxWidth:155}}>{addr}</div>
+                                <div key={ai} style={{color:'var(--text-secondary)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',maxWidth:155,marginBottom:1}}>{addr}</div>
                               ))}
                             </div>
                           )
                         }
-                        const sec = (client.securities||[]).find(s=>String(s.num)===String(l.security))
-                        const addr = sec?.address || l.assetDesc || '—'
+                        // Single security — look up by number
+                        const secNum = String(l.security||'').trim()
+                        const sec = (client.securities||[]).find(s=>String(s.num).trim()===secNum)
+                        const addr = sec?.address || l.assetDesc || (secNum?'Security #'+secNum:'—')
                         return <span style={{color:'var(--text-secondary)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',display:'block',maxWidth:155}}>{addr}</span>
                       })()}
                     </td>
