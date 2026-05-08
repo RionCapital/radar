@@ -225,67 +225,6 @@ function SecuritiesView({ securities, loans, bal }) {
   )
 }
 
-function SecuritiesEdit({ draft, setDraft }) {
-  return (
-    <div>
-      {(draft||[]).map((s,i) => (
-        <div key={i} style={{background:'var(--bg)',borderRadius:8,padding:10,marginBottom:8,border:'0.5px solid var(--border)'}}>
-          <div style={{display:'grid',gridTemplateColumns:'40px 2fr 1fr 1fr 1fr 60px 120px auto',gap:6,alignItems:'end'}}>
-            <FieldGroup label="#">
-              <input style={{width:'100%'}} value={s.num||i+1} onChange={e => {
-                const d = draft.map((x,j) => j===i ? {...x, num:e.target.value} : x)
-                setDraft(d)
-              }}/>
-            </FieldGroup>
-            <FieldGroup label="Address">
-              <input style={{width:'100%'}} value={s.address||''} onChange={e => {
-                const d = draft.map((x,j) => j===i ? {...x, address:e.target.value} : x)
-                setDraft(d)
-              }}/>
-            </FieldGroup>
-            <FieldGroup label="Last val. ($)">
-              <input style={{width:'100%'}} type="number" value={s.lastVal||''} onChange={e => {
-                const d = draft.map((x,j) => j===i ? {...x, lastVal:+e.target.value} : x)
-                setDraft(d)
-              }}/>
-            </FieldGroup>
-            <FieldGroup label="Est. value ($)">
-              <input style={{width:'100%'}} type="number" value={s.estVal||''} onChange={e => {
-                const d = draft.map((x,j) => j===i ? {...x, estVal:+e.target.value} : x)
-                setDraft(d)
-              }}/>
-            </FieldGroup>
-            <FieldGroup label="Val. date">
-              <input style={{width:'100%'}} value={s.valDate||''} placeholder="YYYY-MM-DD" onChange={e => {
-                const d = draft.map((x,j) => j===i ? {...x, valDate:e.target.value} : x)
-                setDraft(d)
-              }}/>
-            </FieldGroup>
-            <FieldGroup label="LVR %">
-              <input style={{width:'100%'}} type="number" step="1" min="0" max="100" value={s.lvr!==undefined?s.lvr:80} onChange={e => {
-                const d = draft.map((x,j) => j===i ? {...x, lvr:+e.target.value} : x)
-                setDraft(d)
-              }}/>
-            </FieldGroup>
-            <FieldGroup label="Crossed with securities (comma-sep, e.g. 1,2,3)">
-              <input style={{width:'100%'}} value={s.crossed||''} placeholder="e.g. 1,2" onChange={e => {
-                const d = draft.map((x,j) => j===i ? {...x, crossed:e.target.value} : x)
-                setDraft(d)
-              }}/>
-            </FieldGroup>
-            <button onClick={() => setDraft(draft.filter((_,j)=>j!==i))}
-              style={{padding:'4px 8px',borderRadius:6,border:'0.5px solid #fde8e8',background:'#fde8e8',color:'#c0392b',cursor:'pointer',alignSelf:'flex-end',marginBottom:2}}>✕</button>
-          </div>
-        </div>
-      ))}
-      <button onClick={() => setDraft([...(draft||[]), {num:(draft||[]).length+1,address:'',lastVal:0,estVal:0,valDate:''}])}
-        style={{fontSize:11,padding:'5px 12px',borderRadius:6,border:'0.5px solid var(--pk)',background:'transparent',color:'var(--pk)',cursor:'pointer',marginBottom:10}}>
-        + Add security
-      </button>
-    </div>
-  )
-}
-
 // ── Main component ──
 
 export default function ClientDashboard({ clients, updateClient }) {
