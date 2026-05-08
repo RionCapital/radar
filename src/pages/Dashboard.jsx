@@ -21,18 +21,29 @@ const COMMISSION = [
   { month:'Mar 26', trail:5616.36,  upfront:13322.25, total:18938.61, balance:41224085 },
 ]
 
-const RADAR_FIXED_IO = [
-  { conn:'Ricciulli', client:'RICCIULLI GUEVARA PROPERTY Pty Ltd', acc:'734136417', balance:229600, days:137, score:0, expiryDate:'2026-06-04' },
-  { conn:'Ricciulli', client:'RICCIULLI R A — Raymond & Jessica',  acc:'746989193', balance:515950, days:137, score:0, expiryDate:'2027-09-08' },
-  { conn:'Ricciulli', client:'RJSO Pty Ltd atf RJSO Trust',        acc:'200021390438', balance:360000, days:137, score:0, expiryDate:'2029-06-19' },
-  { conn:'Russell',   client:'MARTIN RUSSELL',                     acc:'568038183', balance:396133, days:1,   score:15, expiryDate:'2028-06-01' },
-]
-const RADAR_BALLOONS = [
-  { conn:'Quartiero', client:'Hydro Solutions NSW Pty Ltd',        acc:'—', balance:74489,  days:1079, score:0, expiryDate:'2023-05-22' },
-  { conn:'Smith',     client:'Command Plumbing Services Pty Ltd',  acc:'—', balance:28620,  days:978,  score:0, expiryDate:'2028-08-31' },
-  { conn:'Borg',      client:'JMB Plumbing',                       acc:'—', balance:77241,  days:1056, score:0, expiryDate:'2027-06-14' },
-  { conn:'Synergy IT',client:'Synergy IT Group Pty Ltd',           acc:'—', balance:83094,  days:67,   score:0, expiryDate:'2031-04-23' },
-]
+// Dynamic radar data — computed from client loans
+function buildRadarRows(clients, field) {
+  const rows = []
+  clients.forEach(c => {
+    c.loans.filter(l => !l.closed && l[field] && l[field].toString().trim()).forEach(l => {
+      rows.push({
+        conn: c.name,
+        client: l.lname || c.name,
+        acc: l.acc || '—',
+        balance: l.balance || 0,
+        days: c.days || 0,
+        score: c.score || 0,
+        expiryDate: l[field],
+      })
+    })
+  })
+  // Sort: overdue first, then soonest
+  return rows.sort((a,b) => {
+    const da = new Date(a.expiryDate) - new Date()
+    const db = new Date(b.expiryDate) - new Date()
+    return da - db
+  })
+}
 
 function BarChart({ data, keys, colors, title, formatY }) {
   const maxVal = Math.max(...data.map(d => keys.reduce((s,k)=>s+(d[k]||0),0))) * 1.1 || 1
@@ -190,7 +201,11 @@ export default function Dashboard({ clients, onImport }) {
     .filter(c=>c.days>=180&&c.loans.length>0)
     .sort((a,b)=>b.days-a.days)
     .slice(0,8)
-    .flatMap(c=>c.loans.slice(0,1).map(l=>({conn:c.name,client:l.lname,acc:l.acc||'—',balance:l.balance,days:c.days,score:c.score})))
+    .flatMap(c=>c.loans.filter(l=>!l.closed).slice(0,1).map(l=>({conn:c.name,client:l.lname,acc:l.acc||'—',balance:l.balance,days:c.days,score:c.score})))
+
+  const radarIO = buildRadarRows(clients, 'io')
+  const radarFixed = buildRadarRows(clients, 'fixed')
+  const radarBalloons = buildRadarRows(clients, 'balloon')
 
   function handleTick(tableKey, idx) {
     setTickedRows(prev => ({...prev, [`${tableKey}-${idx}`]: true}))
@@ -282,11 +297,11 @@ export default function Dashboard({ clients, onImport }) {
       </div>
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14,marginBottom:14}}>
         <RadarTable title="Annual Reviews (A)" rows={annualRows.filter((_,i)=>!tickedRows[`A-${i}`]).slice(0,6)} navigate={navigate} onTick={i=>handleTick('A',i)}/>
-        <RadarTable title="IO Term Review (C)" rows={RADAR_FIXED_IO.filter((_,i)=>!tickedRows[`C-${i}`])} navigate={navigate} onTick={i=>handleTick('C',i)} showExpiry/>
+        <RadarTable title="IO Term Review (C)" rows={radarIO.filter((_,i)=>!tickedRows[`C-${i}`])} navigate={navigate} onTick={i=>handleTick('C',i)} showExpiry/>
       </div>
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}}>
-        <RadarTable title="Fixed Term & Maturities Review (B)" rows={[]} navigate={navigate} onTick={i=>handleTick('B',i)} showExpiry/>
-        <RadarTable title="Asset Finance Balloons (D)" rows={RADAR_BALLOONS.filter((_,i)=>!tickedRows[`D-${i}`])} navigate={navigate} onTick={i=>handleTick('D',i)} showExpiry/>
+        <RadarTable title="Fixed Term & Maturities Review (B)" rows={radarFixed.filter((_,i)=>!tickedRows[`B-${i}`])} navigate={navigate} onTick={i=>handleTick('B',i)} showExpiry/>
+        <RadarTable title="Asset Finance Balloons (D)" rows={radarBalloons.filter((_,i)=>!tickedRows[`D-${i}`])} navigate={navigate} onTick={i=>handleTick('D',i)} showExpiry/>
       </div>
 
       {showImport && <CommissionImport clients={clients} onImport={(u,m)=>{onImport&&onImport(u,m);setShowImport(false)}} onClose={()=>setShowImport(false)}/>}
