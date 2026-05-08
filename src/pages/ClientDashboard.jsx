@@ -411,6 +411,7 @@ export default function ClientDashboard({ clients, updateClient }) {
             {editingLoanIdx!==null && <>
               <button onClick={()=>{updateClient(client.name,c=>{const ls=[...c.loans];ls[editingLoanIdx]=loanDraft;return{...c,loans:ls}});setEditingLoanIdx(null);setLoanDraft(null)}} style={{fontSize:10,padding:'3px 10px',borderRadius:6,background:'#27ae60',border:'none',color:'#fff',cursor:'pointer'}}>Save</button>
               <button onClick={()=>{setEditingLoanIdx(null);setLoanDraft(null)}} style={{fontSize:10,padding:'3px 10px',borderRadius:6,background:'transparent',border:'0.5px solid var(--border)',color:'var(--text-secondary)',cursor:'pointer'}}>Cancel</button>
+              <button onClick={()=>{if(window.confirm(`Delete loan "${loanDraft?.lname||loanDraft?.acc||'this loan'}"? This cannot be undone.`)){updateClient(client.name,c=>({...c,loans:c.loans.filter((_,j)=>j!==editingLoanIdx)}));setEditingLoanIdx(null);setLoanDraft(null)}}} style={{fontSize:10,padding:'3px 10px',borderRadius:6,background:'#fde8e8',border:'0.5px solid #fde8e8',color:'#c0392b',cursor:'pointer'}}>Delete loan</button>
             </>}
             <button onClick={()=>{const newLoan={acc:'',lname:'',type:'Home Loan (OO)',bank:'',security:'',amount:0,balance:0,rate:0,rateType:'Var',rpmt:'P&I',term:30,ioTerm:0,fixed:'',io:'',balloon:'',settled:new Date().toISOString().slice(0,10),closed:false};updateClient(client.name,c=>({...c,loans:[...c.loans,newLoan]}))}} style={{fontSize:10,padding:'3px 10px',borderRadius:6,border:'0.5px solid var(--pk)',background:'transparent',color:'var(--pk)',cursor:'pointer'}}>+ Add loan</button>
           </div>
@@ -418,7 +419,7 @@ export default function ClientDashboard({ clients, updateClient }) {
         <div style={{overflowX:'auto'}}>
           <table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
             <thead><tr>
-              {[['#',24],['Acc. no.',90],['Loan name',140],['Type',110],['Bank',55],['Asset / Security',130],['Sec.',35],['Crossed',65],['Orig. limit',90],['Balance',90],['Rate',55],['Rate type',60],['Rpmt',55],['Est. repay/mo',90],['Settled',85],['Flag / Edit',80]].map(([h,w])=>(
+              {[['#',24],['Acc. no.',90],['Loan name',140],['Type',110],['Bank',55],['Asset / Security',130],['Sec.',55],['Orig. limit',90],['Balance',90],['Rate',55],['Rate type',60],['Rpmt',55],['Est. repay/mo',90],['Settled',85],['Flag / Edit',80]].map(([h,w])=>(
                 <th key={h} style={thStyle({width:w,textAlign:['Orig. limit','Balance','Rate','Est. repay/mo'].includes(h)?'right':'left'})}>{h}</th>
               ))}
             </tr></thead>
@@ -495,8 +496,11 @@ export default function ClientDashboard({ clients, updateClient }) {
                         return <span style={{color:'var(--text-secondary)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',display:'block',maxWidth:155}}>{addr}</span>
                       })()}
                     </td>
-                    <td style={tdStyle({textAlign:'center'})}>{l.security||'—'}</td>
-                    <td style={tdStyle({fontSize:10})}>{l.crossed?<span style={{background:'#fef9c3',color:'#854F0B',padding:'1px 5px',borderRadius:3,fontSize:9,fontWeight:500}}>{l.crossed}</span>:'—'}</td>
+                    <td style={tdStyle({textAlign:'center'})}>
+                      {l.crossed && l.crossed.trim()
+                        ? <span style={{background:'#fef9c3',color:'#854F0B',padding:'2px 7px',borderRadius:4,fontSize:10,fontWeight:500}}>{l.crossed}</span>
+                        : <span>{l.security||'—'}</span>}
+                    </td>
                     <td style={tdStyle({textAlign:'right'})}>{fmt(l.amount)}</td>
                     <td style={tdStyle({textAlign:'right',color:'var(--pk)',fontWeight:500})}>{fmt(l.balance)}</td>
                     <td style={tdStyle({textAlign:'right'})}>{l.rate>0?l.rate.toFixed(2)+'%':'—'}</td>
@@ -504,12 +508,13 @@ export default function ClientDashboard({ clients, updateClient }) {
                     <td style={tdStyle()}><Pill label={eRpmt} variant={eRpmt==='P&I*'?'flag':eRpmt==='IO'?'io':'pi'}/></td>
                     <td style={tdStyle({textAlign:'right',color:'var(--text-secondary)'})}>{repay?'$'+repay.toLocaleString():'—'}</td>
                     <td style={tdStyle()}>{fmtDate(l.settled)}</td>
-                    <td style={tdStyle({textAlign:'center'})} onClick={e=>{e.stopPropagation();setEditingLoanIdx(i);setLoanDraft({...l})}}>
+                    <td style={tdStyle({textAlign:'center'})}>
                       <div style={{display:'flex',alignItems:'center',gap:4,justifyContent:'center'}}>
                         {flag ? <span style={{padding:'2px 6px',borderRadius:20,fontSize:9,fontWeight:500,background:flag==='overdue'?'#fde8e8':'#fef9c3',color:flag==='overdue'?'#a32d2d':'#854F0B'}}>
                           {flag==='overdue'?'Overdue':'< 120d'}
                         </span> : null}
-                        <span style={{fontSize:9,color:'var(--pk)',padding:'1px 5px',borderRadius:4,border:'0.5px solid var(--pk)',cursor:'pointer'}}>✎</span>
+                        <span onClick={e=>{e.stopPropagation();setEditingLoanIdx(i);setLoanDraft({...l})}} style={{fontSize:9,color:'var(--pk)',padding:'1px 5px',borderRadius:4,border:'0.5px solid var(--pk)',cursor:'pointer'}}>✎</span>
+                        <span onClick={e=>{e.stopPropagation();if(window.confirm(`Delete loan "${l.lname||l.acc||'this loan'}"? This cannot be undone.`)){updateClient(client.name,c=>({...c,loans:c.loans.filter((_,j)=>j!==i)}));if(editingLoanIdx===i){setEditingLoanIdx(null);setLoanDraft(null)}}}} style={{fontSize:9,color:'#c0392b',padding:'1px 5px',borderRadius:4,border:'0.5px solid #fde8e8',cursor:'pointer',background:'#fde8e8'}}>✕</span>
                       </div>
                     </td>
                   </tr>
