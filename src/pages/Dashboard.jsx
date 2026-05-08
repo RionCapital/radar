@@ -265,17 +265,23 @@ export default function Dashboard({ clients, onImport }) {
     <div style={{padding:'16px 24px'}}>
 
       {/* TOP ROW — charts + pie + summary stats */}
-      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 180px 200px',gap:14,marginBottom:16,alignItems:'start'}}>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 200px',gap:14,marginBottom:14,alignItems:'start'}}>
 
+        {/* Portfolio balances + pie below */}
         <Panel style={{display:'flex',flexDirection:'column'}}>
           <BarChart data={balData} keys={['private','commercial']} colors={['#2A3D54','#DA408D']} title="Portfolio Balances" formatY={v=>v>=1e6?`$${(v/1e6).toFixed(1)}m`:`$${Math.round(v/1000)}k`}/>
+          <div style={{borderTop:'0.5px solid var(--border-light)',marginTop:10,paddingTop:10,display:'flex',justifyContent:'center'}}>
+            <PieChart pw={pwTotal} comm={commTotal}/>
+          </div>
         </Panel>
 
+        {/* Commission income */}
         <Panel style={{display:'flex',flexDirection:'column'}}>
           <BarChart data={COMMISSION} keys={['trail','upfront']} colors={['#2A3D54','#DA408D']} title="Commission Income" formatY={v=>`$${Math.round(v/1000)}k`}/>
         </Panel>
 
-
+        {/* Stats */}
+        <Panel style={{padding:'12px 14px'}}>
           <div style={{fontSize:10,fontWeight:500,color:'var(--text-secondary)',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:6}}>Summary</div>
           {stat('Month', latest.month)}
           {stat('Connections', clients.length)}
