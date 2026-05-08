@@ -239,6 +239,7 @@ export default function ClientDashboard({ clients, updateClient }) {
   const [loanTab, setLoanTab] = useState('current')
   const [editingLoanIdx, setEditingLoanIdx] = useState(null)
   const [loanDraft, setLoanDraft] = useState(null)
+  const [secPicker, setSecPicker] = useState(null) // loanIdx for picker open
 
   // Stable setDraft callback so child edit components don't remount
   const stableSetDraft = useCallback(val => setDraft(val), [])
@@ -409,8 +410,8 @@ export default function ClientDashboard({ clients, updateClient }) {
           </div>
           <div style={{display:'flex',gap:6}}>
             {editingLoanIdx!==null && <>
-              <button onClick={()=>{updateClient(client.name,c=>{const ls=[...c.loans];ls[editingLoanIdx]=loanDraft;return{...c,loans:ls}});setEditingLoanIdx(null);setLoanDraft(null)}} style={{fontSize:10,padding:'3px 10px',borderRadius:6,background:'#27ae60',border:'none',color:'#fff',cursor:'pointer'}}>Save</button>
-              <button onClick={()=>{setEditingLoanIdx(null);setLoanDraft(null)}} style={{fontSize:10,padding:'3px 10px',borderRadius:6,background:'transparent',border:'0.5px solid var(--border)',color:'var(--text-secondary)',cursor:'pointer'}}>Cancel</button>
+              <button onClick={()=>{updateClient(client.name,c=>{const ls=[...c.loans];ls[editingLoanIdx]=loanDraft;return{...c,loans:ls}});setEditingLoanIdx(null);setLoanDraft(null)setSecPicker(null)}} style={{fontSize:10,padding:'3px 10px',borderRadius:6,background:'#27ae60',border:'none',color:'#fff',cursor:'pointer'}}>Save</button>
+              <button onClick={()=>{setEditingLoanIdx(null);setLoanDraft(null);setSecPicker(null)}} style={{fontSize:10,padding:'3px 10px',borderRadius:6,background:'transparent',border:'0.5px solid var(--border)',color:'var(--text-secondary)',cursor:'pointer'}}>Cancel</button>
               <button onClick={()=>{if(window.confirm(`Delete loan "${loanDraft?.lname||loanDraft?.acc||'this loan'}"? This cannot be undone.`)){updateClient(client.name,c=>({...c,loans:c.loans.filter((_,j)=>j!==editingLoanIdx)}));setEditingLoanIdx(null);setLoanDraft(null)}}} style={{fontSize:10,padding:'3px 10px',borderRadius:6,background:'#fde8e8',border:'0.5px solid #fde8e8',color:'#c0392b',cursor:'pointer'}}>Delete loan</button>
             </>}
             <button onClick={()=>{const newLoan={acc:'',lname:'',type:'Home Loan (OO)',bank:'',security:'',amount:0,balance:0,rate:0,rateType:'Var',rpmt:'P&I',term:30,ioTerm:0,fixed:'',io:'',balloon:'',settled:new Date().toISOString().slice(0,10),closed:false};updateClient(client.name,c=>({...c,loans:[...c.loans,newLoan]}))}} style={{fontSize:10,padding:'3px 10px',borderRadius:6,border:'0.5px solid var(--pk)',background:'transparent',color:'var(--pk)',cursor:'pointer'}}>+ Add loan</button>
