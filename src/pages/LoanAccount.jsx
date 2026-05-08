@@ -174,9 +174,9 @@ export default function LoanAccount({ clients, updateClient }) {
                 ['Account no.',loan.acc||'—'],
                 ['Loan type',loan.type||'—'],
                 ['Bank',loan.bank||'—'],
-                ['Security #',loan.security||'—'],
+                ['Security #', allSecurities.length>1 ? allSecurities.map(s=>s.num).join(', ') : (loan.security||'—')],
                 ['Asset / property', allSecurities.length>1
-                  ? allSecurities.map(s=>`#${s.num} — ${s.address}`).join(' | ')
+                  ? allSecurities.map(s=>`#${s.num} — ${s.address}`).join('|||')
                   : (security?.address||loan.assetDesc||'—')],
                 ['Borrowing entity',loan.borrowingEntity||'—'],
                 ['Original limit',fmt(loan.amount)],
@@ -192,7 +192,11 @@ export default function LoanAccount({ clients, updateClient }) {
               ].map(([label,val])=>(
                 <div key={label} style={{display:'flex',justifyContent:'space-between',padding:'5px 0',borderBottom:'0.5px solid var(--border-light)',gap:8}}>
                   <span style={{fontSize:11,color:'var(--text-secondary)',flexShrink:0}}>{label}</span>
-                  <span style={{fontSize:11,fontWeight:500,color:'var(--text-primary)',textAlign:'right'}}>{val}</span>
+                  <span style={{fontSize:11,fontWeight:500,color:'var(--text-primary)',textAlign:'right'}}>
+                    {String(val||'').includes('|||')
+                      ? String(val).split('|||').map((line,i)=><div key={i}>{line}</div>)
+                      : val}
+                  </span>
                 </div>
               ))}
             </div>
