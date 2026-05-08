@@ -175,7 +175,9 @@ export default function LoanAccount({ clients, updateClient }) {
                 ['Loan type',loan.type||'—'],
                 ['Bank',loan.bank||'—'],
                 ['Security #',loan.security||'—'],
-                ['Asset / property',security?.address||loan.assetDesc||'—'],
+                ['Asset / property', allSecurities.length>1
+                  ? allSecurities.map(s=>`#${s.num} — ${s.address}`).join(' | ')
+                  : (security?.address||loan.assetDesc||'—')],
                 ['Borrowing entity',loan.borrowingEntity||'—'],
                 ['Original limit',fmt(loan.amount)],
                 ['Current balance',fmt(loan.balance)],
@@ -238,7 +240,9 @@ export default function LoanAccount({ clients, updateClient }) {
           {allSecurities.length>0&&(
             <div style={{marginTop:10,background:'var(--bg)',borderRadius:8,padding:'10px 12px'}}>
               <div style={{fontSize:10,fontWeight:500,color:'var(--text-secondary)',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:8}}>
-                {crossedSecurities.length>0?'Cross-collateralised securities':'Linked security'}
+                {crossedSecurities.length>0
+                  ? <span>Cross-collateralised securities <span style={{color:'#e8a020'}}>✕ {loan.crossed}</span></span>
+                  : 'Linked security'}
               </div>
               {allSecurities.map((sec,si)=>(
                 <div key={si} style={{marginBottom:si<allSecurities.length-1?10:0,paddingBottom:si<allSecurities.length-1?10:0,borderBottom:si<allSecurities.length-1?'0.5px solid var(--border)':'none'}}>

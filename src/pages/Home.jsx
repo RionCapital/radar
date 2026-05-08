@@ -54,7 +54,7 @@ export default function Home() {
         {/* Tools */}
         <div style={{ opacity:visible?1:0, transform:visible?'translateY(0)':'translateY(20px)', transition:'all 0.6s ease 0.1s' }}>
           <div style={{ display:'flex', alignItems:'center', gap:16, marginBottom:24 }}>
-            <span style={{ fontSize:11, fontWeight:500, color:'var(--text-secondary)', textTransform:'uppercase', letterSpacing:'0.12em' }}>Tools</span>
+            <span style={{ fontSize:11, fontWeight:500, color:'#6b7a8d', textTransform:'uppercase', letterSpacing:'0.12em' }}>Tools</span>
             <div style={{ flex:1, height:'0.5px', background:'linear-gradient(to right, #EB99C2, transparent)' }}/>
           </div>
           <div style={{ display:'flex', gap:20, marginBottom:44 }}>
@@ -65,7 +65,7 @@ export default function Home() {
         {/* Apps */}
         <div style={{ opacity:visible?1:0, transform:visible?'translateY(0)':'translateY(20px)', transition:'all 0.6s ease 0.3s' }}>
           <div style={{ display:'flex', alignItems:'center', gap:16, marginBottom:24 }}>
-            <span style={{ fontSize:11, fontWeight:500, color:'var(--text-secondary)', textTransform:'uppercase', letterSpacing:'0.12em' }}>Apps</span>
+            <span style={{ fontSize:11, fontWeight:500, color:'#6b7a8d', textTransform:'uppercase', letterSpacing:'0.12em' }}>Apps</span>
             <div style={{ flex:1, height:'0.5px', background:'linear-gradient(to right, #EB99C2, transparent)' }}/>
           </div>
           <div style={{ display:'flex', gap:12, flexWrap:'wrap' }}>
@@ -89,7 +89,7 @@ function ToolCard({ tool, index, visible, navigate }) {
   return (
     <div onClick={() => tool.active && navigate(tool.path)}
       onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
-      style={{ width:160, height:175, background:'#f0f3f7', border: hovered&&tool.active?'1px solid rgba(235,153,194,0.5)':'1px solid rgba(187,198,218,0.15)', borderRadius:14, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:14, cursor:tool.active?'pointer':'not-allowed', transition:'all 0.25s ease', transform:hovered&&tool.active?'translateY(-4px)':'translateY(0)', boxShadow:hovered&&tool.active?'0 12px 32px rgba(235,153,194,0.12)':'none', opacity:visible?1:0, animation:visible?`fadeUp 0.5s ease ${0.15+index*0.08}s both`:'none', position:'relative' }}>
+      style={{ width:160, height:175, background:'#2A3D54', border: hovered&&tool.active?'1px solid #EB99C2':'1px solid #354a61', borderRadius:14, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:14, cursor:tool.active?'pointer':'not-allowed', transition:'all 0.25s ease', transform:hovered&&tool.active?'translateY(-4px)':'translateY(0)', boxShadow:hovered&&tool.active?'0 8px 24px rgba(42,61,84,0.3)':'none', opacity:visible?1:0, animation:visible?`fadeUp 0.5s ease ${0.15+index*0.08}s both`:'none', position:'relative' }}>
       {!tool.active && (
         <div style={{ position:'absolute', top:10, right:10, background:'rgba(42,61,84,0.8)', borderRadius:20, padding:'2px 7px', fontSize:9, color:'rgba(187,198,218,0.45)', letterSpacing:'0.05em', display:'flex', alignItems:'center', gap:3, border:'0.5px solid rgba(187,198,218,0.1)' }}>
           <svg width="8" height="9" viewBox="0 0 8 9" fill="none"><rect x="1" y="4" width="6" height="5" rx="1" stroke="rgba(187,198,218,0.4)" strokeWidth="1"/><path d="M2.5 4V3a1.5 1.5 0 013 0v1" stroke="rgba(187,198,218,0.4)" strokeWidth="1"/></svg>
@@ -100,8 +100,8 @@ function ToolCard({ tool, index, visible, navigate }) {
         <img src={tool.icon} alt={tool.label} style={{ width:'100%', height:'100%', objectFit:'contain' }}/>
       </div>
       <div style={{ textAlign:'center' }}>
-        <div style={{ fontSize:13, fontWeight:500, color:tool.active?(hovered?'var(--pk)':'var(--text-primary)'):'var(--text-tertiary)', transition:'color 0.25s ease', letterSpacing:'0.02em' }}>{tool.label}</div>
-        <div style={{ fontSize:10, marginTop:3, color:tool.active?'var(--text-secondary)':'var(--text-tertiary)', letterSpacing:'0.03em' }}>{tool.desc}</div>
+        <div style={{ fontSize:13, fontWeight:500, color:tool.active?(hovered?'#EB99C2':'#fff'):'rgba(187,198,218,0.3)', transition:'color 0.25s ease', letterSpacing:'0.02em' }}>{tool.label}</div>
+        <div style={{ fontSize:10, marginTop:3, color:tool.active?'rgba(187,198,218,0.6)':'rgba(187,198,218,0.2)', letterSpacing:'0.03em' }}>{tool.desc}</div>
       </div>
     </div>
   )
@@ -113,13 +113,13 @@ function AppCard({ app, index, visible }) {
   return (
     <a href={app.url} target="_blank" rel="noopener noreferrer"
       onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
-      style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:8, width:80, height:80, background:'#f0f3f7', border:hovered?'1px solid rgba(235,153,194,0.4)':'1px solid rgba(187,198,218,0.15)', borderRadius:12, textDecoration:'none', transition:'all 0.2s ease', transform:hovered?'translateY(-3px)':'translateY(0)', boxShadow:hovered?'0 8px 20px rgba(0,0,0,0.2)':'none', opacity:visible?1:0, animation:visible?`fadeUp 0.5s ease ${0.3+index*0.05}s both`:'none', cursor:'pointer' }}>
+      style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:8, width:80, height:80, background:'#2A3D54', border:hovered?'1px solid #EB99C2':'1px solid #354a61', borderRadius:12, textDecoration:'none', transition:'all 0.2s ease', transform:hovered?'translateY(-3px)':'translateY(0)', boxShadow:hovered?'0 8px 20px rgba(42,61,84,0.4)':'none', opacity:visible?1:0, animation:visible?`fadeUp 0.5s ease ${0.3+index*0.05}s both`:'none', cursor:'pointer' }}>
       <img src={faviconUrl} alt={app.name} width={28} height={28} style={{ borderRadius:6, objectFit:'contain' }}
         onError={e => { e.target.style.display='none'; e.target.nextSibling.style.display='flex' }}/>
       <div style={{ display:'none', width:28, height:28, borderRadius:6, background:'rgba(235,153,194,0.2)', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:700, color:'#EB99C2' }}>
         {app.name[0]}
       </div>
-      <span style={{ fontSize:9, fontWeight:500, color:hovered?'var(--pk)':'var(--text-secondary)', textAlign:'center', lineHeight:1.2, letterSpacing:'0.02em', maxWidth:70 }}>{app.name}</span>
+      <span style={{ fontSize:9, fontWeight:500, color:hovered?'#EB99C2':'rgba(187,198,218,0.75)', textAlign:'center', lineHeight:1.2, letterSpacing:'0.02em', maxWidth:70 }}>{app.name}</span>
     </a>
   )
 }
