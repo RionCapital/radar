@@ -442,7 +442,46 @@ export default function ClientDashboard({ clients, updateClient }) {
                     </select></td>
                     <td style={tdStyle()}><input value={ld.bank||''} onChange={e=>setLoanDraft({...loanDraft,bank:e.target.value})} style={{width:50,fontSize:10,padding:'2px 4px',borderRadius:4,border:'0.5px solid var(--border)',background:'var(--bg)'}}/></td>
                     <td style={tdStyle()}><input value={ld.assetDesc||''} onChange={e=>setLoanDraft({...loanDraft,assetDesc:e.target.value})} style={{width:120,fontSize:10,padding:'2px 4px',borderRadius:4,border:'0.5px solid var(--border)',background:'var(--bg)'}}/></td>
-                    <td style={tdStyle({textAlign:'center'})}><input value={ld.security||''} onChange={e=>setLoanDraft({...loanDraft,security:e.target.value})} style={{width:30,fontSize:10,padding:'2px 4px',borderRadius:4,border:'0.5px solid var(--border)',background:'var(--bg)',textAlign:'center'}}/></td>
+                    <td style={{...tdStyle(),position:'relative'}}>
+                      <button onClick={e=>{e.stopPropagation();setSecPicker(secPicker===i?null:i)}}
+                        style={{fontSize:10,padding:'3px 8px',borderRadius:5,border:'0.5px solid var(--pk)',background:'transparent',color:'var(--pk)',cursor:'pointer',whiteSpace:'nowrap'}}>
+                        {ld.crossed&&ld.crossed.trim()?<span style={{color:'#854F0B'}}>{ld.crossed}</span>:ld.security?`#${ld.security}`:'Select ▾'}
+                      </button>
+                      {secPicker===i&&(
+                        <div onClick={e=>e.stopPropagation()} style={{position:'fixed',zIndex:9999,background:'var(--surface)',border:'0.5px solid var(--border)',borderRadius:8,padding:'10px 12px',minWidth:260,boxShadow:'0 4px 20px rgba(0,0,0,0.15)'}}>
+                          <div style={{fontSize:10,fontWeight:500,color:'var(--text-secondary)',marginBottom:8,textTransform:'uppercase',letterSpacing:'0.05em'}}>Select securities for this loan</div>
+                          {(client.securities||[]).length===0&&<div style={{fontSize:11,color:'var(--text-tertiary)',padding:'8px 0'}}>No securities added yet — add them in the Securities section first</div>}
+                          {(client.securities||[]).map(s=>{
+                            const sNum = String(s.num)
+                            const currentSecs = ld.crossed&&ld.crossed.trim()
+                              ? ld.crossed.split(',').map(x=>x.trim())
+                              : ld.security ? [String(ld.security).trim()] : []
+                            const checked = currentSecs.includes(sNum)
+                            return (
+                              <label key={sNum} style={{display:'flex',alignItems:'flex-start',gap:8,padding:'7px 0',borderBottom:'0.5px solid var(--border-light)',cursor:'pointer'}}>
+                                <input type="checkbox" checked={checked} style={{accentColor:'var(--pk)',width:14,height:14,cursor:'pointer',marginTop:2,flexShrink:0}}
+                                  onChange={e=>{
+                                    let current = ld.crossed&&ld.crossed.trim()
+                                      ? ld.crossed.split(',').map(x=>x.trim()).filter(Boolean)
+                                      : ld.security ? [String(ld.security).trim()] : []
+                                    if(e.target.checked){if(!current.includes(sNum))current.push(sNum)}
+                                    else{current=current.filter(x=>x!==sNum)}
+                                    current.sort()
+                                    if(current.length===0)setLoanDraft({...loanDraft,security:'',crossed:''})
+                                    else if(current.length===1)setLoanDraft({...loanDraft,security:current[0],crossed:''})
+                                    else setLoanDraft({...loanDraft,security:current[0],crossed:current.join(',')})
+                                  }}/>
+                                <div>
+                                  <div style={{fontSize:11,fontWeight:500,color:'var(--text-primary)'}}>Security #{sNum}</div>
+                                  <div style={{fontSize:10,color:'var(--text-secondary)'}}>{s.address||'No address entered'}</div>
+                                </div>
+                              </label>
+                            )
+                          })}
+                          <button onClick={()=>setSecPicker(null)} style={{marginTop:10,width:'100%',padding:'6px',borderRadius:6,border:'none',background:'var(--pk)',color:'#fff',fontSize:11,cursor:'pointer',fontWeight:500}}>Done</button>
+                        </div>
+                      )}
+                    </td>
                     <td style={tdStyle({textAlign:'right'})}><input type="number" value={ld.amount||''} onChange={e=>setLoanDraft({...loanDraft,amount:+e.target.value})} style={{width:80,fontSize:10,padding:'2px 4px',borderRadius:4,border:'0.5px solid var(--border)',background:'var(--bg)',textAlign:'right'}}/></td>
                     <td style={tdStyle({textAlign:'right'})}><input type="number" value={ld.balance||''} onChange={e=>setLoanDraft({...loanDraft,balance:+e.target.value})} style={{width:80,fontSize:10,padding:'2px 4px',borderRadius:4,border:'0.5px solid var(--border)',background:'var(--bg)',textAlign:'right'}}/></td>
                     <td style={tdStyle({textAlign:'right'})}><input type="number" step="0.01" value={ld.rate||''} onChange={e=>setLoanDraft({...loanDraft,rate:+e.target.value})} style={{width:50,fontSize:10,padding:'2px 4px',borderRadius:4,border:'0.5px solid var(--border)',background:'var(--bg)',textAlign:'right'}}/></td>
