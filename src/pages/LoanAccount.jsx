@@ -184,7 +184,14 @@ export default function LoanAccount({ clients, updateClient }) {
                 ['Interest rate',loan.rate>0?loan.rate.toFixed(2)+'%':'—'],
                 ['Rate type',loan.rateType||'Variable'],
                 ['Term',loan.term?loan.term+'y':'—'],
-                ['IO period',loan.ioTerm?loan.ioTerm+'y':'—'],
+                ['IO period', (() => {
+                  if (loan.ioTerm) return loan.ioTerm + 'y'
+                  if (loan.io && loan.settled) {
+                    const months = Math.round((new Date(loan.io) - new Date(loan.settled)) / (30.44 * 86400000))
+                    if (months > 0) return months >= 12 ? (months/12).toFixed(1).replace('.0','') + 'y' : months + 'mo'
+                  }
+                  return '—'
+                })()],
                 ['Settlement date',fmtDate(loan.settled)],
                 ['Maturity date',fmtDate(loan.maturity)],
                 ['Est. monthly repayment',estRepayment?'$'+estRepayment.toLocaleString():loan.rate?'—':'Rate not set'],
