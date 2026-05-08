@@ -448,7 +448,7 @@ export default function ClientDashboard({ clients, updateClient }) {
                         {ld.crossed&&ld.crossed.trim()?<span style={{color:'#854F0B'}}>{ld.crossed}</span>:ld.security?`#${ld.security}`:'Select ▾'}
                       </button>
                       {secPicker===i&&(
-                        <div onClick={e=>e.stopPropagation()} style={{position:'absolute',bottom:'calc(100% + 4px)',left:0,zIndex:9999,background:'var(--surface)',border:'0.5px solid var(--border)',borderRadius:8,padding:'10px 12px',minWidth:260,boxShadow:'0 4px 20px rgba(0,0,0,0.15)'}}>
+                        <div onClick={e=>e.stopPropagation()} style={{position:'absolute',top:'calc(100% + 4px)',left:'-60px',zIndex:9999,background:'var(--surface)',border:'0.5px solid var(--border)',borderRadius:8,padding:'10px 12px',minWidth:280,maxHeight:320,overflowY:'auto',boxShadow:'0 8px 24px rgba(0,0,0,0.18)'}}>
                           <div style={{fontSize:10,fontWeight:500,color:'var(--text-secondary)',marginBottom:8,textTransform:'uppercase',letterSpacing:'0.05em'}}>Select securities for this loan</div>
                           {(client.securities||[]).length===0&&<div style={{fontSize:11,color:'var(--text-tertiary)',padding:'8px 0'}}>No securities added yet — add them in the Securities section first</div>}
                           {(client.securities||[]).map(s=>{

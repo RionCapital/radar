@@ -71,6 +71,15 @@ export function calcRepayment(loan) {
   if (effectiveRpmt === 'IO') return Math.round(bal * rate)
   const n = (loan.term || 30) * 12
   if (!n) return null
+  // Balloon/residual adjusted P&I — present value of balloon subtracted
+  const balloon = parseFloat(loan.balloon) || 0
+  if (balloon > 0 && !isNaN(balloon)) {
+    // PMT formula adjusted for balloon: PMT = (PV - FV/(1+r)^n) * r / (1 - (1+r)^-n)
+    const pvBalloon = balloon / Math.pow(1+rate, n)
+    const adjustedBal = bal - pvBalloon
+    if (adjustedBal <= 0) return Math.round(bal * rate) // edge case
+    return Math.round((adjustedBal * rate * Math.pow(1+rate,n)) / (Math.pow(1+rate,n)-1))
+  }
   return Math.round((bal * rate * Math.pow(1+rate,n)) / (Math.pow(1+rate,n)-1))
 }
 
