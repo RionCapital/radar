@@ -154,7 +154,13 @@ function SecuritiesView({ securities, loans, bal }) {
       <tbody>
         {(securities||[]).length > 0
           ? [...(securities||[]).map((s,i) => {
-              const debt = loans.filter(l=>String(l.security)===String(s.num||i+1)).reduce((x,l)=>x+l.balance,0)
+              const secNum = String(s.num||i+1)
+              const debt = loans.filter(l => {
+                if (String(l.security)===secNum) return true
+                // Also include cross-col loans that reference this security
+                if (l.crossed) return l.crossed.split(',').map(x=>x.trim()).includes(secNum)
+                return false
+              }).reduce((x,l) => x + l.balance, 0)
               const eq = (s.estVal||0) - debt
               const lvr = s.lvr !== undefined ? s.lvr : 80
               const lendingEquity = s.estVal ? Math.round(s.estVal * lvr / 100 - debt) : null
@@ -176,8 +182,10 @@ function SecuritiesView({ securities, loans, bal }) {
               <td style={{...tdStyle(),color:'#fff',fontWeight:500,textAlign:'right'}}>{fmt((securities||[]).reduce((s,x)=>s+(x.estVal||0),0))}</td>
               <td style={{...tdStyle(),color:'var(--sbl)',fontSize:10}}></td>
               <td style={{...tdStyle(),color:'#fff',fontWeight:500,textAlign:'right'}}>{fmt(bal)}</td>
-              <td style={{...tdStyle(),color:'#EB99C2',fontWeight:500,textAlign:'right'}}>{fmt((securities||[]).reduce((s,x)=>s+(x.estVal||0),0)-bal)}</td>
-              <td style={tdStyle()}></td>
+              <td style={{...tdStyle(),color:'#EB99C2',fontWeight:500,textAlign:'right'}}>
+                {fmt((securities||[]).reduce((s,x)=>s+(Math.round((x.estVal||0)*(x.lvr!==undefined?x.lvr:80)/100)),0)-bal)}
+              </td>
+              <td style={tdStyle({color:'var(--sbl)',fontSize:10})}>{Math.round((securities||[]).reduce((s,x)=>s+(x.estVal||0),0)>0?bal/(securities||[]).reduce((s,x)=>s+(x.estVal||0),0)*100:0)}%</td>
             </tr>]
           : <tr><td colSpan={6} style={tdStyle({textAlign:'center',color:'var(--text-tertiary)',padding:16})}>No securities yet — click Edit to add</td></tr>}
       </tbody>
@@ -433,8 +441,17 @@ export default function ClientDashboard({ clients, updateClient }) {
                     <td style={{...tdStyle(),maxWidth:140,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{l.lname||'—'}</td>
                     <td style={tdStyle()}><Pill label={l.type||'—'} variant={['Commercial Property','Lease Doc','Term'].includes(l.type)?'comm':'pw'}/></td>
                     <td style={tdStyle()}>{l.bank||'—'}</td>
-                    <td style={{...tdStyle(),maxWidth:140,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',color:'var(--text-secondary)',fontSize:10}}>
-                      {(() => { const sec = (client.securities||[]).find(s=>String(s.num)===String(l.security)); return sec?.address || l.assetDesc || '—' })()}
+                    <td style={{...tdStyle(),maxWidth:160,fontSize:10}}>
+                      {(() => {
+                        if (l.crossed) {
+                          return <span style={{background:'#fef9c3',color:'#854F0B',padding:'2px 7px',borderRadius:4,fontSize:9,fontWeight:500}}>
+                            ✕ Cross-col: {l.crossed}
+                          </span>
+                        }
+                        const sec = (client.securities||[]).find(s=>String(s.num)===String(l.security))
+                        const addr = sec?.address || l.assetDesc || '—'
+                        return <span style={{color:'var(--text-secondary)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',display:'block',maxWidth:150}}>{addr}</span>
+                      })()}
                     </td>
                     <td style={tdStyle({textAlign:'center'})}>{l.security||'—'}</td>
                     <td style={tdStyle({textAlign:'right'})}>{fmt(l.amount)}</td>
