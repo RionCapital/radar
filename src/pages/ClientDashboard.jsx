@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { totalBal, totalAmt, pwBal, commBal, fmt, calcOpp, ini, LOAN_TYPES, BANKS } from '../lib/data'
-import { fmtDate, dateCellStyle, loanFlag, effectiveRpmt } from '../lib/dateUtils'
+import { fmtDate, dateCellStyle, loanFlag, effectiveRpmt, calcRepayment } from '../lib/dateUtils'
 import { Panel, PanelTitle, EditBtn, SaveBtn, CancelBtn, ActionBtn, FieldGroup, Pill } from '../components/UI'
 
 const CONTACT_TYPES = ['Individual','Company','Trust','Partnership','Sole Trader']
@@ -498,13 +498,7 @@ export default function ClientDashboard({ clients, updateClient }) {
                 }
                 const flag = loanFlag(l)
                 const eRpmt = effectiveRpmt(l)
-                const repay = (() => {
-                  if (!l.balance || !l.rate) return null
-                  const r = l.rate/100/12
-                  if (eRpmt==='IO') return Math.round(l.balance*r)
-                  const n=(l.term||30)*12
-                  return Math.round((l.balance*r*Math.pow(1+r,n))/(Math.pow(1+r,n)-1))
-                })()
+                const repay = calcRepayment(l)
                 return (
                   <tr key={i} style={{cursor:'pointer',opacity:l.closed?0.6:1}}
                     onMouseOver={e=>e.currentTarget.style.background='#fdf5fa'}
