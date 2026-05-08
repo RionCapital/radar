@@ -286,56 +286,6 @@ function SecuritiesEdit({ draft, setDraft }) {
   )
 }
 
-function SecuritiesView({ securities, loans, bal }) {
-  return (
-    <table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
-      <thead><tr>
-        {['#','Address','Last val.','Est. value','LVR','Debt','Lending equity','Crossed'].map((h,i) => (
-          <th key={h} style={thStyle({textAlign:i>1?'right':'left'})}>{h}</th>
-        ))}
-      </tr></thead>
-      <tbody>
-        {(securities||[]).length > 0
-          ? [...(securities||[]).map((s,i) => {
-              const secNum = String(s.num||i+1)
-              const debt = loans.filter(l => {
-                if (String(l.security)===secNum) return true
-                // Also include cross-col loans that reference this security
-                if (l.crossed) return l.crossed.split(',').map(x=>x.trim()).includes(secNum)
-                return false
-              }).reduce((x,l) => x + l.balance, 0)
-              const eq = (s.estVal||0) - debt
-              const lvr = s.lvr !== undefined ? s.lvr : 80
-              const lendingEquity = s.estVal ? Math.round(s.estVal * lvr / 100 - debt) : null
-              return (
-                <tr key={i}>
-                  <td style={tdStyle({color:'var(--pk)',fontWeight:500})}>{s.num||i+1}</td>
-                  <td style={tdStyle()}>{s.address||'—'}</td>
-                  <td style={tdStyle({textAlign:'right'})}>{s.lastVal?fmt(s.lastVal):'—'}</td>
-                  <td style={tdStyle({textAlign:'right',fontWeight:500})}>{s.estVal?fmt(s.estVal):'—'}</td>
-                  <td style={tdStyle({textAlign:'right'})}>{lvr}%</td>
-                  <td style={tdStyle({textAlign:'right'})}>{fmt(debt)}</td>
-                  <td style={tdStyle({textAlign:'right',color:lendingEquity>0?'#27ae60':'#c0392b'})}>{lendingEquity!==null?fmt(lendingEquity):'—'}</td>
-                  <td style={tdStyle({fontSize:10,color:'var(--text-secondary)'})}>{s.crossed||'—'}</td>
-                </tr>
-              )
-            }),
-            <tr key="total" style={{background:'#2A3D54'}}>
-              <td colSpan={3} style={{...tdStyle(),color:'#fff',fontWeight:500}}>Total</td>
-              <td style={{...tdStyle(),color:'#fff',fontWeight:500,textAlign:'right'}}>{fmt((securities||[]).reduce((s,x)=>s+(x.estVal||0),0))}</td>
-              <td style={{...tdStyle(),color:'var(--sbl)',fontSize:10}}></td>
-              <td style={{...tdStyle(),color:'#fff',fontWeight:500,textAlign:'right'}}>{fmt(bal)}</td>
-              <td style={{...tdStyle(),color:'#EB99C2',fontWeight:500,textAlign:'right'}}>
-                {fmt((securities||[]).reduce((s,x)=>s+(Math.round((x.estVal||0)*(x.lvr!==undefined?x.lvr:80)/100)),0)-bal)}
-              </td>
-              <td style={tdStyle({color:'var(--sbl)',fontSize:10})}>{Math.round((securities||[]).reduce((s,x)=>s+(x.estVal||0),0)>0?bal/(securities||[]).reduce((s,x)=>s+(x.estVal||0),0)*100:0)}%</td>
-            </tr>]
-          : <tr><td colSpan={6} style={tdStyle({textAlign:'center',color:'var(--text-tertiary)',padding:16})}>No securities yet — click Edit to add</td></tr>}
-      </tbody>
-    </table>
-  )
-}
-
 // ── Main component ──
 
 export default function ClientDashboard({ clients, updateClient }) {
