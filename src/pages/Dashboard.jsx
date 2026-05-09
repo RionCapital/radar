@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { totalBal, fmt } from '../lib/data'
 import { fmtDate, rollingYTD, quarterlyIncome, expiryBadge, daysUntil } from '../lib/dateUtils'
 
-const DASH_BG = '#3D5570'
+const DASH_BG = '#2A3D54'
 import { Panel, PanelTitle, DayBadge } from '../components/UI'
 import CommissionImport from './CommissionImport'
 
@@ -173,7 +173,7 @@ function RadarTable({ title, rows, navigate, onTick, showExpiry }) {
     : ['Connection','Client','Account No.','Balance','Days Since Review','Opp. Score']
   return (
     <div style={{border:'0.5px solid var(--border)',borderRadius:8,overflow:'hidden',background:'#fff'}}>
-      <div style={{background:'#3D5570',padding:'8px 12px',fontSize:10,fontWeight:500,color:'#fff',textTransform:'uppercase',letterSpacing:'0.05em'}}>{title}</div>
+      <div style={{background:'#2A3D54',padding:'8px 12px',fontSize:10,fontWeight:500,color:'#fff',textTransform:'uppercase',letterSpacing:'0.05em'}}>{title}</div>
       <div style={{overflowX:'auto'}}>
         <table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
           <thead><tr>

@@ -1,24 +1,36 @@
 import React from 'react'
-import { NavLink, useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { logo_rion } from '../lib/icons'
-import s from './Topbar.module.css'
+import styles from './Topbar.module.css'
 
 export default function Topbar() {
   const navigate = useNavigate()
+  const location = useLocation()
+  const isActive = (path) => location.pathname.startsWith(path)
+
   return (
-    <header className={s.bar}>
-      <div className={s.logo} onClick={() => navigate('/')} style={{ cursor: 'pointer' }}>
-        <img src={logo_rion} alt="RION Capital" style={{ height: 36, width: 'auto', objectFit: 'contain' }} />
-        <div style={{ marginLeft: 8, borderLeft: '0.5px solid rgba(187,198,218,0.3)', paddingLeft: 12 }}>
-          <div className={s.name}>RION Radar</div>
-          <div className={s.sub}>Back book relationship management</div>
-        </div>
+    <div className={styles.bar}>
+      {/* Logo */}
+      <div className={styles.logo} onClick={() => navigate('/')} title="Home">
+        <img src={logo_rion} alt="RION Capital" style={{ height: 44, width: 'auto', objectFit: 'contain', cursor: 'pointer' }} />
       </div>
-      <nav className={s.nav}>
-        <NavLink to="/radar/dashboard" className={({ isActive }) => isActive ? `${s.link} ${s.active}` : s.link}>Dashboard</NavLink>
-        <NavLink to="/radar/clients" className={({ isActive }) => isActive ? `${s.link} ${s.active}` : s.link}>Clients</NavLink>
-        <button onClick={() => navigate('/')} className={s.link} style={{ border: 'none', cursor: 'pointer', background: 'rgba(255,255,255,0.08)' }}>⌂ Home</button>
+
+      {/* Nav */}
+      <nav className={styles.nav}>
+        <button
+          className={`${styles.navBtn} ${isActive('/radar/dashboard') ? styles.active : ''}`}
+          onClick={() => navigate('/radar/dashboard')}>
+          Dashboard
+        </button>
+        <button
+          className={`${styles.navBtn} ${isActive('/radar/clients') ? styles.active : ''}`}
+          onClick={() => navigate('/radar/clients')}>
+          Clients
+        </button>
+        <button className={styles.homeBtn} onClick={() => navigate('/')}>
+          ⌂ Home
+        </button>
       </nav>
-    </header>
+    </div>
   )
 }

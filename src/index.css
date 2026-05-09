@@ -1,61 +1,60 @@
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+/* ── RION Capital Brand Style Guide — Version 1.0 ── */
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap');
 
 :root {
-  --pk: #DA408D;
-  --bl: #2A3D54;
-  --spk: #EB99C2;
-  --sbl: #BBC6DA;
-  --pk-light: #fce8f3;
-  --bl-light: #eef1f5;
-  --bg: #f0f3f7;
-  --surface: #ffffff;
-  --border: #e2e8f0;
-  --border-light: #f0f3f7;
-  --text-primary: #1a2332;
-  --text-secondary: #6b7a8d;
-  --text-tertiary: #9aa3ad;
-  --success: #27ae60;
-  --warning: #e8a020;
-  --danger: #c0392b;
-  --radius-sm: 6px;
-  --radius-md: 8px;
-  --radius-lg: 10px;
-  --radius-xl: 12px;
-  font-family: 'DM Sans', system-ui, sans-serif;
+  /* Primary Brand Colours */
+  --brand-navy:   #2A3D54;
+  --brand-pink:   #DA408D;
+  --soft-pink:    #EB99C2;
+  --white:        #FFFFFF;
+  /* Secondary Colours */
+  --cool-grey:    #6B7A8D;
+  --off-white:    #F4F6F8;
+  --black:        #000000;
+
+  /* Platform aliases */
+  --pk:           #DA408D;
+  --spk:          #EB99C2;
+  --bl:           #2A3D54;
+  --sbl:          #BBC6DA;
+  --bg:           #F4F6F8;
+  --surface:      #FFFFFF;
+  --border:       #D1D8E0;
+  --border-light: #E8EDF3;
+  --text-primary:   #1a2332;
+  --text-secondary: #6B7A8D;
+  --text-tertiary:  #9DAAB8;
 }
 
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
 body {
-  background: var(--bg);
+  font-family: 'Montserrat', system-ui, sans-serif;
+  background: var(--off-white);
   color: var(--text-primary);
   font-size: 13px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
 
+/* Typography scale per brand guide */
+h1 { font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 32px; }
+h2 { font-family: 'Montserrat', sans-serif; font-weight: 700; font-size: 20px; }
+h3 { font-family: 'Montserrat', sans-serif; font-weight: 400; font-size: 14px; }
+
 input, select, textarea, button {
-  font-family: inherit;
-  font-size: 13px;
+  font-family: 'Montserrat', system-ui, sans-serif;
+  font-size: 12px;
 }
 
-input, select, textarea {
-  background: #f8fafc;
-  border: 0.5px solid var(--border);
-  border-radius: var(--radius-sm);
-  color: var(--text-primary);
-  padding: 6px 10px;
-  outline: none;
-  transition: border-color 0.15s;
+/* Tagline class — Georgia italic per brand guide */
+.brand-tagline {
+  font-family: Georgia, serif;
+  font-style: italic;
+  color: var(--soft-pink);
 }
-input:focus, select:focus, textarea:focus {
-  border-color: var(--pk);
-  box-shadow: 0 0 0 3px rgba(218,64,141,0.08);
-}
-textarea { resize: vertical; line-height: 1.6; }
 
-button { cursor: pointer; }
-
-::-webkit-scrollbar { width: 4px; height: 4px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--sbl); border-radius: 2px; }
-
-.mono { font-family: 'DM Mono', monospace; }
+/* Scrollbar */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: var(--border-light); }
+::-webkit-scrollbar-thumb { background: var(--sbl); border-radius: 10px; }
