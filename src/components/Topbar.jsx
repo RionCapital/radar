@@ -1,6 +1,6 @@
 import React from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { logo_rion } from '../lib/icons'
+import { logo_rion_notag } from '../lib/icons'
 import styles from './Topbar.module.css'
 
 export default function Topbar() {
@@ -12,7 +12,7 @@ export default function Topbar() {
     <div className={styles.bar}>
       {/* Logo */}
       <div className={styles.logo} onClick={() => navigate('/')} title="Home">
-        <img src={logo_rion} alt="RION Capital" style={{ height: 44, width: 'auto', objectFit: 'contain', cursor: 'pointer' }} />
+        <img src={logo_rion_notag} alt="RION Capital" style={{ height: 44, width: 'auto', objectFit: 'contain', cursor: 'pointer' }} />
       </div>
 
       {/* Nav */}

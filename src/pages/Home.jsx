@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { icon_crm, icon_radar, icon_marketing, icon_planner, logo_rion } from '../lib/icons'
+import { icon_crm, icon_radar, icon_marketing, icon_planner, logo_rion_notag } from '../lib/icons'
 
 const BG = '#2A3D54'
 
@@ -43,7 +43,7 @@ export default function Home() {
   return (
     <div style={{ minHeight:'100vh', background:'#ffffff', display:'flex', flexDirection:'column', fontFamily:"'DM Sans',system-ui,sans-serif" }}>
       <header style={{ background:'#1a2d42', display:'flex', alignItems:'center', justifyContent:'space-between', padding:'20px 48px', opacity:visible?1:0, transform:visible?'translateY(0)':'translateY(-10px)', transition:'all 0.5s ease' }}>
-        <img src={logo_rion} alt="RION Capital" style={{ height:52, width:'auto', objectFit:'contain', cursor:'pointer' }} onClick={()=>navigate('/')}/>
+        <img src={logo_rion_notag} alt="RION Capital" style={{ height:52, width:'auto', objectFit:'contain', cursor:'pointer' }} onClick={()=>navigate('/')}/>
         <div style={{display:'flex',alignItems:'center',gap:16}}>
           <div style={{fontSize:11,color:'rgba(187,198,218,0.7)'}}>Welcome, {auth.name}</div>
           <button onClick={()=>{sessionStorage.removeItem('rion-auth');navigate('/login')}} style={{fontSize:11,padding:'5px 12px',borderRadius:6,border:'0.5px solid rgba(187,198,218,0.2)',background:'transparent',color:'rgba(187,198,218,0.7)',cursor:'pointer'}}>Sign out</button>
