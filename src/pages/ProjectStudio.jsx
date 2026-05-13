@@ -138,11 +138,11 @@ export default function ProjectStudio() {
       <div style={{ width:252, flexShrink:0, background:DEEP, display:'flex', flexDirection:'column', height:'100%', boxShadow:'4px 0 20px rgba(0,0,0,0.15)' }}>
         {/* Brand */}
         <div style={{ padding:'16px 18px 0', borderBottom:'1px solid rgba(255,255,255,0.08)' }}>
-          <div style={{ paddingBottom:14 }}>
-            <img src={logo_rion_notag} alt="RION Capital" style={{ height:40, width:'auto', objectFit:'contain' }}/>
-            <div style={{ fontSize:9, color:PINK, letterSpacing:'0.15em', fontFamily:"'Montserrat',sans-serif", fontWeight:500, marginTop:4, opacity:0.7 }}>PROJECT STUDIO</div>
+          <div style={{ paddingBottom:12 }}>
+            <img src={logo_rion_notag} alt="RION Capital" style={{ height:38, width:'auto', objectFit:'contain' }}/>
+            <div style={{ fontSize:9, color:PINK, letterSpacing:'0.18em', fontFamily:"'Montserrat',sans-serif", fontWeight:600, marginTop:6, textTransform:'uppercase' }}>Project Studio</div>
           </div>
-          <div style={{ height:1.5, background:`linear-gradient(90deg, ${PINK}, rgba(196,112,154,0.2))`, margin:'0 -18px' }}/>
+          <div style={{ height:1.5, background:`linear-gradient(90deg, ${PINK}, rgba(235,153,194,0.1))`, margin:'0 -18px' }}/>
         </div>
         {/* Project list */}
         <div style={{ fontSize:9, color:'rgba(255,255,255,0.3)', letterSpacing:'0.18em', padding:'14px 18px 6px', fontFamily:'monospace' }}>PROJECTS</div>
