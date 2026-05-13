@@ -59,7 +59,7 @@ export default function Radar({ clients }) {
                 style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 0', borderBottom: '0.5px solid var(--border-light)', cursor: 'pointer' }}
                 onMouseOver={e => e.currentTarget.querySelector('.rn').style.color = 'var(--pk)'}
                 onMouseOut={e => e.currentTarget.querySelector('.rn').style.color = 'var(--text-primary)'}>
-                <div style={{ width: 26, height: 26, borderRadius: '50%', background: c.stream === 'Commercial' ? '#eef1f5' : '#fce8f3', color: c.stream === 'Commercial' ? '#2A3D54' : 'var(--pk)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 500, flexShrink: 0 }}>
+                <div style={{ width: 26, height: 26, borderRadius: '50%', background: c.stream === 'Commercial' ? '#eef1f5' : '#fdf0f6', color: c.stream === 'Commercial' ? '#2A3D54' : 'var(--pk)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 500, flexShrink: 0 }}>
                   {c.name.split(/[\s-]+/).map(w => w[0] || '').join('').toUpperCase().slice(0, 2)}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>

@@ -110,9 +110,9 @@ export default function CommissionImport({ clients, onImport, onClose }) {
             <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 16, lineHeight: 1.6 }}>
               Upload your monthly commission export (XLS or XLSX) from Mercury/Connective. Balances will be matched by account number and flagged for review before any changes are applied.
             </p>
-            <div onClick={() => fileRef.current.click()} style={{ border: '1.5px dashed var(--spk)', borderRadius: 10, padding: '28px 20px', textAlign: 'center', cursor: 'pointer', background: '#fdf5fa' }}
-              onMouseOver={e => e.currentTarget.style.background = '#fce8f3'}
-              onMouseOut={e => e.currentTarget.style.background = '#fdf5fa'}>
+            <div onClick={() => fileRef.current.click()} style={{ border: '1.5px dashed var(--spk)', borderRadius: 10, padding: '28px 20px', textAlign: 'center', cursor: 'pointer', background: '#fdf0f6' }}
+              onMouseOver={e => e.currentTarget.style.background = '#fdf0f6'}
+              onMouseOut={e => e.currentTarget.style.background = '#fdf0f6'}>
               <div style={{ fontSize: 28, marginBottom: 8 }}>📄</div>
               <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--pk)' }}>Click to upload commission statement</div>
               <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4 }}>XLS or XLSX — Mercury/Connective export format</div>

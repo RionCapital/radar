@@ -146,7 +146,7 @@ function PieChart({ pw, comm }) {
     <div style={{display:'flex',flexDirection:'column',alignItems:'center'}}>
       <div style={{fontSize:11,fontWeight:500,color:'var(--text-secondary)',marginBottom:8}}>Portfolio Split</div>
       <svg width={180} height={160} viewBox="0 0 180 160">
-        {arc(0, pwAngle, '#DA408D')}
+        {arc(0, pwAngle, '#EB99C2')}
         {arc(pwAngle, 360, '#2A3D54')}
         {/* Labels inside */}
         <text x={mid1.x} y={mid1.y} textAnchor="middle" fontSize={9} fill="#fff" fontWeight={500}>
@@ -157,7 +157,7 @@ function PieChart({ pw, comm }) {
         </text>
       </svg>
       <div style={{display:'flex',gap:10,justifyContent:'center',fontSize:10,color:'var(--text-secondary)',marginTop:-8}}>
-        <div style={{display:'flex',alignItems:'center',gap:4}}><div style={{width:8,height:8,borderRadius:2,background:'#DA408D'}}/> Private Wealth</div>
+        <div style={{display:'flex',alignItems:'center',gap:4}}><div style={{width:8,height:8,borderRadius:2,background:'#EB99C2'}}/> Private Wealth</div>
         <div style={{display:'flex',alignItems:'center',gap:4}}><div style={{width:8,height:8,borderRadius:2,background:'#2A3D54'}}/> Commercial</div>
       </div>
       <div style={{fontSize:12,fontWeight:500,color:'var(--text-primary)',marginTop:6}}>Total: ${(total/1e6).toFixed(1)}m</div>
@@ -173,7 +173,7 @@ function RadarTable({ title, rows, navigate, onTick, showExpiry }) {
     : ['Connection','Client','Account No.','Balance','Days Since Review','Opp. Score']
   return (
     <div style={{border:'0.5px solid var(--border)',borderRadius:8,overflow:'hidden',background:'#fff'}}>
-      <div style={{background:'#2A3D54',padding:'8px 12px',fontSize:10,fontWeight:500,color:'#fff',textTransform:'uppercase',letterSpacing:'0.05em'}}>{title}</div>
+      <div style={{background:'#3D5570',padding:'8px 12px',fontSize:10,fontWeight:500,color:'#fff',textTransform:'uppercase',letterSpacing:'0.05em'}}>{title}</div>
       <div style={{overflowX:'auto'}}>
         <table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
           <thead><tr>
@@ -185,7 +185,7 @@ function RadarTable({ title, rows, navigate, onTick, showExpiry }) {
           <tbody>
             {rows.length>0 ? rows.map((r,i)=>(
               <tr key={i}
-                onMouseOver={e=>e.currentTarget.style.background='#fce8f3'}
+                onMouseOver={e=>e.currentTarget.style.background='#fdf0f6'}
                 onMouseOut={e=>e.currentTarget.style.background='transparent'}>
                 <td style={td({textAlign:'center'})}>
                   <input type="checkbox" onChange={()=>onTick&&onTick(i)}
@@ -208,7 +208,7 @@ function RadarTable({ title, rows, navigate, onTick, showExpiry }) {
                 ) : (
                   <td style={{...td(),textAlign:'right'}}><DayBadge days={r.days}/></td>
                 )}
-                <td style={td({textAlign:'right'})}>{r.score>0?<span style={{background:'#fce8f3',color:'var(--pk)',padding:'2px 7px',borderRadius:20,fontSize:9,fontWeight:500}}>{r.score}</span>:'—'}</td>
+                <td style={td({textAlign:'right'})}>{r.score>0?<span style={{background:'#fdf0f6',color:'var(--pk)',padding:'2px 7px',borderRadius:20,fontSize:9,fontWeight:500}}>{r.score}</span>:'—'}</td>
               </tr>
             )) : <tr><td colSpan={8} style={td({textAlign:'center',color:'var(--text-tertiary)',padding:14})}>No items</td></tr>}
           </tbody>
@@ -268,7 +268,7 @@ export default function Dashboard({ clients, onImport }) {
       <div style={{display:'grid',gridTemplateColumns:'1fr 180px 1fr 200px',gap:14,marginBottom:14,alignItems:'start'}}>
 
         <Panel style={{display:'flex',flexDirection:'column'}}>
-          <BarChart data={balData} keys={['private','commercial']} colors={['#2A3D54','#DA408D']} title="Portfolio Balances" formatY={v=>v>=1e6?`$${(v/1e6).toFixed(1)}m`:`$${Math.round(v/1000)}k`}/>
+          <BarChart data={balData} keys={['private','commercial']} colors={['#3D5570','#EB99C2']} title="Portfolio Balances" formatY={v=>v>=1e6?`$${(v/1e6).toFixed(1)}m`:`$${Math.round(v/1000)}k`}/>
         </Panel>
 
         <Panel style={{display:'flex',alignItems:'center',justifyContent:'center',padding:'10px 6px'}}>
@@ -276,7 +276,7 @@ export default function Dashboard({ clients, onImport }) {
         </Panel>
 
         <Panel style={{display:'flex',flexDirection:'column'}}>
-          <BarChart data={COMMISSION} keys={['trail','upfront']} colors={['#2A3D54','#DA408D']} title="Commission Income" formatY={v=>`$${Math.round(v/1000)}k`}/>
+          <BarChart data={COMMISSION} keys={['trail','upfront']} colors={['#3D5570','#EB99C2']} title="Commission Income" formatY={v=>`$${Math.round(v/1000)}k`}/>
         </Panel>
 
         <Panel style={{padding:'12px 14px'}}>

@@ -57,7 +57,7 @@ export default function LoanAccount({ clients, updateClient }) {
   const l = editing?draft:loan
   const inp = {width:'100%'}
 
-  const th = {padding:'6px 8px',background:'#2A3D54',color:'#fff',fontSize:10,fontWeight:500,textAlign:'left',whiteSpace:'nowrap'}
+  const th = {padding:'6px 8px',background:'#3D5570',color:'#fff',fontSize:10,fontWeight:500,textAlign:'left',whiteSpace:'nowrap'}
   const td = (extra={}) => ({padding:'6px 8px',borderBottom:'0.5px solid var(--border-light)',fontSize:11,color:'var(--text-primary)',verticalAlign:'middle',...extra})
 
   // Graph
@@ -89,7 +89,7 @@ export default function LoanAccount({ clients, updateClient }) {
       </button>
 
       {/* Header */}
-      <div style={{background:'#2A3D54',borderRadius:10,padding:'16px 20px',marginBottom:14}}>
+      <div style={{background:'#3D5570',borderRadius:10,padding:'16px 20px',marginBottom:14}}>
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14}}>
           <div>
             <div style={{fontSize:16,fontWeight:500,color:'#fff',marginBottom:4}}>{loan.lname||'Loan account'}</div>
@@ -317,13 +317,13 @@ export default function LoanAccount({ clients, updateClient }) {
                 </g>
               ))}
               {propPath&&<path d={propPath} fill="none" stroke="#27ae60" strokeWidth={1.5} strokeDasharray="4,3" opacity={0.7}/>}
-              <path d={balPath} fill="none" stroke="#2A3D54" strokeWidth={2}/>
+              <path d={balPath} fill="none" stroke="#3D5570" strokeWidth={2}/>
               <path d={`${balPath} L${toX(graphData.length-1)},${pad.t+plotH} L${pad.l},${pad.t+plotH} Z`} fill="#2A3D54" opacity={0.08}/>
               {yearLabels.filter((_,i)=>i%2===0).map((yl,i)=><text key={i} x={yl.x} y={gH-4} textAnchor="middle" fontSize={8} fill="var(--text-tertiary)">{yl.label}</text>)}
             </svg>
           </div>
           <div style={{display:'flex',gap:16,marginTop:8,fontSize:10,color:'var(--text-secondary)'}}>
-            <div style={{display:'flex',alignItems:'center',gap:4}}><div style={{width:20,height:2,background:'#2A3D54'}}/> Balance</div>
+            <div style={{display:'flex',alignItems:'center',gap:4}}><div style={{width:20,height:2,background:'#3D5570'}}/> Balance</div>
             {propStart>0&&<div style={{display:'flex',alignItems:'center',gap:4}}><div style={{width:20,height:0,borderTop:'1.5px dashed #27ae60'}}/> Est. property value</div>}
           </div>
         </Panel>

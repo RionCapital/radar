@@ -6,7 +6,7 @@ import { Panel, PanelTitle, EditBtn, SaveBtn, CancelBtn, ActionBtn, FieldGroup, 
 
 const CONTACT_TYPES = ['Individual','Company','Trust','Partnership','Sole Trader']
 const CONTACT_TYPE_CODES = { Individual:'Ind', Company:'Co', Trust:'Tru', Partnership:'Par', 'Sole Trader':'Sol' }
-const thStyle = (extra={}) => ({ textAlign:'left', padding:'6px 8px', background:'#2A3D54', color:'#fff', fontWeight:500, fontSize:10, letterSpacing:'0.03em', whiteSpace:'nowrap', ...extra })
+const thStyle = (extra={}) => ({ textAlign:'left', padding:'6px 8px', background:'#3D5570', color:'#fff', fontWeight:500, fontSize:10, letterSpacing:'0.03em', whiteSpace:'nowrap', ...extra })
 const tdStyle = (extra={}) => ({ padding:'6px 8px', borderBottom:'0.5px solid var(--border-light)', color:'var(--text-primary)', verticalAlign:'middle', fontSize:11, ...extra })
 
 // ── Proper external components so re-renders don't kill focus ──
@@ -206,7 +206,7 @@ function SecuritiesView({ securities, loans, bal }) {
               <td style={tdStyle({color:'#854F0B'})}>—</td>
             </tr>
           )}
-          <tr style={{background:'#2A3D54'}}>
+          <tr style={{background:'#3D5570'}}>
             <td colSpan={3} style={{...tdStyle(),color:'#fff',fontWeight:500}}>Total</td>
             <td style={{...tdStyle(),color:'#fff',fontWeight:500,textAlign:'right'}}>{fmt(totalEstVal)}</td>
             <td style={{...tdStyle(),color:'#fff',fontWeight:500,textAlign:'right'}}>{fmt(bal)}</td>
@@ -300,7 +300,7 @@ export default function ClientDashboard({ clients, updateClient }) {
       </button>
 
       {/* Header */}
-      <div style={{background:'#2A3D54',borderRadius:10,padding:'16px 20px',marginBottom:14}}>
+      <div style={{background:'#3D5570',borderRadius:10,padding:'16px 20px',marginBottom:14}}>
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr 1fr',gap:12,marginBottom:12}}>
           {/* Name + review */}
           <div>
@@ -425,7 +425,7 @@ export default function ClientDashboard({ clients, updateClient }) {
                 const isEditing = editingLoanIdx === i
                 if (isEditing && loanDraft) {
                   const ld = loanDraft
-                  return <tr key={i} style={{background:'#fdf5fa'}}>
+                  return <tr key={i} style={{background:'#fdf0f6'}}>
                     <td style={tdStyle({color:'var(--pk)',fontWeight:500})}>{i+1}</td>
                     <td style={tdStyle()}><input value={ld.acc||''} onChange={e=>{const d={...loanDraft,acc:e.target.value};setLoanDraft(d)}} style={{width:85,fontSize:10,padding:'2px 4px',borderRadius:4,border:'0.5px solid var(--border)',background:'var(--bg)'}}/></td>
                     <td style={tdStyle()}><input value={ld.lname||''} onChange={e=>setLoanDraft({...loanDraft,lname:e.target.value})} style={{width:120,fontSize:10,padding:'2px 4px',borderRadius:4,border:'0.5px solid var(--border)',background:'var(--bg)'}}/></td>
@@ -499,7 +499,7 @@ export default function ClientDashboard({ clients, updateClient }) {
                 const repay = calcRepayment(l)
                 return (
                   <tr key={i} style={{cursor:'pointer',opacity:l.closed?0.6:1}}
-                    onMouseOver={e=>e.currentTarget.style.background='#fdf5fa'}
+                    onMouseOver={e=>e.currentTarget.style.background='#fdf0f6'}
                     onMouseOut={e=>e.currentTarget.style.background='transparent'}
                     onClick={()=>navigate(`/radar/clients/${encodeURIComponent(client.name)}/loan/${i}`)}>
                     <td style={tdStyle({color:'var(--pk)',fontWeight:500})}>{i+1}</td>
@@ -539,7 +539,7 @@ export default function ClientDashboard({ clients, updateClient }) {
                     <td style={tdStyle({textAlign:'right'})}>{fmt(l.amount)}</td>
                     <td style={tdStyle({textAlign:'right',color:'var(--pk)',fontWeight:500})}>{fmt(l.balance)}</td>
                     <td style={tdStyle({textAlign:'right'})}>{l.rate>0?l.rate.toFixed(2)+'%':'—'}</td>
-                    <td style={tdStyle()}><span style={{padding:'2px 5px',borderRadius:4,background:l.rateType==='Fix'?'#fce8f3':'#eef1f5',color:l.rateType==='Fix'?'var(--pk)':'#2A3D54',fontSize:9,fontWeight:500}}>{l.rateType||'Var'}</span></td>
+                    <td style={tdStyle()}><span style={{padding:'2px 5px',borderRadius:4,background:l.rateType==='Fix'?'#fdf0f6':'#eef1f5',color:l.rateType==='Fix'?'var(--pk)':'#2A3D54',fontSize:9,fontWeight:500}}>{l.rateType||'Var'}</span></td>
                     <td style={tdStyle()}><Pill label={eRpmt} variant={eRpmt==='P&I*'?'flag':eRpmt==='IO'?'io':'pi'}/></td>
                     <td style={tdStyle({textAlign:'right',color:'var(--text-secondary)'})}>{repay?'$'+repay.toLocaleString():'—'}</td>
                     <td style={tdStyle()}>{fmtDate(l.settled)}</td>

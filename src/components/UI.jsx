@@ -10,7 +10,7 @@ export function DayBadge({ days }) {
 export function StreamTag({ stream }) {
   const isComm = stream === 'Commercial'
   return (
-    <span style={badge(isComm ? '#eef1f5' : '#fce8f3', isComm ? '#2A3D54' : '#993556')}>
+    <span style={badge(isComm ? '#eef1f5' : '#fdf0f6', isComm ? '#2A3D54' : '#EB99C2')}>
       {stream === 'Private Wealth' ? 'PW' : stream === 'Commercial' ? 'Comm' : '—'}
     </span>
   )
@@ -21,11 +21,11 @@ export function Pill({ label, variant = 'default' }) {
     default: ['#f0f3f7','#6b7a8d'],
     pi: ['#eef1f5','#2A3D54'],
     io: ['#fef3e2','#b7770d'],
-    pw: ['#fce8f3','#993556'],
+    pw: ['#fdf0f6','#EB99C2'],
     comm: ['#eef1f5','#2A3D54'],
     flag: ['#fde8e8','#c0392b'],
     ok: ['#e8f5e9','#2e7d32'],
-    score: ['#fce8f3','#DA408D'],
+    score: ['#fdf0f6','#EB99C2'],
   }
   const [bg, color] = variants[variant] || variants.default
   return <span style={badge(bg, color)}>{label}</span>
@@ -151,15 +151,15 @@ export function ClientRow({ client, onClick }) {
       borderBottom: '0.5px solid var(--border-light)', gap: 8,
       cursor: 'pointer', borderRadius: 6, transition: 'background 0.1s',
     }}
-    onMouseOver={e => e.currentTarget.style.background = '#fce8f3'}
+    onMouseOver={e => e.currentTarget.style.background = '#fdf0f6'}
     onMouseOut={e => e.currentTarget.style.background = 'transparent'}
     >
       <div style={{
         width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         fontSize: 10, fontWeight: 500,
-        background: isComm ? '#eef1f5' : '#fce8f3',
-        color: isComm ? '#2A3D54' : '#DA408D',
+        background: isComm ? '#eef1f5' : '#fdf0f6',
+        color: isComm ? '#2A3D54' : '#EB99C2',
       }}>{initials}</div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</div>

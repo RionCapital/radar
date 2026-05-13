@@ -3,8 +3,8 @@ import { fmtDate } from '../lib/dateUtils'
 import { logo_rion_notag } from '../lib/icons'
 import { useNavigate } from 'react-router-dom'
 
-const NAVY = '#2A3D54'
-const DEEP = '#1a2332'
+const NAVY = '#3D5570'
+const DEEP = '#2A3D54'
 const PINK = '#EB99C2'
 const BRAND_PINK = '#DA408D'
 

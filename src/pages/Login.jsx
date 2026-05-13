@@ -39,7 +39,7 @@ export default function Login() {
       fontFamily: "'Montserrat', system-ui, sans-serif",
     }}>
       <div style={{
-        background: '#2A3D54',
+        background: '#3D5570',
         borderRadius: 16,
         padding: '40px 44px',
         width: 420,

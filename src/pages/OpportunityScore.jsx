@@ -47,7 +47,7 @@ export default function OpportunityScore({ clients, updateClient }) {
     setTimeout(() => setSaved(false), 2000)
   }
 
-  const scoreColor = total >= 25 ? '#DA408D' : total >= 15 ? '#e8a020' : '#2A3D54'
+  const scoreColor = total >= 25 ? '#EB99C2' : total >= 15 ? '#e8a020' : '#2A3D54'
 
   return (
     <div style={{ padding:'16px 24px', maxWidth: 900, margin: '0 auto' }}>
@@ -59,7 +59,7 @@ export default function OpportunityScore({ clients, updateClient }) {
       </button>
 
       {/* Header */}
-      <div style={{ background:'#2A3D54', borderRadius:10, padding:'16px 20px', marginBottom:16 }}>
+      <div style={{ background:'#3D5570', borderRadius:10, padding:'16px 20px', marginBottom:16 }}>
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
           <div>
             <div style={{ fontSize:16, fontWeight:500, color:'#fff', marginBottom:3 }}>{client.name} — Opportunity Score</div>
@@ -86,7 +86,7 @@ export default function OpportunityScore({ clients, updateClient }) {
             const current = workingOpp[o.label] !== undefined ? workingOpp[o.label] : (o.met ? o.score : 0)
             const isAuto = o.met && workingOpp[o.label] === undefined
             return (
-              <div key={i} style={{ background: current > 0 ? '#fce8f3' : 'var(--bg)', borderRadius:8, padding:'10px 14px', border: current > 0 ? '0.5px solid rgba(218,64,141,0.2)' : '0.5px solid var(--border)' }}>
+              <div key={i} style={{ background: current > 0 ? '#fdf0f6' : 'var(--bg)', borderRadius:8, padding:'10px 14px', border: current > 0 ? '0.5px solid rgba(218,64,141,0.2)' : '0.5px solid var(--border)' }}>
                 <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:4 }}>
                   <div style={{ fontSize:12, fontWeight:500, color:'var(--text-primary)' }}>{o.label}</div>
                   {isAuto && <span style={{ fontSize:9, background:'#eef1f5', color:'#2A3D54', padding:'1px 6px', borderRadius:20 }}>Auto</span>}
