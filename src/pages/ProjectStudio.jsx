@@ -71,6 +71,8 @@ export default function ProjectStudio() {
   const [newProjectName, setNewProjectName] = useState('')
   const [showNewMilestone, setShowNewMilestone] = useState(false)
   const [newMs, setNewMs] = useState({ name:'', due:'' })
+  const [dragMsId, setDragMsId] = useState(null)
+  const [dragOverMsId, setDragOverMsId] = useState(null)
 
   const proj = projects.find(p=>p.id===activeProject)
   const allTasks = proj ? proj.milestones.flatMap(m=>m.tasks) : []
@@ -108,6 +110,23 @@ export default function ProjectStudio() {
     setProjects(ps=>ps.map(p=>p.id!==pId?p:{...p,milestones:[...p.milestones,ms]}))
     setNewMs({ name:'', due:'' })
     setShowNewMilestone(false)
+  }
+
+  function handleMsDragStart(msId) { setDragMsId(msId) }
+  function handleMsDragOver(e, msId) { e.preventDefault(); setDragOverMsId(msId) }
+  function handleMsDrop(pId, targetMsId) {
+    if (!dragMsId || dragMsId === targetMsId) { setDragMsId(null); setDragOverMsId(null); return }
+    setProjects(ps => ps.map(p => {
+      if (p.id !== pId) return p
+      const milestones = [...p.milestones]
+      const fromIdx = milestones.findIndex(m => m.id === dragMsId)
+      const toIdx = milestones.findIndex(m => m.id === targetMsId)
+      const [moved] = milestones.splice(fromIdx, 1)
+      milestones.splice(toIdx, 0, moved)
+      return { ...p, milestones }
+    }))
+    setDragMsId(null)
+    setDragOverMsId(null)
   }
 
   const inp = { background:'#f7f8fa', border:'1px solid #e2e6ed', borderRadius:6, padding:'6px 10px', fontSize:12, color:'#1C2533', fontFamily:"'Montserrat',sans-serif", outline:'none' }
@@ -252,9 +271,16 @@ export default function ProjectStudio() {
             const isOpen = !!openMilestones[m.id]
             const borderColor = mp===100?'#6BBFA0':m.status==='In Progress'?PINK:m.status==='In Review'?'#C9A55A':'#CBD2DC'
             return (
-              <div key={m.id} style={{ border:'1px solid #e2e6ed', borderLeft:`4px solid ${borderColor}`, borderRadius:8, marginBottom:12, overflow:'hidden' }}>
+              <div key={m.id}
+                draggable
+                onDragStart={()=>handleMsDragStart(m.id)}
+                onDragOver={e=>handleMsDragOver(e, m.id)}
+                onDrop={()=>handleMsDrop(proj.id, m.id)}
+                onDragEnd={()=>{setDragMsId(null);setDragOverMsId(null)}}
+                style={{ border:'1px solid #e2e6ed', borderLeft:`4px solid ${borderColor}`, borderRadius:8, marginBottom:12, overflow:'hidden', opacity:dragMsId===m.id?0.4:1, outline:dragOverMsId===m.id&&dragMsId!==m.id?`2px dashed ${PINK}`:'none', transition:'opacity 0.15s', cursor:'grab' }}>
                 {/* Milestone header */}
-                <div onClick={()=>setOpenMilestones(o=>({...o,[m.id]:!o[m.id]}))} style={{ display:'flex', alignItems:'center', gap:10, padding:'12px 16px', cursor:'pointer', background:isOpen?'#fafbfd':'#fff' }}>
+                <div onClick={e=>{if(e.target.dataset.drag)return;setOpenMilestones(o=>({...o,[m.id]:!o[m.id]}))}} style={{ display:'flex', alignItems:'center', gap:10, padding:'12px 16px', cursor:'pointer', background:isOpen?'#fafbfd':'#fff' }}>
+                  <span data-drag='1' title='Drag to reorder' style={{ color:'#CBD2DC', fontSize:12, cursor:'grab', userSelect:'none', flexShrink:0 }}>⠿</span>
                   <span style={{ fontSize:10, color:'#7A8090', transform:isOpen?'rotate(90deg)':'none', transition:'transform 0.2s', display:'inline-block' }}>▶</span>
                   <div style={{ flex:1 }}>
                     <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4 }}>
