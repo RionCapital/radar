@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { icon_crm, icon_radar, icon_marketing, icon_planner, logo_rion_notag } from '../lib/icons'
+import { icon_crm, icon_radar, icon_marketing, icon_planner, icon_studio, logo_rion_notag } from '../lib/icons'
 
 const BG = '#2A3D54'
 
@@ -25,6 +25,7 @@ const TOOLS = [
   { id: 'radar',     label: 'Radar',     icon: icon_radar,     desc: 'Relationship Management',   path: '/radar/dashboard', active: true  },
   { id: 'marketing', label: 'Marketing', icon: icon_marketing, desc: 'Client & referral lists',   path: null,               active: false },
   { id: 'planner',   label: 'Planner',   icon: icon_planner,   desc: 'Weekly & monthly organiser',path: null,               active: false },
+  { id: 'studio',    label: 'Project Studio', icon: icon_studio,  desc: 'Projects & milestones',     path: '/radar/studio',    active: true  },
 ]
 
 export default function Home() {
@@ -99,7 +100,7 @@ function ToolCard({ tool, index, visible, navigate }) {
       <div style={{ width:68, height:68, filter:tool.active?(hovered?'brightness(1.1)':'brightness(1)'):'brightness(0.3) saturate(0)', transition:'filter 0.25s ease' }}>
         <img src={tool.icon} alt={tool.label} style={{ width:'100%', height:'100%', objectFit:'contain' }}/>
       </div>
-      <div style={{ textAlign:'center' }}>
+      <div style={{ textAlign:'center', width:'100%' }}>
         <div style={{ fontSize:13, fontWeight:500, color:tool.active?(hovered?'#EB99C2':'#fff'):'rgba(187,198,218,0.3)', transition:'color 0.25s ease', letterSpacing:'0.02em' }}>{tool.label}</div>
         <div style={{ fontSize:10, marginTop:3, color:tool.active?'rgba(187,198,218,0.6)':'rgba(187,198,218,0.2)', letterSpacing:'0.03em' }}>{tool.desc}</div>
       </div>

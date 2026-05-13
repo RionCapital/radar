@@ -9,6 +9,7 @@ import ClientList from './pages/ClientList'
 import ClientDashboard from './pages/ClientDashboard'
 import LoanAccount from './pages/LoanAccount'
 import OpportunityScore from './pages/OpportunityScore'
+import ProjectStudio from './pages/ProjectStudio'
 import Toast from './components/Toast'
 
 function RequireAuth({ children }) {
@@ -68,6 +69,7 @@ export default function App() {
         <Route path="/radar/clients/:name" element={<RequireAuth><ClientDashboard clients={clients} updateClient={updateClient} /></RequireAuth>} />
         <Route path="/radar/clients/:name/loan/:loanIdx" element={<RequireAuth><LoanAccount clients={clients} updateClient={updateClient} /></RequireAuth>} />
         <Route path="/radar/clients/:name/opportunity" element={<RequireAuth><OpportunityScore clients={clients} updateClient={updateClient} /></RequireAuth>} />
+        <Route path="/radar/studio" element={<RequireAuth><ProjectStudio /></RequireAuth>} />
       </Routes>
     </div>
   )
