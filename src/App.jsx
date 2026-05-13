@@ -23,6 +23,7 @@ export default function App() {
   const location = useLocation()
   const isHome = location.pathname === '/'
   const isLogin = location.pathname === '/login'
+  const isStudio = location.pathname === '/radar/studio'
 
   function showToast(msg) { setToast(msg); setTimeout(() => setToast(null), 2500) }
 
@@ -59,7 +60,7 @@ export default function App() {
 
   return (
     <div style={{ minHeight:'100vh', background: isHome||isLogin ? '#3D5570' : 'var(--bg)' }}>
-      {!isHome && !isLogin && <Topbar />}
+      {!isHome && !isLogin && !isStudio && <Topbar />}
       <Toast message={toast} />
       <Routes>
         <Route path="/login" element={<Login />} />
