@@ -94,11 +94,15 @@ export default function Login() {
 
           <button type="submit" disabled={loading} style={{
             width: '100%', padding: '11px', borderRadius: 8, border: 'none',
-            background: loading ? '#EB99C2' : '#DA408D',
-            color: '#fff', fontWeight: 700, fontSize: 13, cursor: loading ? 'default' : 'pointer',
+            background: loading ? '#DA408D' : '#EB99C2',
+            color: '#2A3D54', fontWeight: 700, fontSize: 13, cursor: loading ? 'default' : 'pointer',
             fontFamily: "'Montserrat', system-ui, sans-serif",
-            letterSpacing: '0.05em', transition: 'background 0.2s',
-          }}>
+            letterSpacing: '0.05em', transition: 'background 0.15s',
+          }}
+          onMouseDown={e => e.currentTarget.style.background='#DA408D'}
+          onMouseUp={e => e.currentTarget.style.background='#EB99C2'}
+          onMouseLeave={e => e.currentTarget.style.background='#EB99C2'}
+          >
             {loading ? 'Signing in...' : 'Sign in'}
           </button>
         </form>
