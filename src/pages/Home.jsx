@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { icon_crm, icon_radar, icon_marketing, icon_planner, icon_studio, logo_rion_notag } from '../lib/icons'
 
-const BG = '#2A3D54'
+const BG = '#3D5570'
 
 const APPS = [
   { name: 'Mercury',     url: 'https://login.connective.com.au/',          domain: 'login.connective.com.au' },
@@ -43,7 +43,7 @@ export default function Home() {
 
   return (
     <div style={{ minHeight:'100vh', background:'#ffffff', display:'flex', flexDirection:'column', fontFamily:"'DM Sans',system-ui,sans-serif" }}>
-      <header style={{ background:'#1a2d42', display:'flex', alignItems:'center', justifyContent:'space-between', padding:'20px 48px', opacity:visible?1:0, transform:visible?'translateY(0)':'translateY(-10px)', transition:'all 0.5s ease' }}>
+      <header style={ background:'#3D5570', display:'flex', alignItems:'center', justifyContent:'space-between', padding:'20px 48px', opacity:visible?1:0, transform:visible?'translateY(0)':'translateY(-10px)', transition:'all 0.5s ease' }}>
         <img src={logo_rion_notag} alt="RION Capital" style={{ height:52, width:'auto', objectFit:'contain', cursor:'pointer' }} onClick={()=>navigate('/')}/>
         <div style={{display:'flex',alignItems:'center',gap:16}}>
           <div style={{fontSize:11,color:'rgba(187,198,218,0.7)'}}>Welcome, {auth.name}</div>
@@ -90,9 +90,9 @@ function ToolCard({ tool, index, visible, navigate }) {
   return (
     <div onClick={() => tool.active && navigate(tool.path)}
       onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
-      style={{ width:160, height:175, background:'#1a2d42', border: hovered&&tool.active?'1px solid #EB99C2':'1px solid #354a61', borderRadius:14, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:14, cursor:tool.active?'pointer':'not-allowed', transition:'all 0.25s ease', transform:hovered&&tool.active?'translateY(-4px)':'translateY(0)', boxShadow:hovered&&tool.active?'0 8px 24px rgba(42,61,84,0.3)':'none', opacity:visible?1:0, animation:visible?`fadeUp 0.5s ease ${0.15+index*0.08}s both`:'none', position:'relative' }}>
+      style={{ width:160, height:175, background:'#3D5570', border: hovered&&tool.active?'1px solid #EB99C2':'1px solid #4a637d', borderRadius:14, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:14, cursor:tool.active?'pointer':'not-allowed', transition:'all 0.25s ease', transform:hovered&&tool.active?'translateY(-4px)':'translateY(0)', boxShadow:hovered&&tool.active?'0 8px 24px rgba(42,61,84,0.3)':'none', opacity:visible?1:0, animation:visible?`fadeUp 0.5s ease ${0.15+index*0.08}s both`:'none', position:'relative' }}>
       {!tool.active && (
-        <div style={{ position:'absolute', top:10, right:10, background:'rgba(42,61,84,0.8)', borderRadius:20, padding:'2px 7px', fontSize:9, color:'rgba(187,198,218,0.45)', letterSpacing:'0.05em', display:'flex', alignItems:'center', gap:3, border:'0.5px solid rgba(187,198,218,0.1)' }}>
+        <div style={{ position:'absolute', top:10, right:10, background:'rgba(61,85,112,0.9)', borderRadius:20, padding:'2px 7px', fontSize:9, color:'rgba(187,198,218,0.45)', letterSpacing:'0.05em', display:'flex', alignItems:'center', gap:3, border:'0.5px solid rgba(187,198,218,0.1)' }}>
           <svg width="8" height="9" viewBox="0 0 8 9" fill="none"><rect x="1" y="4" width="6" height="5" rx="1" stroke="rgba(187,198,218,0.4)" strokeWidth="1"/><path d="M2.5 4V3a1.5 1.5 0 013 0v1" stroke="rgba(187,198,218,0.4)" strokeWidth="1"/></svg>
           Soon
         </div>
@@ -118,7 +118,7 @@ function AppCard({ app, index, visible }) {
   return (
     <a href={app.url} target="_blank" rel="noopener noreferrer"
       onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
-      style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:8, width:80, height:80, background:'#2A3D54', border:hovered?'1px solid #DA408D':'1px solid rgba(187,198,218,0.2)', borderRadius:12, textDecoration:'none', transition:'all 0.2s ease', transform:hovered?'translateY(-3px)':'translateY(0)', boxShadow:hovered?'0 8px 20px rgba(42,61,84,0.4)':'none', opacity:visible?1:0, animation:visible?`fadeUp 0.5s ease ${0.3+index*0.05}s both`:'none', cursor:'pointer' }}>
+      style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:8, width:80, height:80, background:'#3D5570', border:hovered?'1px solid #DA408D':'1px solid rgba(187,198,218,0.2)', borderRadius:12, textDecoration:'none', transition:'all 0.2s ease', transform:hovered?'translateY(-3px)':'translateY(0)', boxShadow:hovered?'0 8px 20px rgba(42,61,84,0.4)':'none', opacity:visible?1:0, animation:visible?`fadeUp 0.5s ease ${0.3+index*0.05}s both`:'none', cursor:'pointer' }}>
       <img src={faviconUrl} alt={app.name} width={28} height={28} style={{ borderRadius:6, objectFit:'contain' }}
         onError={e => { e.target.style.display='none'; e.target.nextSibling.style.display='flex' }}/>
       <div style={{ display:'none', width:28, height:28, borderRadius:6, background:'rgba(235,153,194,0.2)', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:700, color:'#EB99C2' }}>
