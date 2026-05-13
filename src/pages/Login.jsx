@@ -105,7 +105,7 @@ export default function Login() {
 
         <div style={{ textAlign: 'center', marginTop: 24 }}>
           <div style={{ fontFamily: 'Georgia, serif', fontStyle: 'italic', fontSize: 12, color: 'rgba(235,153,194,0.6)' }}>
-            Welcome to Radar!
+            All your finance. One Relationship.
           </div>
         </div>
       </div>
