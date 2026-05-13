@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import { fmtDate } from '../lib/dateUtils'
+import { logo_rion_notag } from '../lib/icons'
 import { useNavigate } from 'react-router-dom'
 
 const NAVY = '#2A3D54'
@@ -136,14 +137,12 @@ export default function ProjectStudio() {
       {/* ── SIDEBAR ── */}
       <div style={{ width:252, flexShrink:0, background:DEEP, display:'flex', flexDirection:'column', height:'100%', boxShadow:'4px 0 20px rgba(0,0,0,0.15)' }}>
         {/* Brand */}
-        <div style={{ padding:'20px 18px 0', borderBottom:'1px solid rgba(255,255,255,0.08)' }}>
-          <div style={{ display:'flex', alignItems:'center', gap:10, paddingBottom:14 }}>
-            <div>
-              <div style={{ fontWeight:800, fontSize:13, letterSpacing:'0.1em', color:'#fff' }}>RION</div>
-              <div style={{ fontSize:9, color:PINK, letterSpacing:'0.2em', fontFamily:'monospace' }}>PROJECT STUDIO</div>
-            </div>
+        <div style={{ padding:'16px 18px 0', borderBottom:'1px solid rgba(255,255,255,0.08)' }}>
+          <div style={{ paddingBottom:14 }}>
+            <img src={logo_rion_notag} alt="RION Capital" style={{ height:40, width:'auto', objectFit:'contain' }}/>
+            <div style={{ fontSize:9, color:PINK, letterSpacing:'0.15em', fontFamily:"'Montserrat',sans-serif", fontWeight:500, marginTop:4, opacity:0.7 }}>PROJECT STUDIO</div>
           </div>
-          <div style={{ height:2, background:`linear-gradient(90deg, ${PINK}, rgba(196,112,154,0.3))`, margin:'0 -18px' }}/>
+          <div style={{ height:1.5, background:`linear-gradient(90deg, ${PINK}, rgba(196,112,154,0.2))`, margin:'0 -18px' }}/>
         </div>
         {/* Project list */}
         <div style={{ fontSize:9, color:'rgba(255,255,255,0.3)', letterSpacing:'0.18em', padding:'14px 18px 6px', fontFamily:'monospace' }}>PROJECTS</div>

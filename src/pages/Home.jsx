@@ -22,7 +22,7 @@ const APPS = [
 
 const TOOLS = [
   { id: 'crm',       label: 'CRM',       icon: icon_crm,       desc: 'Pipeline management',       path: null,               active: false },
-  { id: 'radar',     label: 'Radar',     icon: icon_radar,     desc: 'Relationship Management',   path: '/radar/dashboard', active: true  },
+  { id: 'radar',     label: 'Rradar',     icon: icon_radar,     desc: 'Relationship Management',   path: '/radar/dashboard', active: true  },
   { id: 'marketing', label: 'Marketing', icon: icon_marketing, desc: 'Client & referral lists',   path: null,               active: false },
   { id: 'planner',   label: 'Planner',   icon: icon_planner,   desc: 'Weekly & monthly organiser',path: null,               active: false },
   { id: 'studio',    label: 'Project Studio', icon: icon_studio,  desc: 'Projects & milestones',     path: '/radar/studio',    active: true  },
@@ -101,7 +101,11 @@ function ToolCard({ tool, index, visible, navigate }) {
         <img src={tool.icon} alt={tool.label} style={{ width:'100%', height:'100%', objectFit:'contain' }}/>
       </div>
       <div style={{ textAlign:'center', width:'100%' }}>
-        <div style={{ fontSize:13, fontWeight:500, color:tool.active?(hovered?'#EB99C2':'#fff'):'rgba(187,198,218,0.3)', transition:'color 0.25s ease', letterSpacing:'0.02em' }}>{tool.label}</div>
+        <div style={{ fontSize:13, fontWeight:500, color:tool.active?(hovered?'#EB99C2':'#fff'):'rgba(187,198,218,0.3)', transition:'color 0.25s ease', letterSpacing:'0.02em' }}>
+          {tool.label === 'Rradar'
+            ? <><span style={{ color: tool.active ? '#EB99C2' : 'rgba(235,153,194,0.3)', fontWeight:700 }}>R</span><span style={{ color: tool.active?(hovered?'#EB99C2':'#fff'):'rgba(187,198,218,0.3)', fontWeight:300 }}>radar</span></>
+            : tool.label}
+        </div>
         <div style={{ fontSize:10, marginTop:3, color:tool.active?'rgba(187,198,218,0.6)':'rgba(187,198,218,0.2)', letterSpacing:'0.03em' }}>{tool.desc}</div>
       </div>
     </div>
