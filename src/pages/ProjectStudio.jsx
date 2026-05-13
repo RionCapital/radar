@@ -133,13 +133,13 @@ export default function ProjectStudio() {
   const inp = { background:'#f7f8fa', border:'1px solid #e2e6ed', borderRadius:6, padding:'6px 10px', fontSize:12, color:'#1C2533', fontFamily:"'Montserrat',sans-serif", outline:'none' }
 
   return (
-    <div style={{ display:'flex', height:'calc(100vh - 60px)', fontFamily:"'Montserrat',system-ui,sans-serif", overflow:'hidden' }}>
+    <div style={{ display:'flex', height:'100vh', fontFamily:"'Montserrat',system-ui,sans-serif", overflow:'hidden' }}>
       {/* ── SIDEBAR ── */}
       <div style={{ width:252, flexShrink:0, background:DEEP, display:'flex', flexDirection:'column', height:'100%', boxShadow:'4px 0 20px rgba(0,0,0,0.15)' }}>
         {/* Brand */}
         <div style={{ padding:'16px 18px 0', borderBottom:'1px solid rgba(255,255,255,0.08)' }}>
           <div style={{ paddingBottom:12 }}>
-            <img src={logo_rion_notag} alt="RION Capital" style={{ height:38, width:'auto', objectFit:'contain' }}/>
+            <img src={logo_rion_notag} alt="RION Capital" onClick={()=>navigate('/')} style={{ height:38, width:'auto', objectFit:'contain', cursor:'pointer' }} title='Back to Home'/>
             <div style={{ fontSize:9, color:PINK, letterSpacing:'0.18em', fontFamily:"'Montserrat',sans-serif", fontWeight:600, marginTop:6, textTransform:'uppercase' }}>Project Studio</div>
           </div>
           <div style={{ height:1.5, background:`linear-gradient(90deg, ${PINK}, rgba(235,153,194,0.1))`, margin:'0 -18px' }}/>
