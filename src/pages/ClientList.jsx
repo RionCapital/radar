@@ -27,9 +27,6 @@ export default function ClientList({ clients, onAddClient }) {
     <div style={{ padding:'18px 24px' }}>
       <Panel>
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12, flexWrap:'wrap', gap:8 }}>
-          <div style={{ fontSize:10, fontWeight:500, color:'var(--text-secondary)', textTransform:'uppercase', letterSpacing:'0.06em' }}>
-            All connections <span style={{ fontWeight:400 }}>({list.length})</span>
-          </div>
           <div style={{ display:'flex', gap:8, flexWrap:'wrap', alignItems:'center' }}>
             {/* Search */}
             <div style={{ position:'relative', display:'flex', alignItems:'center' }}>
@@ -49,6 +46,11 @@ export default function ClientList({ clients, onAddClient }) {
               <option value="Private Wealth">Private Wealth</option>
               <option value="Commercial">Commercial</option>
             </select>
+          </div>
+          <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+            <div style={{ fontSize:10, fontWeight:500, color:'var(--text-secondary)', textTransform:'uppercase', letterSpacing:'0.06em' }}>
+              All connections <span style={{ fontWeight:400 }}>({list.length})</span>
+            </div>
             <button onClick={()=>setShowAdd(true)} style={{...sel, background:'var(--pk)', color:'#fff', border:'none', fontWeight:500}}>+ Add client</button>
           </div>
         </div>

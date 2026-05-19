@@ -56,27 +56,50 @@ function ContactsEdit({ draft, setDraft }) {
   )
 }
 
-function ContactsView({ contacts }) {
+const TYPE_LABELS = { Ind: 'Individual', Co: 'Company', Tru: 'Trust', SMSF: 'SMSF', Part: 'Partnership' }
+
+function ContactsView({ contacts, clientName, navigate }) {
+  const indContacts = (contacts||[]).filter(c => c.type === 'Ind')
+  const otherContacts = (contacts||[]).filter(c => c.type !== 'Ind')
+  const allContacts = [...indContacts, ...otherContacts]
+  if (!allContacts.length) return (
+    <div style={{textAlign:'center',color:'var(--text-tertiary)',padding:16,fontSize:11}}>No contacts on file — <span style={{color:'var(--pk)',cursor:'pointer'}} onClick={()=>navigate('/radar/clients/'+encodeURIComponent(clientName)+'/contacts')}>Add contacts</span></div>
+  )
   return (
     <table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
       <thead><tr>
         <th style={thStyle()}>Name</th>
         <th style={thStyle()}>Type</th>
         <th style={thStyle()}>Email</th>
-        <th style={thStyle()}>Phone</th>
+        <th style={thStyle()}>Mobile</th>
       </tr></thead>
       <tbody>
-        {(contacts||[]).length > 0
-          ? (contacts||[]).map((ct,i) => (
+        {allContacts.map((ct,i) => {
+          const fullName = ct.type === 'Ind' ? [ct.first, ct.last].filter(Boolean).join(' ') : ct.first || '—'
+          return (
             <tr key={i}>
-              <td style={tdStyle({fontWeight:500})}>{ct.name||'—'}</td>
-              <td style={tdStyle()}>{ct.contactType
-                ? <span style={{background:'#eef1f5',color:'#2A3D54',padding:'1px 6px',borderRadius:20,fontSize:9,fontWeight:500}}>{CONTACT_TYPE_CODES[ct.contactType]||ct.contactType}</span>
-                : '—'}</td>
-              <td style={tdStyle({color:'var(--pk)'})}>{ct.email||'—'}</td>
-              <td style={tdStyle()}>{ct.phone||'—'}</td>
-            </tr>))
-          : <tr><td colSpan={4} style={tdStyle({textAlign:'center',color:'var(--text-tertiary)',padding:16})}>No contacts yet — click Edit to add</td></tr>}
+              <td style={tdStyle({fontWeight:500})}>{fullName||'—'}</td>
+              <td style={tdStyle()}>
+                <span style={{background:ct.type==='Ind'?'#fdf0f6':'#eef1f5',color:ct.type==='Ind'?'var(--pk)':'#2A3D54',padding:'1px 6px',borderRadius:20,fontSize:9,fontWeight:500}}>
+                  {TYPE_LABELS[ct.type]||ct.type}
+                </span>
+              </td>
+              <td style={tdStyle()}>
+                {ct.email
+                  ? <a href={'mailto:'+ct.email} style={{color:'var(--pk)',textDecoration:'none',fontSize:11}} title="Open in Outlook">{ct.email}</a>
+                  : '—'}
+              </td>
+              <td style={tdStyle()}>
+                {ct.mobile
+                  ? <span style={{display:'flex',alignItems:'center',gap:6}}>
+                      <a href={'tel:'+ct.mobile.replace(/\s/g,'')} style={{color:'var(--pk)',textDecoration:'none'}} title="Call via Phone Link">{ct.mobile}</a>
+                      <a href={'sms:'+ct.mobile.replace(/\s/g,'')} style={{background:'#eef1f5',borderRadius:12,padding:'1px 7px',fontSize:9,color:'#2A3D54',textDecoration:'none'}} title="Send SMS via Phone Link">💬</a>
+                    </span>
+                  : '—'}
+              </td>
+            </tr>
+          )
+        })}
       </tbody>
     </table>
   )
@@ -395,10 +418,18 @@ export default function ClientDashboard({ clients, updateClient }) {
       {/* Contacts & Securities */}
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14,marginBottom:14}}>
         <Panel>
-          <PanelTitle action={editBtns('contacts')}>Clients & contacts</PanelTitle>
+          <PanelTitle action={
+            <div style={{display:'flex',gap:6,alignItems:'center'}}>
+              <button onClick={()=>navigate(`/radar/clients/${encodeURIComponent(client.name)}/contacts`)}
+                style={{fontSize:10,padding:'3px 10px',borderRadius:6,border:'1px solid var(--pk)',color:'var(--pk)',background:'transparent',cursor:'pointer'}}>
+                ✉ Email & manage
+              </button>
+              {editBtns('contacts')}
+            </div>
+          }>Clients & contacts</PanelTitle>
           {editSection==='contacts'
             ? <ContactsEdit draft={draft} setDraft={stableSetDraft}/>
-            : <ContactsView contacts={client.contacts}/>}
+            : <ContactsView contacts={client.contacts} clientName={client.name} navigate={navigate}/>}
         </Panel>
         <Panel>
           <PanelTitle action={editBtns('securities')}>Securities & property values</PanelTitle>
