@@ -263,7 +263,7 @@ export default function ClientDashboard({ clients, updateClient }) {
     if (f==='overdue') return 'overdue'
     if (f==='warn' && worst!=='overdue') return 'warn'
     return worst
-  }, null)
+  }, client.days >= 365 ? 'overdue' : null)
   const flagStyle = worstFlag==='overdue' ? {background:'#fde8e8',color:'#a32d2d'} : worstFlag==='warn' ? {background:'#fef9c3',color:'#854F0B'} : null
 
   function startEdit(section) { setEditSection(section); setDraft(JSON.parse(JSON.stringify(client[section]||[]))) }
@@ -359,18 +359,34 @@ export default function ClientDashboard({ clients, updateClient }) {
           {/* Flags */}
           <div style={{background:'rgba(255,255,255,0.08)',borderRadius:8,padding:'10px 14px'}}>
             <div style={{fontSize:10,color:'var(--sbl)',marginBottom:6,textTransform:'uppercase',letterSpacing:'0.05em'}}>Flags</div>
-            {client.loans.some(l=>l.fixed||l.io||l.balloon)
-              ? client.loans.map((l,i)=>{
-                  const f=loanFlag(l)
-                  if(!f) return null
-                  const isActioned = l.actionNotes && l.actionNotes.length > 0
-                  if (isActioned) return null
-                  return <div key={i} style={{fontSize:11,padding:'3px 0',display:'flex',gap:6,alignItems:'center'}}>
+            {(() => {
+              const flagItems = []
+              // Annual review overdue (days >= 365)
+              if (client.days >= 365) {
+                flagItems.push(
+                  <div key="review" style={{fontSize:11,padding:'3px 0',display:'flex',gap:6,alignItems:'center'}}>
+                    <span style={{width:7,height:7,borderRadius:'50%',background:'#e74c3c',display:'inline-block',flexShrink:0}}/>
+                    <span style={{color:'#fca5a5',fontSize:10}}>Annual review overdue ({client.days}d)</span>
+                  </div>
+                )
+              }
+              // Loan-level flags (IO, fixed, balloon) — skip if actioned
+              client.loans.forEach((l,i) => {
+                const f = loanFlag(l)
+                if (!f) return
+                const isActioned = l.actionNotes && l.actionNotes.length > 0
+                if (isActioned) return
+                flagItems.push(
+                  <div key={i} style={{fontSize:11,padding:'3px 0',display:'flex',gap:6,alignItems:'center'}}>
                     <span style={{width:7,height:7,borderRadius:'50%',background:f==='overdue'?'#e74c3c':'#e8a020',display:'inline-block',flexShrink:0}}/>
                     <span style={{color:f==='overdue'?'#fca5a5':'#fde68a',fontSize:10}}>{l.lname||`Loan ${i+1}`}</span>
                   </div>
-                })
-              : <div style={{fontSize:11,color:'rgba(187,198,218,0.4)'}}>No active flags</div>}
+                )
+              })
+              return flagItems.length > 0
+                ? flagItems
+                : <div style={{fontSize:11,color:'rgba(187,198,218,0.4)'}}>No active flags</div>
+            })()}
           </div>
         </div>
 
