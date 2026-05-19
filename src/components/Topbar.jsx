@@ -9,7 +9,8 @@ export default function Topbar() {
 
   return (
     <div className={styles.bar}>
-      {/* Logo */}
+      {/* Logo + Nav left group */}
+      <div style={{ display:'flex', alignItems:'center', gap:24 }}>
       <div className={styles.logo} onClick={() => navigate('/')} title="Home" style={{ cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'flex-start' }}>
         <div style={{ lineHeight:1, display:'flex', alignItems:'baseline' }}>
           <span style={{ fontFamily:"'Montserrat',sans-serif", fontWeight:700, fontSize:28, color:'#EB99C2', letterSpacing:'-0.5px' }}>R</span>
@@ -24,8 +25,7 @@ export default function Topbar() {
           Powered by <span style={{ color:'#EB99C2', fontWeight:600 }}>Rion Capital</span>
         </div>
       </div>
-
-      {/* Nav */}
+      {/* Nav buttons — left of bar */}
       <nav className={styles.nav}>
         <button
           className={`${styles.navBtn} ${isActive('/radar/dashboard') ? styles.active : ''}`}
@@ -37,10 +37,13 @@ export default function Topbar() {
           onClick={() => navigate('/radar/clients')}>
           Clients
         </button>
-        <button className={styles.homeBtn} onClick={() => navigate('/')}>
-          ⌂ Home
-        </button>
       </nav>
+      </div>
+
+      {/* Home btn — stays right */}
+      <button className={styles.homeBtn} onClick={() => navigate('/')}>
+        ⌂ Home
+      </button>
     </div>
   )
 }

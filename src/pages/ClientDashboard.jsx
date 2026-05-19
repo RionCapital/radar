@@ -113,7 +113,7 @@ function SecuritiesEdit({ draft, setDraft }) {
               }}/>
             </FieldGroup>
             <FieldGroup label="Val. date">
-              <input style={{width:'100%'}} value={s.valDate||''} placeholder="YYYY-MM-DD" onChange={e => {
+              <input style={{width:'100%'}} value={s.valDate||''} type="date" onChange={e => {
                 const d = draft.map((x,j) => j===i ? {...x, valDate:e.target.value} : x)
                 setDraft(d)
               }}/>
@@ -162,7 +162,7 @@ function SecuritiesView({ securities, loans, bal }) {
       <table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
         <thead>
           <tr>
-            {['#','Address','Last val.','Est. value','Debt balance','Lending equity','LVR',crossLoans.length?'Actual LVR *':'Actual LVR'].map((h,i)=>(
+            {['#','Address','Est. value','Debt balance','Lending equity','LVR',crossLoans.length?'Actual LVR *':'Actual LVR'].map((h,i)=>(
               <th key={i} style={thStyle({textAlign:i>1?'right':'left'})}>{h}</th>
             ))}
           </tr>
@@ -179,7 +179,6 @@ function SecuritiesView({ securities, loans, bal }) {
               <tr key={i} onMouseOver={e=>e.currentTarget.style.background='var(--bg)'} onMouseOut={e=>e.currentTarget.style.background='transparent'}>
                 <td style={tdStyle({color:'var(--pk)',fontWeight:500})}>{secNum}</td>
                 <td style={tdStyle()}>{s.address||'—'}</td>
-                <td style={tdStyle({textAlign:'right'})}>{s.lastVal?fmt(s.lastVal):'—'}</td>
                 <td style={tdStyle({textAlign:'right',fontWeight:500})}>{s.estVal?fmt(s.estVal):'—'}</td>
                 <td style={tdStyle({textAlign:'right'})}>
                   {fmt(directDebt)}{isCrossed && <span style={{color:'#e8a020',fontSize:10,marginLeft:3,fontWeight:700}}>*</span>}
@@ -431,7 +430,7 @@ export default function ClientDashboard({ clients, updateClient }) {
         <div style={{overflowX:'auto',overflowY:'visible'}}>
           <table style={{width:'100%',borderCollapse:'collapse',fontSize:11,tableLayout:'auto',overflow:'visible'}}>
             <thead><tr>
-              {[['#',24,null],['Acc. no.',90,'acc'],['Loan name',140,'lname'],['Type',110,'type'],['Bank',55,'bank'],['Asset / Security',130,null],['Sec.',55,'security'],['Orig. limit',90,'amount'],['Balance',90,'balance'],['Rate',55,'rate'],['Rate type',60,'rateType'],['Rpmt',55,'rpmt'],['Est. repay/mo',90,'_repay'],['Settled',85,'settled'],['Flag / Edit',80,null]].map(([h,w,sortKey])=>{
+              {[['#',24,'_origIdx'],['Acc. no.',90,'acc'],['Loan name',140,'lname'],['Type',110,'type'],['Bank',55,'bank'],['Asset / Security',130,null],['Sec.',55,'security'],['Orig. limit',90,'amount'],['Balance',90,'balance'],['Rate',55,'rate'],['Rate type',60,'rateType'],['Rpmt',55,'rpmt'],['Est. repay/mo',90,'_repay'],['Settled',85,'settled'],['Flag / Edit',80,null]].map(([h,w,sortKey])=>{
                 const isNumeric = ['Orig. limit','Balance','Rate','Est. repay/mo'].includes(h)
                 const isActive = loanSort.col === sortKey
                 return <th key={h} style={thStyle({width:w,textAlign:isNumeric?'right':'left',cursor:sortKey?'pointer':'default',userSelect:'none',whiteSpace:'nowrap'})}
