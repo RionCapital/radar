@@ -436,7 +436,7 @@ export default function ClientDashboard({ clients, updateClient }) {
                 const isActive = loanSort.col === sortKey
                 return <th key={h} style={thStyle({width:w,textAlign:isNumeric?'right':'left',cursor:sortKey?'pointer':'default',userSelect:'none',whiteSpace:'nowrap'})}
                   onClick={()=>{ if(!sortKey) return; setLoanSort(prev => prev.col===sortKey ? {...prev,dir:prev.dir==='asc'?'desc':'asc'} : {col:sortKey,dir:'asc'}) }}>
-                  {h}{sortKey ? <span style={{marginLeft:3,opacity:isActive?1:0.25,fontSize:9}}>{isActive?(loanSort.dir==='asc'?↑:↓):↕}</span> : null}
+                  {h}{sortKey ? <span style={{marginLeft:3,opacity:isActive?1:0.25,fontSize:9}}>{isActive?(loanSort.dir==='asc'?'\u2191':'\u2193'):'\u2195'}</span> : null}
                 </th>
               })}
             </tr></thead>
