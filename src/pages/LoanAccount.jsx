@@ -142,14 +142,48 @@ export default function LoanAccount({ clients, updateClient }) {
           </div>
           {loan.actionNotes.map((note, ni) => (
             <div key={ni} style={{
-              display:'flex',alignItems:'center',gap:8,
+              display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,
               padding:'6px 10px',
               background:'#dcfce7',borderRadius:6,
               marginBottom: ni < loan.actionNotes.length - 1 ? 4 : 0,
-              fontSize:12,color:'#166534',fontWeight:500
             }}>
-              <span>✓</span>
-              <span>{note}</span>
+              <div style={{display:'flex',alignItems:'center',gap:8,fontSize:12,color:'#166534',fontWeight:500}}>
+                <span>✓</span>
+                <span>{note}</span>
+              </div>
+              <button
+                onClick={() => {
+                  // Remove this note from the loan
+                  updateClient(client.name, c => ({
+                    ...c,
+                    loans: c.loans.map((l, li) => li !== idx ? l : {
+                      ...l,
+                      actionNotes: l.actionNotes.filter((_, i) => i !== ni)
+                    })
+                  }))
+                  // Remove from dashboard ticked set so it reappears
+                  try {
+                    const stored = JSON.parse(localStorage.getItem('rion-radar-ticked') || '[]')
+                    // Remove any key matching this connection
+                    // Keys are stored as 'PanelKey-ConnName-AccNo' — remove all entries for this connection
+                    const filtered = stored.filter(k => {
+                      const parts = k.split('-')
+                      // parts[1] onward form the connection name (may contain hyphens)
+                      return !k.includes(client.name)
+                    })
+                    localStorage.setItem('rion-radar-ticked', JSON.stringify(filtered))
+                  } catch(e) {}
+                }}
+                style={{
+                  padding:'3px 10px',borderRadius:5,border:'1px solid #86efac',
+                  background:'#fff',color:'#166534',fontSize:10,fontWeight:500,
+                  cursor:'pointer',whiteSpace:'nowrap',flexShrink:0
+                }}
+                onMouseOver={e=>{e.currentTarget.style.background='#fee2e2';e.currentTarget.style.borderColor='#fca5a5';e.currentTarget.style.color='#991b1b'}}
+                onMouseOut={e=>{e.currentTarget.style.background='#fff';e.currentTarget.style.borderColor='#86efac';e.currentTarget.style.color='#166534'}}
+              >
+                ↩ Undo
+              </button>
             </div>
           ))}
         </div>
