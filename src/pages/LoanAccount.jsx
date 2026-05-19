@@ -267,6 +267,21 @@ export default function LoanAccount({ clients, updateClient }) {
               ))}
             </div>
           )}
+
+          {/* Action notes from dashboard */}
+          {(loan.actionNotes && loan.actionNotes.length > 0) && (
+            <div style={{marginTop:10,background:'#f0fdf4',border:'1px solid #bbf7d0',borderRadius:8,padding:'10px 12px'}}>
+              <div style={{fontSize:10,fontWeight:500,color:'#166534',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:8}}>
+                Action log
+              </div>
+              {loan.actionNotes.map((note, ni) => (
+                <div key={ni} style={{display:'flex',alignItems:'center',gap:8,padding:'4px 0',borderBottom:ni<loan.actionNotes.length-1?'0.5px solid #d1fae5':'none',fontSize:11,color:'#166534'}}>
+                  <span style={{fontSize:13}}>✓</span>
+                  <span>{note}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </Panel>
       </div>
 
