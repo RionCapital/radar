@@ -126,6 +126,35 @@ export default function LoanAccount({ clients, updateClient }) {
         </div>
       </div>
 
+      {/* Action log — shows when actioned from dashboard */}
+      {loan.actionNotes && loan.actionNotes.length > 0 && (
+        <div style={{marginBottom:14,background:'#f0fdf4',border:'1.5px solid #86efac',borderRadius:10,padding:'12px 16px'}}>
+          <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>
+            <div style={{width:20,height:20,borderRadius:'50%',background:'#22c55e',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+              <span style={{color:'#fff',fontSize:12,fontWeight:700}}>✓</span>
+            </div>
+            <div style={{fontSize:11,fontWeight:600,color:'#15803d',textTransform:'uppercase',letterSpacing:'0.06em'}}>
+              Dashboard Action Log
+            </div>
+          </div>
+          <div style={{fontSize:11,color:'#166534',marginBottom:8,lineHeight:1.5}}>
+            This loan has been actioned from the Opportunity Radar dashboard. All dates and details remain unchanged below for your records.
+          </div>
+          {loan.actionNotes.map((note, ni) => (
+            <div key={ni} style={{
+              display:'flex',alignItems:'center',gap:8,
+              padding:'6px 10px',
+              background:'#dcfce7',borderRadius:6,
+              marginBottom: ni < loan.actionNotes.length - 1 ? 4 : 0,
+              fontSize:12,color:'#166534',fontWeight:500
+            }}>
+              <span>✓</span>
+              <span>{note}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Two col — particulars + key dates */}
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14,marginBottom:14}}>
         <Panel>
@@ -268,20 +297,6 @@ export default function LoanAccount({ clients, updateClient }) {
             </div>
           )}
 
-          {/* Action notes from dashboard */}
-          {(loan.actionNotes && loan.actionNotes.length > 0) && (
-            <div style={{marginTop:10,background:'#f0fdf4',border:'1px solid #bbf7d0',borderRadius:8,padding:'10px 12px'}}>
-              <div style={{fontSize:10,fontWeight:500,color:'#166534',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:8}}>
-                Action log
-              </div>
-              {loan.actionNotes.map((note, ni) => (
-                <div key={ni} style={{display:'flex',alignItems:'center',gap:8,padding:'4px 0',borderBottom:ni<loan.actionNotes.length-1?'0.5px solid #d1fae5':'none',fontSize:11,color:'#166534'}}>
-                  <span style={{fontSize:13}}>✓</span>
-                  <span>{note}</span>
-                </div>
-              ))}
-            </div>
-          )}
         </Panel>
       </div>
 

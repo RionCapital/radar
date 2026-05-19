@@ -360,18 +360,29 @@ export default function Dashboard({ clients, onImport, onUpdateClients }) {
     // Write action note to the client's loan record
     if (onUpdateClients) {
       const today = new Date()
-      const dateStr = `${String(today.getDate()).padStart(2,'0')}-${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][today.getMonth()]}-${today.getFullYear()}`
-      const noteText = `✓ ${panelLabel} actioned — ${dateStr}`
+      const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+      const dateStr = String(today.getDate()).padStart(2,'0') + '-' + MONTHS[today.getMonth()] + '-' + today.getFullYear()
+      const noteText = '\u2713 ' + panelLabel + ' actioned \u2014 ' + dateStr
       const updated = clients.map(c => {
         if (c.name !== row.conn) return c
+        // Match the specific loan: acc match preferred, then lname, then first active loan
+        const hasAcc = row.acc && row.acc !== '\u2014'
+        const accMatchExists = hasAcc && c.loans.some(l => l.acc === row.acc)
         return {
           ...c,
-          loans: c.loans.map(l => {
-            if (l.acc !== row.acc && l.lname !== row.client) return l
-            return {
-              ...l,
-              actionNotes: [...(l.actionNotes || []), noteText]
+          loans: c.loans.map((l, li) => {
+            let isMatch = false
+            if (accMatchExists) {
+              isMatch = l.acc === row.acc
+            } else if (l.lname === row.client) {
+              isMatch = true
+            } else {
+              // Final fallback: first non-closed loan for this client
+              const firstActive = c.loans.findIndex(x => !x.closed)
+              isMatch = li === firstActive
             }
+            if (!isMatch) return l
+            return { ...l, actionNotes: [...(l.actionNotes || []), noteText] }
           })
         }
       })

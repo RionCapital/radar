@@ -41,6 +41,11 @@ export default function App() {
     showToast('Client added')
   }
 
+  function updateAllClients(updated) {
+    setClients(updated)
+    saveClients(updated)
+  }
+
   function handleImport(updates, stmtMap) {
     setClients(prev => {
       const next = prev.map(c => ({
@@ -65,7 +70,7 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/" element={<RequireAuth><Home /></RequireAuth>} />
-        <Route path="/radar/dashboard" element={<RequireAuth><Dashboard clients={clients} onImport={handleImport} /></RequireAuth>} />
+        <Route path="/radar/dashboard" element={<RequireAuth><Dashboard clients={clients} onImport={handleImport} onUpdateClients={updateAllClients} /></RequireAuth>} />
         <Route path="/radar/clients" element={<RequireAuth><ClientList clients={clients} onAddClient={addClient} /></RequireAuth>} />
         <Route path="/radar/clients/:name" element={<RequireAuth><ClientDashboard clients={clients} updateClient={updateClient} /></RequireAuth>} />
         <Route path="/radar/clients/:name/loan/:loanIdx" element={<RequireAuth><LoanAccount clients={clients} updateClient={updateClient} /></RequireAuth>} />
