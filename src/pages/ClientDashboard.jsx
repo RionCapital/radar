@@ -363,9 +363,11 @@ export default function ClientDashboard({ clients, updateClient }) {
               ? client.loans.map((l,i)=>{
                   const f=loanFlag(l)
                   if(!f) return null
+                  const isActioned = l.actionNotes && l.actionNotes.length > 0
                   return <div key={i} style={{fontSize:11,padding:'3px 0',display:'flex',gap:6,alignItems:'center'}}>
-                    <span style={{width:7,height:7,borderRadius:'50%',background:f==='overdue'?'#e74c3c':'#e8a020',display:'inline-block',flexShrink:0}}/>
-                    <span style={{color:f==='overdue'?'#fca5a5':'#fde68a',fontSize:10}}>{l.lname||`Loan ${i+1}`}</span>
+                    <span style={{width:7,height:7,borderRadius:'50%',background:isActioned?'#22c55e':f==='overdue'?'#e74c3c':'#e8a020',display:'inline-block',flexShrink:0}}/>
+                    <span style={{color:isActioned?'#86efac':f==='overdue'?'#fca5a5':'#fde68a',fontSize:10}}>
+                      {l.lname||`Loan ${i+1}`}{isActioned?' ✓':''}</span>
                   </div>
                 })
               : <div style={{fontSize:11,color:'rgba(187,198,218,0.4)'}}>No active flags</div>}
@@ -545,9 +547,19 @@ export default function ClientDashboard({ clients, updateClient }) {
                     <td style={tdStyle()}>{fmtDate(l.settled)}</td>
                     <td style={tdStyle({textAlign:'center'})}>
                       <div style={{display:'flex',alignItems:'center',gap:4,justifyContent:'center'}}>
-                        {flag ? <span style={{padding:'2px 6px',borderRadius:20,fontSize:9,fontWeight:500,background:flag==='overdue'?'#fde8e8':'#fef9c3',color:flag==='overdue'?'#a32d2d':'#854F0B'}}>
-                          {flag==='overdue'?'Overdue':'< 120d'}
-                        </span> : null}
+                        {(() => {
+                          const isActioned = l.actionNotes && l.actionNotes.length > 0
+                          if (isActioned) {
+                            const actionedDate = l.actionNotes[l.actionNotes.length-1].split(' — ')[1] || ''
+                            return <span style={{padding:'2px 6px',borderRadius:20,fontSize:9,fontWeight:500,background:'#dcfce7',color:'#166534'}}>
+                              ✓ Actioned{actionedDate ? ' ' + actionedDate : ''}
+                            </span>
+                          }
+                          if (flag) return <span style={{padding:'2px 6px',borderRadius:20,fontSize:9,fontWeight:500,background:flag==='overdue'?'#fde8e8':'#fef9c3',color:flag==='overdue'?'#a32d2d':'#854F0B'}}>
+                            {flag==='overdue'?'Overdue':'< 120d'}
+                          </span>
+                          return null
+                        })()}
                         <span onClick={e=>{e.stopPropagation();setEditingLoanIdx(i);setLoanDraft({...l})}} style={{fontSize:9,color:'var(--pk)',padding:'1px 5px',borderRadius:4,border:'0.5px solid var(--pk)',cursor:'pointer'}}>✎</span>
                         <span onClick={e=>{e.stopPropagation();if(window.confirm(`Delete loan "${l.lname||l.acc||'this loan'}"? This cannot be undone.`)){updateClient(client.name,c=>({...c,loans:c.loans.filter((_,j)=>j!==i)}));if(editingLoanIdx===i){setEditingLoanIdx(null);setLoanDraft(null)}}}} style={{fontSize:9,color:'#c0392b',padding:'1px 5px',borderRadius:4,border:'0.5px solid #fde8e8',cursor:'pointer',background:'#fde8e8'}}>✕</span>
                       </div>

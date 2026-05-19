@@ -283,13 +283,25 @@ export default function LoanAccount({ clients, updateClient }) {
             ['Balloon / residual',loan.balloon>0?String(loan.balloon):null,false],
           ].map(([label,val,showBadge])=>{
             const badge=showBadge&&val?expiryBadge(val):null
+            const isActioned = badge && loan.actionNotes && loan.actionNotes.length > 0
+            // Extract just the date from the first matching action note if possible
+            const actionedDate = isActioned ? (loan.actionNotes[loan.actionNotes.length-1].split(' \u2014 ')[1] || '') : ''
             return (
               <div key={label} style={{padding:'9px 0',borderBottom:'0.5px solid var(--border-light)'}}>
-                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:badge?4:0}}>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:(badge||isActioned)?4:0}}>
                   <span style={{fontSize:11,color:'var(--text-secondary)'}}>{label}</span>
                   <span style={{fontSize:11,fontWeight:500,color:'var(--text-primary)'}}>{label==='Balloon / residual'?fmt(loan.balloon):fmtDate(val)}</span>
                 </div>
-                {badge&&<div style={{textAlign:'right'}}><span style={{padding:'2px 10px',borderRadius:20,fontSize:10,fontWeight:500,background:badge.bg,color:badge.color}}>{badge.label}</span></div>}
+                {isActioned
+                  ? <div style={{textAlign:'right'}}>
+                      <span style={{padding:'2px 10px',borderRadius:20,fontSize:10,fontWeight:500,background:'#dcfce7',color:'#166534'}}>
+                        \u2713 Actioned{actionedDate ? ' — ' + actionedDate : ''}
+                      </span>
+                    </div>
+                  : badge
+                    ? <div style={{textAlign:'right'}}><span style={{padding:'2px 10px',borderRadius:20,fontSize:10,fontWeight:500,background:badge.bg,color:badge.color}}>{badge.label}</span></div>
+                    : null
+                }
               </div>
             )
           })}
