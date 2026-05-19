@@ -237,6 +237,7 @@ export default function ClientDashboard({ clients, updateClient }) {
   const [editReview, setEditReview] = useState(false)
   const [reviewDate, setReviewDate] = useState('')
   const [loanTab, setLoanTab] = useState('current')
+  const [loanSort, setLoanSort] = useState({col: null, dir: 'asc'})
   const [editingLoanIdx, setEditingLoanIdx] = useState(null)
   const [loanDraft, setLoanDraft] = useState(null)
   const [secPicker, setSecPicker] = useState(null) // loanIdx for picker open
@@ -430,13 +431,32 @@ export default function ClientDashboard({ clients, updateClient }) {
         <div style={{overflowX:'auto',overflowY:'visible'}}>
           <table style={{width:'100%',borderCollapse:'collapse',fontSize:11,tableLayout:'auto',overflow:'visible'}}>
             <thead><tr>
-              {[['#',24],['Acc. no.',90],['Loan name',140],['Type',110],['Bank',55],['Asset / Security',130],['Sec.',55],['Orig. limit',90],['Balance',90],['Rate',55],['Rate type',60],['Rpmt',55],['Est. repay/mo',90],['Settled',85],['Flag / Edit',80]].map(([h,w])=>(
-                <th key={h} style={thStyle({width:w,textAlign:['Orig. limit','Balance','Rate','Est. repay/mo'].includes(h)?'right':'left'})}>{h}</th>
-              ))}
+              {[['#',24,null],['Acc. no.',90,'acc'],['Loan name',140,'lname'],['Type',110,'type'],['Bank',55,'bank'],['Asset / Security',130,null],['Sec.',55,'security'],['Orig. limit',90,'amount'],['Balance',90,'balance'],['Rate',55,'rate'],['Rate type',60,'rateType'],['Rpmt',55,'rpmt'],['Est. repay/mo',90,'_repay'],['Settled',85,'settled'],['Flag / Edit',80,null]].map(([h,w,sortKey])=>{
+                const isNumeric = ['Orig. limit','Balance','Rate','Est. repay/mo'].includes(h)
+                const isActive = loanSort.col === sortKey
+                return <th key={h} style={thStyle({width:w,textAlign:isNumeric?'right':'left',cursor:sortKey?'pointer':'default',userSelect:'none',whiteSpace:'nowrap'})}
+                  onClick={()=>{ if(!sortKey) return; setLoanSort(prev => prev.col===sortKey ? {...prev,dir:prev.dir==='asc'?'desc':'asc'} : {col:sortKey,dir:'asc'}) }}>
+                  {h}{sortKey ? <span style={{marginLeft:3,opacity:isActive?1:0.25,fontSize:9}}>{isActive?(loanSort.dir==='asc'?↑:↓):↕}</span> : null}
+                </th>
+              })}
             </tr></thead>
             <tbody>
               {(() => {
-                const filteredLoans = client.loans.map((l,i)=>({...l,_origIdx:i})).filter(l=> loanTab==='historic' ? l.closed : !l.closed)
+                const filteredLoans = (() => {
+                  let rows = client.loans.map((l,i)=>({...l,_origIdx:i,_repay:calcRepayment(l)||0})).filter(l=> loanTab==='historic' ? l.closed : !l.closed)
+                  if (loanSort.col) {
+                    const {col, dir} = loanSort
+                    rows = [...rows].sort((a,b)=>{
+                      let av = a[col], bv = b[col]
+                      if (typeof av === 'string') av = av.toLowerCase()
+                      if (typeof bv === 'string') bv = bv.toLowerCase()
+                      if (av < bv) return dir==='asc'?-1:1
+                      if (av > bv) return dir==='asc'?1:-1
+                      return 0
+                    })
+                  }
+                  return rows
+                })()
                 if (!filteredLoans.length) return <tr><td colSpan={15} style={tdStyle({textAlign:'center',color:'var(--text-tertiary)',padding:20})}>{loanTab==='historic'?'No discharged loans':'No active loans'}</td></tr>
                 return filteredLoans.map((l)=>{
                 const i = l._origIdx
