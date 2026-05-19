@@ -364,10 +364,10 @@ export default function ClientDashboard({ clients, updateClient }) {
                   const f=loanFlag(l)
                   if(!f) return null
                   const isActioned = l.actionNotes && l.actionNotes.length > 0
+                  if (isActioned) return null
                   return <div key={i} style={{fontSize:11,padding:'3px 0',display:'flex',gap:6,alignItems:'center'}}>
-                    <span style={{width:7,height:7,borderRadius:'50%',background:isActioned?'#22c55e':f==='overdue'?'#e74c3c':'#e8a020',display:'inline-block',flexShrink:0}}/>
-                    <span style={{color:isActioned?'#86efac':f==='overdue'?'#fca5a5':'#fde68a',fontSize:10}}>
-                      {l.lname||`Loan ${i+1}`}{isActioned?' ✓':''}</span>
+                    <span style={{width:7,height:7,borderRadius:'50%',background:f==='overdue'?'#e74c3c':'#e8a020',display:'inline-block',flexShrink:0}}/>
+                    <span style={{color:f==='overdue'?'#fca5a5':'#fde68a',fontSize:10}}>{l.lname||`Loan ${i+1}`}</span>
                   </div>
                 })
               : <div style={{fontSize:11,color:'rgba(187,198,218,0.4)'}}>No active flags</div>}
@@ -549,12 +549,7 @@ export default function ClientDashboard({ clients, updateClient }) {
                       <div style={{display:'flex',alignItems:'center',gap:4,justifyContent:'center'}}>
                         {(() => {
                           const isActioned = l.actionNotes && l.actionNotes.length > 0
-                          if (isActioned) {
-                            const actionedDate = l.actionNotes[l.actionNotes.length-1].split(' — ')[1] || ''
-                            return <span style={{padding:'2px 6px',borderRadius:20,fontSize:9,fontWeight:500,background:'#dcfce7',color:'#166534'}}>
-                              ✓ Actioned{actionedDate ? ' ' + actionedDate : ''}
-                            </span>
-                          }
+                          if (isActioned) return null
                           if (flag) return <span style={{padding:'2px 6px',borderRadius:20,fontSize:9,fontWeight:500,background:flag==='overdue'?'#fde8e8':'#fef9c3',color:flag==='overdue'?'#a32d2d':'#854F0B'}}>
                             {flag==='overdue'?'Overdue':'< 120d'}
                           </span>
