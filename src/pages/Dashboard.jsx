@@ -445,10 +445,14 @@ export default function Dashboard({ clients, onImport, onUpdateClients }) {
       {/* TOP ROW */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 180px 1fr 200px', gap: 14, marginBottom: 14, alignItems: 'start' }}>
         <Panel style={{ display: 'flex', flexDirection: 'column' }}>
-          <BarChart data={balData} keys={['private', 'commercial']} colors={['#3D5570', '#EB99C2']} title="Portfolio Balances" formatY={v => v >= 1e6 ? `$${(v / 1e6).toFixed(1)}m` : `$${Math.round(v / 1000)}k`} />
+          <BarChart data={balData} keys={['private', 'commercial']} colors={['#EB99C2', '#3D5570']} title="Portfolio Balances" formatY={v => v >= 1e6 ? `$${(v / 1e6).toFixed(1)}m` : `$${Math.round(v / 1000)}k`} />
         </Panel>
         <Panel style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '10px 6px' }}>
-          <PieChart pw={pwTotal} comm={commTotal} />
+          {(() => {
+            const latestBal = last12[last12.length - 1]?.balance || (pwTotal + commTotal)
+            const ratio = pwTotal / (pwTotal + commTotal || 1)
+            return <PieChart pw={Math.round(latestBal * ratio)} comm={Math.round(latestBal * (1 - ratio))} />
+          })()}
         </Panel>
         <Panel style={{ display: 'flex', flexDirection: 'column' }}>
           <BarChart data={last12} keys={['trail', 'upfront']} colors={['#3D5570', '#EB99C2']} title="Commission Income" formatY={v => `$${Math.round(v / 1000)}k`} />
