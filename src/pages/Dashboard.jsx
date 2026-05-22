@@ -511,8 +511,11 @@ export default function Dashboard({ clients, onImport, onUpdateClients }) {
               const pct = prior12 > 0 ? Math.round((rolling12 - prior12) / prior12 * 100) : null
               return (
                 <div style={{ background: 'var(--bg)', borderRadius: 8, padding: '10px 12px' }}>
-                  <div style={{ fontSize: 10, color: 'var(--text-secondary)', marginBottom: 3 }}>Rolling 12m</div>
-                  <div style={{ fontSize: 13, fontWeight: 500, color: '#27ae60' }}>${Math.round(rolling12).toLocaleString()}</div>
+                  <div style={{ fontSize: 10, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 3 }}>Rolling 12m</div>
+                  <div style={{ fontSize: 12, fontWeight: 500, color: '#27ae60' }}>${Math.round(rolling12).toLocaleString()}</div>
+                  <div style={{ fontSize: 9, color: 'var(--text-tertiary)', marginTop: 1 }}>
+                    T: ${Math.round(COMMISSION.slice(-12).reduce((s,m)=>s+m.trail,0)/1000)}k U: ${Math.round(COMMISSION.slice(-12).reduce((s,m)=>s+m.upfront,0)/1000)}k
+                  </div>
                   {pct !== null && (
                     <div style={{ marginTop: 4 }}>
                       <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 20, fontWeight: 500, background: pct >= 0 ? '#eaf3de' : '#FCEBEB', color: pct >= 0 ? '#3B6D11' : '#A32D2D' }}>
@@ -523,6 +526,9 @@ export default function Dashboard({ clients, onImport, onUpdateClients }) {
                   <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px dashed var(--border-light)' }}>
                     <div style={{ fontSize: 9, color: 'var(--text-tertiary)', marginBottom: 2 }}>Prior 12m</div>
                     <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-secondary)' }}>${Math.round(prior12).toLocaleString()}</div>
+                    <div style={{ fontSize: 9, color: 'var(--text-tertiary)', marginTop: 1 }}>
+                      T: ${Math.round(COMMISSION.slice(-24,-12).reduce((s,m)=>s+m.trail,0)/1000)}k U: ${Math.round(COMMISSION.slice(-24,-12).reduce((s,m)=>s+m.upfront,0)/1000)}k
+                    </div>
                   </div>
                 </div>
               )
@@ -533,8 +539,10 @@ export default function Dashboard({ clients, onImport, onUpdateClients }) {
 
             {/* Last 4 quarters with prior year same quarter */}
             {(() => {
-              const currentQtrs = quarters.slice(-4)
-              const priorQtrs = quarters.slice(-8, -4)
+              // Only show quarters with all 3 months present (complete quarters only)
+              const completeQtrs = quarters.filter(q => q.months.length === 3)
+              const currentQtrs = completeQtrs.slice(-4)
+              const priorQtrs = completeQtrs.slice(-8, -4)
               return currentQtrs.map((q, i) => {
                 const prior = priorQtrs[i]
                 const pct = prior && prior.total > 0 ? Math.round((q.total - prior.total) / prior.total * 100) : null
