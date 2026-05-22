@@ -94,19 +94,25 @@ export function rollingYTD(commData) {
 }
 
 export function quarterlyIncome(commData) {
-  const qtrs = []
-  for (let i = 0; i < commData.length; i += 3) {
-    const slice = commData.slice(i, i+3)
-    if (!slice.length) break
-    qtrs.push({
-      label: `Q${Math.floor(i/3)+1}`,
-      months: slice.map(m=>m.month).join('–'),
-      trail: slice.reduce((s,m)=>s+m.trail,0),
-      upfront: slice.reduce((s,m)=>s+m.upfront,0),
-      total: slice.reduce((s,m)=>s+m.total,0),
-    })
-  }
-  return qtrs
+  // Group by proper calendar quarters: Jan-Mar, Apr-Jun, Jul-Sep, Oct-Dec
+  const Q_END = ['Mar', 'Jun', 'Sep', 'Dec']
+  const MONTH_IDX = {Jan:1,Feb:2,Mar:3,Apr:4,May:5,Jun:6,Jul:7,Aug:8,Sep:9,Oct:10,Nov:11,Dec:12}
+  const qMap = {}
+  commData.forEach(m => {
+    const [mon, yr] = m.month.split(' ')
+    const monthNum = MONTH_IDX[mon] || 0
+    const q = Math.floor((monthNum - 1) / 3) // 0=Jan-Mar,1=Apr-Jun,2=Jul-Sep,3=Oct-Dec
+    // Quarter ends in the month of the last month of that quarter
+    const endMonth = Q_END[q]
+    const key = `${endMonth} ${yr}`
+    if (!qMap[key]) qMap[key] = { label: `Q${endMonth} ${yr}`, endMonth, yr: parseInt('20'+yr), q, trail:0, upfront:0, total:0, months:[] }
+    qMap[key].trail += m.trail
+    qMap[key].upfront += m.upfront
+    qMap[key].total += m.total
+    qMap[key].months.push(mon)
+  })
+  // Sort by year then quarter
+  return Object.values(qMap).sort((a,b) => a.yr !== b.yr ? a.yr-b.yr : a.q-b.q)
 }
 
 // Build balance history from settlement date

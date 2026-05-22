@@ -496,7 +496,7 @@ export default function Dashboard({ clients, onImport, onUpdateClients }) {
             </div>
             {quarters.slice(-4).map((q, i) => (
               <div key={i} style={{ background: 'var(--bg)', borderRadius: 8, padding: '10px 12px' }}>
-                <div style={{ fontSize: 10, color: 'var(--text-secondary)', marginBottom: 3 }}>{q.label} ({q.months.split('–')[0]})</div>
+                <div style={{ fontSize: 10, color: 'var(--text-secondary)', marginBottom: 3 }}>{q.label}</div>
                 <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-primary)' }}>${Math.round(q.total).toLocaleString()}</div>
                 <div style={{ fontSize: 9, color: 'var(--text-tertiary)', marginTop: 1 }}>T: ${Math.round(q.trail / 1000)}k U: ${Math.round(q.upfront / 1000)}k</div>
               </div>
