@@ -445,7 +445,7 @@ export default function Dashboard({ clients, onImport, onUpdateClients }) {
       {/* TOP ROW */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 180px 1fr 200px', gap: 14, marginBottom: 14, alignItems: 'start' }}>
         <Panel style={{ display: 'flex', flexDirection: 'column' }}>
-          <BarChart data={balData} keys={['private', 'commercial']} colors={['#EB99C2', '#3D5570']} title="Portfolio Balances" formatY={v => v >= 1e6 ? `$${(v / 1e6).toFixed(1)}m` : `$${Math.round(v / 1000)}k`} />
+          <BarChart data={balData} keys={['private', 'commercial']} colors={['#EB99C2', '#3D5570']} title="Portfolio Balances" formatY={v => v >= 1e6 ? `$${Math.round(v / 5e6) * 5}m` : `$${Math.round(v / 5000) * 5}k`} />
         </Panel>
         <Panel style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '10px 6px' }}>
           {(() => {
