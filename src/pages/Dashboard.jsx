@@ -469,38 +469,100 @@ export default function Dashboard({ clients, onImport, onUpdateClients }) {
       </div>
 
       {/* INCOME SECTION */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 14, marginBottom: 16 }}>
+
+        {/* LEFT — Rolling 3 months */}
         <Panel>
-          <div style={{ fontSize: 10, fontWeight: 500, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>Income — This Month</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
-            {[
-              { label: 'Trail', val: `$${latest.trail.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` },
-              { label: 'Upfront', val: `$${latest.upfront.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` },
-              { label: 'Total', val: `$${latest.total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, color: '#27ae60' },
-            ].map(s => (
-              <div key={s.label} style={{ background: 'var(--bg)', borderRadius: 8, padding: '10px 12px' }}>
-                <div style={{ fontSize: 10, color: 'var(--text-secondary)', marginBottom: 3 }}>{s.label}</div>
-                <div style={{ fontSize: 14, fontWeight: 500, color: s.color || 'var(--text-primary)' }}>{s.val}</div>
-              </div>
-            ))}
+          <div style={{ fontSize: 10, fontWeight: 500, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>Income — Last 3 Months</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+            {COMMISSION.slice(-3).map((m, i) => {
+              const isClawback = m.upfront < 0
+              return (
+                <div key={i} style={{ background: 'var(--bg)', borderRadius: 8, padding: '10px 12px' }}>
+                  <div style={{ fontSize: 10, color: 'var(--text-secondary)', marginBottom: 3, fontWeight: 500 }}>{m.month}</div>
+                  <div style={{ fontSize: 13, fontWeight: 500, color: isClawback ? 'var(--pk)' : i === 2 ? '#27ae60' : 'var(--text-primary)' }}>
+                    ${Math.round(m.total).toLocaleString()}
+                  </div>
+                  <div style={{ fontSize: 9, color: 'var(--text-tertiary)', marginTop: 2 }}>T: ${Math.round(m.trail).toLocaleString()}</div>
+                  <div style={{ fontSize: 9, color: isClawback ? 'var(--pk)' : 'var(--text-tertiary)', marginTop: 1 }}>U: ${Math.round(m.upfront).toLocaleString()}</div>
+                  {isClawback && <div style={{ fontSize: 9, color: 'var(--pk)', marginTop: 3, fontWeight: 500 }}>Clawback</div>}
+                </div>
+              )
+            })}
+          </div>
+          <div style={{ marginTop: 10, paddingTop: 10, borderTop: '0.5px solid var(--border-light)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>3-month total</span>
+            <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-primary)' }}>
+              ${COMMISSION.slice(-3).reduce((s, m) => s + m.total, 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+            </span>
           </div>
         </Panel>
+
+        {/* RIGHT — Rolling 12m + quarterly with prior year comparison */}
         <Panel>
           <div style={{ fontSize: 10, fontWeight: 500, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>
             Rolling 12-Month Income &amp; Quarterly Breakdown
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr 1fr', gap: 8 }}>
-            <div style={{ background: 'var(--bg)', borderRadius: 8, padding: '10px 12px', gridColumn: '1/2' }}>
-              <div style={{ fontSize: 10, color: 'var(--text-secondary)', marginBottom: 3 }}>Rolling 12m</div>
-              <div style={{ fontSize: 13, fontWeight: 500, color: '#27ae60' }}>${Math.round(rolling12).toLocaleString()}</div>
-            </div>
-            {quarters.slice(-4).map((q, i) => (
-              <div key={i} style={{ background: 'var(--bg)', borderRadius: 8, padding: '10px 12px' }}>
-                <div style={{ fontSize: 10, color: 'var(--text-secondary)', marginBottom: 3 }}>{q.label}</div>
-                <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-primary)' }}>${Math.round(q.total).toLocaleString()}</div>
-                <div style={{ fontSize: 9, color: 'var(--text-tertiary)', marginTop: 1 }}>T: ${Math.round(q.trail / 1000)}k U: ${Math.round(q.upfront / 1000)}k</div>
-              </div>
-            ))}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr 1fr 1fr 1fr', gap: 8, alignItems: 'start' }}>
+
+            {/* Rolling 12m with prior year */}
+            {(() => {
+              const prior12 = rollingYTD(COMMISSION.slice(0, -12))
+              const pct = prior12 > 0 ? Math.round((rolling12 - prior12) / prior12 * 100) : null
+              return (
+                <div style={{ background: 'var(--bg)', borderRadius: 8, padding: '10px 12px' }}>
+                  <div style={{ fontSize: 10, color: 'var(--text-secondary)', marginBottom: 3 }}>Rolling 12m</div>
+                  <div style={{ fontSize: 13, fontWeight: 500, color: '#27ae60' }}>${Math.round(rolling12).toLocaleString()}</div>
+                  <div style={{ marginTop: 8, paddingTop: 8, borderTop: '0.5px solid var(--border-light)' }}>
+                    <div style={{ fontSize: 9, color: 'var(--text-tertiary)', marginBottom: 2 }}>Prior 12m</div>
+                    <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-secondary)' }}>${Math.round(prior12).toLocaleString()}</div>
+                    {pct !== null && (
+                      <div style={{ marginTop: 3 }}>
+                        <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 20, fontWeight: 500, background: pct >= 0 ? '#eaf3de' : '#FCEBEB', color: pct >= 0 ? '#3B6D11' : '#A32D2D' }}>
+                          {pct >= 0 ? '+' : ''}{pct}%
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )
+            })()}
+
+            {/* Vertical divider */}
+            <div style={{ width: 1, background: 'var(--border-light)', alignSelf: 'stretch', margin: '0 2px' }} />
+
+            {/* Last 4 quarters with prior year same quarter */}
+            {(() => {
+              const currentQtrs = quarters.slice(-4)
+              const priorQtrs = quarters.slice(-8, -4)
+              return currentQtrs.map((q, i) => {
+                const prior = priorQtrs[i]
+                const pct = prior && prior.total > 0 ? Math.round((q.total - prior.total) / prior.total * 100) : null
+                const hasClawback = q.upfront < 0
+                return (
+                  <div key={i} style={{ background: 'var(--bg)', borderRadius: 8, padding: '10px 12px' }}>
+                    <div style={{ fontSize: 10, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 3 }}>{q.label}</div>
+                    <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-primary)' }}>${Math.round(q.total).toLocaleString()}</div>
+                    <div style={{ fontSize: 9, color: 'var(--text-tertiary)', marginTop: 1 }}>T: ${Math.round(q.trail / 1000)}k U: ${Math.round(q.upfront / 1000)}k</div>
+                    {hasClawback && <div style={{ fontSize: 9, color: 'var(--pk)', marginTop: 2, fontWeight: 500 }}>Clawback</div>}
+                    {prior && (
+                      <div style={{ marginTop: 7, paddingTop: 7, borderTop: '0.5px solid var(--border-light)' }}>
+                        <div style={{ fontSize: 9, color: 'var(--text-tertiary)', marginBottom: 2 }}>{prior.label}</div>
+                        <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-secondary)' }}>${Math.round(prior.total).toLocaleString()}</div>
+                        <div style={{ fontSize: 9, color: 'var(--text-tertiary)', marginTop: 1 }}>T: ${Math.round(prior.trail / 1000)}k U: ${Math.round(prior.upfront / 1000)}k</div>
+                        {pct !== null && (
+                          <div style={{ marginTop: 3 }}>
+                            <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 20, fontWeight: 500, background: pct >= 0 ? '#eaf3de' : '#FCEBEB', color: pct >= 0 ? '#3B6D11' : '#A32D2D' }}>
+                              {pct >= 0 ? '+' : ''}{pct}%
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )
+              })
+            })()}
           </div>
         </Panel>
       </div>
