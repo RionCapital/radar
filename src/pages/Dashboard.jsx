@@ -513,16 +513,16 @@ export default function Dashboard({ clients, onImport, onUpdateClients }) {
                 <div style={{ background: 'var(--bg)', borderRadius: 8, padding: '10px 12px' }}>
                   <div style={{ fontSize: 10, color: 'var(--text-secondary)', marginBottom: 3 }}>Rolling 12m</div>
                   <div style={{ fontSize: 13, fontWeight: 500, color: '#27ae60' }}>${Math.round(rolling12).toLocaleString()}</div>
-                  <div style={{ marginTop: 8, paddingTop: 8, borderTop: '0.5px solid var(--border-light)' }}>
+                  {pct !== null && (
+                    <div style={{ marginTop: 4 }}>
+                      <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 20, fontWeight: 500, background: pct >= 0 ? '#eaf3de' : '#FCEBEB', color: pct >= 0 ? '#3B6D11' : '#A32D2D' }}>
+                        {pct >= 0 ? '+' : ''}{pct}% vs prior yr
+                      </span>
+                    </div>
+                  )}
+                  <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px dashed var(--border-light)' }}>
                     <div style={{ fontSize: 9, color: 'var(--text-tertiary)', marginBottom: 2 }}>Prior 12m</div>
                     <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-secondary)' }}>${Math.round(prior12).toLocaleString()}</div>
-                    {pct !== null && (
-                      <div style={{ marginTop: 3 }}>
-                        <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 20, fontWeight: 500, background: pct >= 0 ? '#eaf3de' : '#FCEBEB', color: pct >= 0 ? '#3B6D11' : '#A32D2D' }}>
-                          {pct >= 0 ? '+' : ''}{pct}%
-                        </span>
-                      </div>
-                    )}
                   </div>
                 </div>
               )
@@ -545,18 +545,18 @@ export default function Dashboard({ clients, onImport, onUpdateClients }) {
                     <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-primary)' }}>${Math.round(q.total).toLocaleString()}</div>
                     <div style={{ fontSize: 9, color: 'var(--text-tertiary)', marginTop: 1 }}>T: ${Math.round(q.trail / 1000)}k U: ${Math.round(q.upfront / 1000)}k</div>
                     {hasClawback && <div style={{ fontSize: 9, color: 'var(--pk)', marginTop: 2, fontWeight: 500 }}>Clawback</div>}
+                    {pct !== null && (
+                      <div style={{ marginTop: 4 }}>
+                        <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 20, fontWeight: 500, background: pct >= 0 ? '#eaf3de' : '#FCEBEB', color: pct >= 0 ? '#3B6D11' : '#A32D2D' }}>
+                          {pct >= 0 ? '+' : ''}{pct}% vs prior yr
+                        </span>
+                      </div>
+                    )}
                     {prior && (
-                      <div style={{ marginTop: 7, paddingTop: 7, borderTop: '0.5px solid var(--border-light)' }}>
+                      <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px dashed var(--border-light)' }}>
                         <div style={{ fontSize: 9, color: 'var(--text-tertiary)', marginBottom: 2 }}>{prior.label}</div>
                         <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-secondary)' }}>${Math.round(prior.total).toLocaleString()}</div>
                         <div style={{ fontSize: 9, color: 'var(--text-tertiary)', marginTop: 1 }}>T: ${Math.round(prior.trail / 1000)}k U: ${Math.round(prior.upfront / 1000)}k</div>
-                        {pct !== null && (
-                          <div style={{ marginTop: 3 }}>
-                            <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 20, fontWeight: 500, background: pct >= 0 ? '#eaf3de' : '#FCEBEB', color: pct >= 0 ? '#3B6D11' : '#A32D2D' }}>
-                              {pct >= 0 ? '+' : ''}{pct}%
-                            </span>
-                          </div>
-                        )}
                       </div>
                     )}
                   </div>
