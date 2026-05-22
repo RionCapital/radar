@@ -6,19 +6,52 @@ import { Panel, PanelTitle, DayBadge } from '../components/UI'
 import CommissionImport from './CommissionImport'
 
 const COMMISSION = [
-  { month:'Mar 25', trail:4509.09,  upfront:18295.28, total:22804.37, balance:29164475 },
-  { month:'Apr 25', trail:4541.24,  upfront:9223.03,  total:13764.27, balance:30452525 },
-  { month:'May 25', trail:4766.64,  upfront:5999.51,  total:10766.15, balance:31257259 },
-  { month:'Jun 25', trail:4769.86,  upfront:15911.98, total:20681.84, balance:33048895 },
-  { month:'Jul 25', trail:5059.35,  upfront:0,        total:5059.35,  balance:32726637 },
-  { month:'Aug 25', trail:4986.57,  upfront:5777.73,  total:10764.30, balance:32411979 },
-  { month:'Sep 25', trail:4998.56,  upfront:31299.46, total:36298.01, balance:36480528 },
-  { month:'Oct 25', trail:5401.37,  upfront:4402.19,  total:9803.56,  balance:35568550 },
-  { month:'Nov 25', trail:5005.50,  upfront:14214.92, total:19220.42, balance:35226679 },
-  { month:'Dec 25', trail:5421.49,  upfront:4673.18,  total:10094.67, balance:34376508 },
-  { month:'Jan 26', trail:5639.74,  upfront:0,        total:135.92,   balance:34582950 },
-  { month:'Feb 26', trail:5054.41,  upfront:9212.09,  total:14266.50, balance:34734174 },
-  { month:'Mar 26', trail:5616.36,  upfront:13322.25, total:18938.61, balance:41224085 },
+  { month:'Jun 22', trail:98.52, upfront:4018.98, total:4117.5, balance:1629518 },
+  { month:'Jul 22', trail:268.2, upfront:6200.66, total:6468.86, balance:2802203 },
+  { month:'Aug 22', trail:297.82, upfront:7378.8, total:7676.62, balance:4024690 },
+  { month:'Sep 22', trail:683.12, upfront:19422.26, total:20105.38, balance:8324568 },
+  { month:'Oct 22', trail:803.66, upfront:2649.53, total:3453.19, balance:6232974 },
+  { month:'Nov 22', trail:810.2, upfront:4660.19, total:5470.39, balance:7122607 },
+  { month:'Dec 22', trail:1000.15, upfront:2791.36, total:3791.51, balance:7400757 },
+  { month:'Jan 23', trail:1062.85, upfront:4204.95, total:5267.8, balance:8217729 },
+  { month:'Feb 23', trail:1114.4, upfront:6304.18, total:7418.58, balance:9379168 },
+  { month:'Mar 23', trail:1222.99, upfront:5341.7, total:6564.69, balance:9913429 },
+  { month:'Apr 23', trail:1407.3, upfront:9316.12, total:10723.42, balance:12035499 },
+  { month:'May 23', trail:1645.47, upfront:7821.96, total:9467.43, balance:13887158 },
+  { month:'Jun 23', trail:1794.69, upfront:14210.21, total:16004.9, balance:15444316 },
+  { month:'Jul 23', trail:2036.03, upfront:17320.23, total:19356.26, balance:18638688 },
+  { month:'Aug 23', trail:2280.4, upfront:2129.11, total:4409.51, balance:16884658 },
+  { month:'Sep 23', trail:2232.79, upfront:0.0, total:2232.79, balance:16390236 },
+  { month:'Oct 23', trail:2293.11, upfront:11337.94, total:13631.05, balance:16832238 },
+  { month:'Nov 23', trail:2465.3, upfront:6005.63, total:8470.93, balance:19232658 },
+  { month:'Dec 23', trail:2635.28, upfront:5532.03, total:8167.31, balance:19786368 },
+  { month:'Jan 24', trail:2659.84, upfront:10903.58, total:13563.42, balance:19043645 },
+  { month:'Feb 24', trail:2721.64, upfront:5809.92, total:8531.56, balance:22251788 },
+  { month:'Mar 24', trail:3041.7, upfront:4309.02, total:7350.72, balance:22591038 },
+  { month:'Apr 24', trail:3015.09, upfront:5402.89, total:8417.98, balance:22454482 },
+  { month:'May 24', trail:3174.91, upfront:1354.43, total:4529.34, balance:22868285 },
+  { month:'Jun 24', trail:3133.8, upfront:5236.02, total:8369.82, balance:24335446 },
+  { month:'Jul 24', trail:3421.93, upfront:8753.47, total:12175.4, balance:25180407 },
+  { month:'Aug 24', trail:3396.48, upfront:17589.0, total:20985.48, balance:28962959 },
+  { month:'Sep 24', trail:4113.04, upfront:4754.95, total:8867.99, balance:33028507 },
+  { month:'Oct 24', trail:4173.99, upfront:3675.68, total:7849.67, balance:27801096 },
+  { month:'Nov 24', trail:4027.16, upfront:2726.92, total:6754.08, balance:28156235 },
+  { month:'Dec 24', trail:4317.59, upfront:5319.6, total:9637.19, balance:28259620 },
+  { month:'Jan 25', trail:4283.19, upfront:8443.57, total:12726.76, balance:28249881 },
+  { month:'Feb 25', trail:4012.24, upfront:4238.08, total:8250.32, balance:29404971 },
+  { month:'Mar 25', trail:4509.09, upfront:18295.28, total:22804.37, balance:31624809 },
+  { month:'Apr 25', trail:4541.24, upfront:9223.03, total:13764.27, balance:31988964 },
+  { month:'May 25', trail:4766.64, upfront:5999.51, total:10766.15, balance:32080635 },
+  { month:'Jun 25', trail:4769.86, upfront:15911.98, total:20681.84, balance:35033975 },
+  { month:'Jul 25', trail:5059.35, upfront:0.0, total:5059.35, balance:32860815 },
+  { month:'Aug 25', trail:4986.57, upfront:5777.73, total:10764.3, balance:33227588 },
+  { month:'Sep 25', trail:4998.56, upfront:31299.46, total:36298.02, balance:40827196 },
+  { month:'Oct 25', trail:5401.37, upfront:3970.01, total:9371.38, balance:35835899 },
+  { month:'Nov 25', trail:5005.5, upfront:14214.92, total:19220.42, balance:37573995 },
+  { month:'Dec 25', trail:5421.49, upfront:4673.18, total:10094.67, balance:36072298 },
+  { month:'Jan 26', trail:5639.74, upfront:-5503.82, total:135.92, balance:34869016 },
+  { month:'Feb 26', trail:5054.41, upfront:9212.09, total:14266.5, balance:35276533 },
+  { month:'Mar 26', trail:5616.36, upfront:13322.25, total:18938.61, balance:47054962 },
 ]
 
 // ─── Panel A: Annual Reviews ──────────────────────────────────────────────────
@@ -334,7 +367,8 @@ export default function Dashboard({ clients, onImport, onUpdateClients }) {
   const quarters = quarterlyIncome(COMMISSION)
 
   const pwRatio = pwTotal / (pwTotal + commTotal || 1)
-  const balData = COMMISSION.map(d => ({
+  const last12 = COMMISSION.slice(-12)
+  const balData = last12.map(d => ({
     month: d.month,
     private: Math.round(d.balance * pwRatio),
     commercial: Math.round(d.balance * (1 - pwRatio)),
@@ -417,7 +451,7 @@ export default function Dashboard({ clients, onImport, onUpdateClients }) {
           <PieChart pw={pwTotal} comm={commTotal} />
         </Panel>
         <Panel style={{ display: 'flex', flexDirection: 'column' }}>
-          <BarChart data={COMMISSION} keys={['trail', 'upfront']} colors={['#3D5570', '#EB99C2']} title="Commission Income" formatY={v => `$${Math.round(v / 1000)}k`} />
+          <BarChart data={last12} keys={['trail', 'upfront']} colors={['#3D5570', '#EB99C2']} title="Commission Income" formatY={v => `$${Math.round(v / 1000)}k`} />
         </Panel>
         <Panel style={{ padding: '12px 14px' }}>
           <div style={{ fontSize: 10, fontWeight: 500, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Summary</div>
