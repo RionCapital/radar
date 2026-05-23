@@ -304,6 +304,16 @@ function SettleModal({ deal, clients, onConfirm, onCancel }) {
 
 export default function CRM({ clients, onUpdateClients }) {
   const navigate = useNavigate()
+  // Nav tabs
+  const CRMNav = () => (
+    <div style={{ display:'flex', gap:2, marginBottom:16, borderBottom:'1px solid #e8eaed', paddingBottom:0 }}>
+      {[['Pipeline','/crm'],['Sales Dashboard','/crm/dashboard']].map(([label,path]) => (
+        <button key={path} onClick={()=>navigate(path)} style={{ padding:'8px 18px', fontSize:12, fontWeight:500, border:'none', background:'transparent', cursor:'pointer', borderBottom: window.location.pathname===path?'2px solid #EB99C2':'2px solid transparent', color:window.location.pathname===path?'#EB99C2':'#7A8090', marginBottom:'-1px' }}>
+          {label}
+        </button>
+      ))}
+    </div>
+  )
   const [deals, setDeals] = useState(() => {
     try {
       const saved = localStorage.getItem('rion-crm-deals')
@@ -469,6 +479,7 @@ export default function CRM({ clients, onUpdateClients }) {
   return (
     <div style={{ padding:'16px 24px' }}>
 
+      <CRMNav />
       {/* Header */}
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
         <div>
