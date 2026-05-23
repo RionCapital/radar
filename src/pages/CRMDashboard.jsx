@@ -505,20 +505,3 @@ export default function CRMDashboard() {
     </div>
   )
 }
-
-function cleanCat(d) {
-  const cat = (d.Categories || d['Transaction Type'] || '').split(';')[0].trim()
-  if (!cat || cat === 'Unknown') {
-    const tn = (d['Transaction Name'] || '').toLowerCase()
-    if (tn.includes('asset')) return 'Asset Finance'
-    if (tn.includes('smsf')) return 'SMSF'
-    if (tn.includes('commercial')) return 'Commercial'
-    return 'Other'
-  }
-  if (['Residential','Refinance','Variable','Owner Occupied','Full Doc','Low Doc','First Home Buyer','Investment','Pre-Approval','Purchase','Top up'].includes(cat)) return 'Residential'
-  if (cat === 'Asset Finance') return 'Asset Finance'
-  if (cat === 'Commercial') return 'Commercial'
-  if (cat === 'SMSF') return 'SMSF'
-  if (['Bus. Lend','Trade Finance'].includes(cat)) return 'Business Lending'
-  return 'Other'
-}
