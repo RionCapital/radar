@@ -73,8 +73,6 @@ function MiniBar({ label, val, max, color }) {
       <div style={{ background: '#f0f0f0', borderRadius: 4, height: 6 }}>
         <div style={{ background: color, borderRadius: 4, height: 6, width: `${pct}%`, transition: 'width 0.4s' }} />
       </div>
-      {selectedCat && <DealListModal category={selectedCat} deals={PIPELINE_DATA.filter(d=>d.Status==='7. Settled'&&d['Date Settled'])} onClose={()=>setSelectedCat(null)} navigate={navigate} />}
-      </div>
     </div>
   )
 }
