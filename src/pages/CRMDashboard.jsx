@@ -124,7 +124,6 @@ function BarChart({ data, title, valueKey = 'amount', labelKey = 'month', color1
           </div>
         </div>
       )}
-      {selectedCat && <DealListModal category={selectedCat} deals={PIPELINE_DATA.filter(d=>d.Status==='7. Settled'&&d['Date Settled'])} onClose={()=>setSelectedCat(null)} navigate={navigate} />}
       </div>
     </div>
   )
@@ -190,7 +189,6 @@ function DonutChart({ data, total, onSliceClick }) {
           </div>
         ))}
       </div>
-      {selectedCat && <DealListModal category={selectedCat} deals={PIPELINE_DATA.filter(d=>d.Status==='7. Settled'&&d['Date Settled'])} onClose={()=>setSelectedCat(null)} navigate={navigate} />}
       </div>
     </div>
   )
@@ -252,7 +250,6 @@ function DealListModal({ category, deals, onClose, navigate }) {
           </table>
         </div>
       </div>
-      {selectedCat && <DealListModal category={selectedCat} deals={PIPELINE_DATA.filter(d=>d.Status==='7. Settled'&&d['Date Settled'])} onClose={()=>setSelectedCat(null)} navigate={navigate} />}
       </div>
     </div>
   )
@@ -569,7 +566,7 @@ export default function CRMDashboard() {
         </div>
       </Card>
 
-      {selectedCat && <DealListModal category={selectedCat} deals={PIPELINE_DATA.filter(d=>d.Status==='7. Settled'&&d['Date Settled'])} onClose={()=>setSelectedCat(null)} navigate={navigate} />}
+      {selectedCat && <DealListModal category={selectedCat} deals={PIPELINE_DATA.filter(d => d.Status === '7. Settled' && d['Date Settled'])} onClose={() => setSelectedCat(null)} navigate={navigate} />}
       </div>
     </div>
   )
