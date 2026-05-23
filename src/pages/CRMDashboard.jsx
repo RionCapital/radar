@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
+import CRMTopbar from '../components/CRMTopbar'
 import { PIPELINE_DATA } from '../lib/pipelineData'
 import { fmt } from '../lib/data'
 
@@ -73,6 +74,7 @@ function MiniBar({ label, val, max, color }) {
         <div style={{ background: color, borderRadius: 4, height: 6, width: `${pct}%`, transition: 'width 0.4s' }} />
       </div>
       {selectedCat && <DealListModal category={selectedCat} deals={PIPELINE_DATA.filter(d=>d.Status==='7. Settled'&&d['Date Settled'])} onClose={()=>setSelectedCat(null)} navigate={navigate} />}
+      </div>
     </div>
   )
 }
@@ -125,6 +127,7 @@ function BarChart({ data, title, valueKey = 'amount', labelKey = 'month', color1
         </div>
       )}
       {selectedCat && <DealListModal category={selectedCat} deals={PIPELINE_DATA.filter(d=>d.Status==='7. Settled'&&d['Date Settled'])} onClose={()=>setSelectedCat(null)} navigate={navigate} />}
+      </div>
     </div>
   )
 }
@@ -190,6 +193,7 @@ function DonutChart({ data, total, onSliceClick }) {
         ))}
       </div>
       {selectedCat && <DealListModal category={selectedCat} deals={PIPELINE_DATA.filter(d=>d.Status==='7. Settled'&&d['Date Settled'])} onClose={()=>setSelectedCat(null)} navigate={navigate} />}
+      </div>
     </div>
   )
 }
@@ -251,6 +255,7 @@ function DealListModal({ category, deals, onClose, navigate }) {
         </div>
       </div>
       {selectedCat && <DealListModal category={selectedCat} deals={PIPELINE_DATA.filter(d=>d.Status==='7. Settled'&&d['Date Settled'])} onClose={()=>setSelectedCat(null)} navigate={navigate} />}
+      </div>
     </div>
   )
 }
@@ -388,7 +393,9 @@ export default function CRMDashboard() {
   const maxCatAmount = Math.max(...catData.map(c=>c.value))
 
   return (
-    <div style={{ padding: '16px 24px' }}>
+    <div>
+      <CRMTopbar />
+      <div style={{ padding: '16px 24px' }}>
       <div style={{ marginBottom: 14 }}>
         <h1 style={{ fontSize: 18, fontWeight: 700, color: '#2A3545', margin: 0 }}>CRM — Sales Dashboard</h1>
         <div style={{ fontSize: 11, color: '#7A8090', marginTop: 2 }}>Historical settlement data · {totalSettled} deals since inception</div>
@@ -565,6 +572,7 @@ export default function CRMDashboard() {
       </Card>
 
       {selectedCat && <DealListModal category={selectedCat} deals={PIPELINE_DATA.filter(d=>d.Status==='7. Settled'&&d['Date Settled'])} onClose={()=>setSelectedCat(null)} navigate={navigate} />}
+      </div>
     </div>
   )
 }

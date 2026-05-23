@@ -92,9 +92,9 @@ export default function App() {
         <Route path="/radar/clients" element={<RequireAuth><ClientList clients={clients} onAddClient={addClient} /></RequireAuth>} />
         <Route path="/radar/clients/:name" element={<RequireAuth><ClientDashboard clients={clients} updateClient={updateClient} /></RequireAuth>} />
         <Route path="/radar/clients/:name/loan/:loanIdx" element={<RequireAuth><LoanAccount clients={clients} updateClient={updateClient} /></RequireAuth>} />
-        <Route path="/crm" element={<RequireAuth><CRM clients={clients} onUpdateClients={updateAllClients} /></RequireAuth>} />
+        <Route path="/crm/deal/:dealName" element={<RequireAuth><DealPage onUpdateDeals={updateCrmDeals} /></RequireAuth>} />
         <Route path="/crm/dashboard" element={<RequireAuth><CRMDashboard /></RequireAuth>} />
-        <Route path="/crm/deal/:dealName" element={<RequireAuth><DealPage deals={crmDeals || (() => { try { const s=localStorage.getItem('rion-crm-deals'); return s?JSON.parse(s):[] } catch{return []} })()} onUpdateDeals={updateCrmDeals} /></RequireAuth>} />
+        <Route path="/crm" element={<RequireAuth><CRM clients={clients} onUpdateClients={updateAllClients} /></RequireAuth>} />
         <Route path="/radar/clients/:name/contacts" element={<RequireAuth><ContactPage clients={clients} updateClient={updateClient} /></RequireAuth>} />
         <Route path="/radar/clients/:name/opportunity" element={<RequireAuth><OpportunityScore clients={clients} updateClient={updateClient} /></RequireAuth>} />
         <Route path="/radar/studio" element={<RequireAuth><ProjectStudio /></RequireAuth>} />

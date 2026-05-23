@@ -168,7 +168,15 @@ function ForecastPanel({ deals }) {
         <div style={{ fontSize: 10, fontWeight: 600, color: '#7A8090', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Forecast — pipeline by stage</div>
         <div style={{ fontSize: 10, color: '#7A8090' }}>Upfront est. @ 0.66%</div>
       </div>
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, tableLayout: 'fixed' }}>
+        <colgroup>
+          <col style={{ width: '22%' }} />
+          <col style={{ width: '15.6%' }} />
+          <col style={{ width: '15.6%' }} />
+          <col style={{ width: '15.6%' }} />
+          <col style={{ width: '15.6%' }} />
+          <col style={{ width: '15.6%' }} />
+        </colgroup>
         <thead>
           <tr>
             <th style={{ padding: '6px 12px', fontSize: 10, fontWeight: 600, color: '#7A8090', textAlign: 'left', background: '#f8f9fa' }}>Stage</th>
