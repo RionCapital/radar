@@ -21,7 +21,7 @@ const APPS = [
 ]
 
 const TOOLS = [
-  { id: 'crm',       label: 'CRM',       icon: icon_crm,       desc: 'Pipeline management',       path: null,               active: false },
+  { id: 'crm',       label: 'CRM',       icon: icon_crm,       desc: 'Pipeline management',       path: '/crm',             active: true  },
   { id: 'radar',     label: 'Rradar',     icon: icon_radar,     desc: 'Relationship Management',   path: '/radar/dashboard', active: true  },
   { id: 'marketing', label: 'Marketing', icon: icon_marketing, desc: 'Client & referral lists',   path: null,               active: false },
   { id: 'planner',   label: 'Planner',   icon: icon_planner,   desc: 'Weekly & monthly organiser',path: null,               active: false },

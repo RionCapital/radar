@@ -9,6 +9,7 @@ import ClientList from './pages/ClientList'
 import ClientDashboard from './pages/ClientDashboard'
 import LoanAccount from './pages/LoanAccount'
 import ContactPage from './pages/ContactPage'
+import CRM from './pages/CRM'
 import BirthdayNotifier from './components/BirthdayNotifier'
 import OpportunityScore from './pages/OpportunityScore'
 import ProjectStudio from './pages/ProjectStudio'
@@ -78,6 +79,7 @@ export default function App() {
         <Route path="/radar/clients" element={<RequireAuth><ClientList clients={clients} onAddClient={addClient} /></RequireAuth>} />
         <Route path="/radar/clients/:name" element={<RequireAuth><ClientDashboard clients={clients} updateClient={updateClient} /></RequireAuth>} />
         <Route path="/radar/clients/:name/loan/:loanIdx" element={<RequireAuth><LoanAccount clients={clients} updateClient={updateClient} /></RequireAuth>} />
+        <Route path="/crm" element={<RequireAuth><CRM clients={clients} onUpdateClients={updateAllClients} /></RequireAuth>} />
         <Route path="/radar/clients/:name/contacts" element={<RequireAuth><ContactPage clients={clients} updateClient={updateClient} /></RequireAuth>} />
         <Route path="/radar/clients/:name/opportunity" element={<RequireAuth><OpportunityScore clients={clients} updateClient={updateClient} /></RequireAuth>} />
         <Route path="/radar/studio" element={<RequireAuth><ProjectStudio /></RequireAuth>} />
