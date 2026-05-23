@@ -11,6 +11,7 @@ import LoanAccount from './pages/LoanAccount'
 import ContactPage from './pages/ContactPage'
 import CRM from './pages/CRM'
 import CRMDashboard from './pages/CRMDashboard'
+import DealPage from './pages/DealPage'
 import BirthdayNotifier from './components/BirthdayNotifier'
 import OpportunityScore from './pages/OpportunityScore'
 import ProjectStudio from './pages/ProjectStudio'
@@ -23,7 +24,15 @@ function RequireAuth({ children }) {
 
 export default function App() {
   const [clients, setClients] = useState(() => loadClients())
-  const [showBirthdays, setShowBirthdays] = useState(true) // show on load
+  const [showBirthdays, setShowBirthdays] = useState(true)
+  const [crmDeals, setCrmDeals] = useState(() => {
+    try { const s = localStorage.getItem('rion-crm-deals'); if (s) return JSON.parse(s) } catch {}
+    return null // CRM page loads its own data
+  })
+  function updateCrmDeals(updated) {
+    setCrmDeals(updated)
+    try { localStorage.setItem('rion-crm-deals', JSON.stringify(updated)) } catch {}
+  } // show on load
   const [toast, setToast] = useState(null)
   const location = useLocation()
   const isHome = location.pathname === '/'
@@ -82,6 +91,7 @@ export default function App() {
         <Route path="/radar/clients/:name/loan/:loanIdx" element={<RequireAuth><LoanAccount clients={clients} updateClient={updateClient} /></RequireAuth>} />
         <Route path="/crm" element={<RequireAuth><CRM clients={clients} onUpdateClients={updateAllClients} /></RequireAuth>} />
         <Route path="/crm/dashboard" element={<RequireAuth><CRMDashboard /></RequireAuth>} />
+        <Route path="/crm/deal/:dealName" element={<RequireAuth><DealPage deals={crmDeals} onUpdateDeals={updateCrmDeals} /></RequireAuth>} />
         <Route path="/radar/clients/:name/contacts" element={<RequireAuth><ContactPage clients={clients} updateClient={updateClient} /></RequireAuth>} />
         <Route path="/radar/clients/:name/opportunity" element={<RequireAuth><OpportunityScore clients={clients} updateClient={updateClient} /></RequireAuth>} />
         <Route path="/radar/studio" element={<RequireAuth><ProjectStudio /></RequireAuth>} />

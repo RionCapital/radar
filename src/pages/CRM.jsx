@@ -78,7 +78,8 @@ function DealRow({ deal, band, onSettle, onSelect, selected }) {
           {deal.Status}
         </span>
       </td>
-      <td style={{ padding: '6px 10px', fontSize: 11, fontWeight: 500, color: '#2A3545', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+      <td style={{ padding: '6px 10px', fontSize: 11, fontWeight: 500, color: '#EB99C2', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'pointer' }}
+        onClick={e => { e.stopPropagation(); navigate(`/crm/deal/${encodeURIComponent(deal['Transaction Name'])}`) }}>
         {deal['Transaction Name']}
       </td>
       <td style={{ padding: '6px 10px', fontSize: 10, color: '#7A8090' }}>{deal.Categories || deal['Transaction Type'] || '—'}</td>

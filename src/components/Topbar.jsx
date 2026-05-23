@@ -39,11 +39,6 @@ export default function Topbar({ clients = [], onOpenBirthdays }) {
           onClick={() => navigate('/radar/clients')}>
           Clients
         </button>
-        <button
-          className={`${styles.navBtn} ${isActive('/crm') ? styles.active : ''}`}
-          onClick={() => navigate('/crm')}>
-          CRM
-        </button>
       </nav>
       </div>
 

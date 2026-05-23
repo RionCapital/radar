@@ -21,29 +21,43 @@ function getFY(dateStr) {
 // Consolidate categories into clean groups
 function cleanCat(d) {
   const cat = (d.Categories || d['Transaction Type'] || '').split(';')[0].trim()
-  if (!cat || cat === 'Unknown') {
-    const tn = (d['Transaction Name'] || '').toLowerCase()
-    if (tn.includes('asset')) return 'Asset Finance'
-    if (tn.includes('smsf')) return 'SMSF'
-    if (tn.includes('commercial')) return 'Commercial'
-    return 'Other'
-  }
-  if (['Residential','Refinance','Variable','Owner Occupied','Full Doc','Low Doc','First Home Buyer','Investment','Pre-Approval','Purchase'].includes(cat)) return 'Residential'
-  if (cat === 'Asset Finance') return 'Asset Finance'
-  if (cat === 'Commercial') return 'Commercial'
-  if (cat === 'SMSF') return 'SMSF'
-  if (['Bus. Lend','Trade Finance'].includes(cat)) return 'Business Lending'
-  if (cat === 'Top up') return 'Top Up'
+  const tn = (d['Transaction Name'] || '').toLowerCase()
+
+  // Asset Finance — check name first as category is often blank
+  if (cat === 'Asset Finance' || tn.includes('asset') || tn.includes('excavator') || tn.includes('forklift') || tn.includes('truck') || tn.includes('vehicle')) return 'Asset Finance'
+
+  // SMSF
+  if (cat === 'SMSF' || tn.includes('smsf')) return 'SMSF'
+
+  // Invoice Finance
+  if (cat === 'Invoice Finance' || tn.includes('invoice') || cat === 'Trade Finance') return 'Invoice Finance'
+
+  // Business Loans
+  if (['Bus. Lend','Business Loan','Business Lending'].includes(cat) || tn.includes('business loan')) return 'Business Loans'
+
+  // Commercial Loans
+  if (cat === 'Commercial' || tn.includes('commercial') || tn.includes('sor ') || tn.includes('rjso')) return 'Commercial Loans'
+
+  // Residential — broad catch
+  if (['Residential','Refinance','Variable','Owner Occupied','Full Doc','Low Doc','First Home Buyer',
+       'Investment','Pre-Approval','Purchase','Top up','Full Doc;Investment;Variable',
+       'Owner Occupied;Variable','Variable;Owner Occupied','Investment;Variable',
+       'First Home Buyer;Variable','Low Doc;Variable;Owner Occupied;Investment'].includes(cat)) return 'Residential'
+
+  // Fallback by name
+  if (tn.includes('resi') || tn.includes('home loan') || tn.includes('oo ') || tn.includes(' oo)') || tn.includes('inv)')) return 'Residential'
+
+  if (!cat || cat === 'Unknown' || cat === '') return 'Other'
   return 'Other'
 }
 
 const CAT_COLORS = {
   'Residential':       '#3D4F6B',
   'Asset Finance':     '#EB99C2',
-  'Commercial':        '#f59e0b',
+  'Commercial Loans':  '#f59e0b',
   'SMSF':              '#22c55e',
-  'Business Lending':  '#8b5cf6',
-  'Top Up':            '#06b6d4',
+  'Business Loans':    '#8b5cf6',
+  'Invoice Finance':   '#06b6d4',
   'Other':             '#9ca3af',
 }
 
@@ -143,9 +157,12 @@ function DonutChart({ data, total }) {
           </path>
         ))}
         <circle cx={cx} cy={cy} r={inner} fill="white" />
-        <text x={cx} y={cy - 4} textAnchor="middle" fontSize={9} fill="#7A8090">Total</text>
-        <text x={cx} y={cy + 8} textAnchor="middle" fontSize={10} fontWeight="600" fill="#2A3545">
+        <text x={cx} y={cy - 6} textAnchor="middle" fontSize={8} fill="#9ca3af">Total</text>
+        <text x={cx} y={cy + 5} textAnchor="middle" fontSize={11} fontWeight="700" fill="#2A3545">
           {total >= 1e6 ? `$${(total/1e6).toFixed(1)}m` : `$${Math.round(total/1000)}k`}
+        </text>
+        <text x={cx} y={cy + 16} textAnchor="middle" fontSize={8} fill="#9ca3af">
+          {data.reduce((s,d)=>s+1,0)} types
         </text>
       </svg>
       <div style={{ flex: 1 }}>
