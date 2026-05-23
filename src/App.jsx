@@ -9,6 +9,7 @@ import ClientList from './pages/ClientList'
 import ClientDashboard from './pages/ClientDashboard'
 import LoanAccount from './pages/LoanAccount'
 import ContactPage from './pages/ContactPage'
+import BirthdayNotifier from './components/BirthdayNotifier'
 import OpportunityScore from './pages/OpportunityScore'
 import ProjectStudio from './pages/ProjectStudio'
 import Toast from './components/Toast'
@@ -20,6 +21,7 @@ function RequireAuth({ children }) {
 
 export default function App() {
   const [clients, setClients] = useState(() => loadClients())
+  const [showBirthdays, setShowBirthdays] = useState(true) // show on load
   const [toast, setToast] = useState(null)
   const location = useLocation()
   const isHome = location.pathname === '/'

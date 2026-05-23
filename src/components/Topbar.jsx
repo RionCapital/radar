@@ -1,11 +1,13 @@
 import React from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import styles from './Topbar.module.css'
+import { useBirthdayCount } from './BirthdayNotifier'
 
-export default function Topbar() {
+export default function Topbar({ clients = [], onOpenBirthdays }) {
   const navigate = useNavigate()
   const location = useLocation()
   const isActive = (path) => location.pathname.startsWith(path)
+  const bdayCount = useBirthdayCount(clients)
 
   return (
     <div className={styles.bar}>
@@ -40,10 +42,23 @@ export default function Topbar() {
       </nav>
       </div>
 
-      {/* Home btn — stays right */}
-      <button className={styles.homeBtn} onClick={() => navigate('/')}>
-        ⌂ Home
-      </button>
+      {/* Right side — notification bell + home */}
+      <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+        {/* Notification bell */}
+        <button onClick={onOpenBirthdays} title="Birthdays & notifications" style={{ position:'relative', background:'rgba(255,255,255,0.08)', border:'none', borderRadius:8, padding:'6px 10px', cursor:'pointer', display:'flex', alignItems:'center', gap:6, color:'#9ab0c8', fontSize:12 }}
+          onMouseOver={e=>e.currentTarget.style.background='rgba(255,255,255,0.15)'}
+          onMouseOut={e=>e.currentTarget.style.background='rgba(255,255,255,0.08)'}>
+          <span style={{ fontSize:14 }}>🔔</span>
+          {bdayCount > 0 && (
+            <span style={{ position:'absolute', top:4, right:4, width:14, height:14, borderRadius:'50%', background:'#EB99C2', fontSize:8, fontWeight:700, color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', lineHeight:1 }}>
+              {bdayCount}
+            </span>
+          )}
+        </button>
+        <button className={styles.homeBtn} onClick={() => navigate('/')}>
+          ⌂ Home
+        </button>
+      </div>
     </div>
   )
 }
