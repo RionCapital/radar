@@ -9,6 +9,7 @@ const STAGES = [
 ]
 
 const ACTIVE_STAGES = ['1. Lead', '2. Strategy', '3. Pre-Lodged', '4. Lodged', '5. Conditional', '6. Unconditional']
+const FORECAST_STAGES = ['1. Lead', '2. Strategy', '3. Pre-Lodged', '4. Lodged', '5. Conditional', '6. Unconditional', '7. Settled', '8. Withdrawn']
 const STAGE_COLORS = {
   '1. Lead': { bg: '#eef4fb', color: '#185fa5', dot: '#3b82f6' },
   '2. Strategy': { bg: '#eef4fb', color: '#185fa5', dot: '#3b82f6' },
@@ -139,7 +140,9 @@ function ForecastPanel({ deals }) {
     return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`
   })
 
-  const stageRows = ACTIVE_STAGES.map(stage => {
+  // Divider groups: Pre-lodged group, Lodged group, Settled group
+  const DIVIDERS_AFTER = ['2. Strategy', '4. Lodged', '6. Unconditional']
+  const stageRows = FORECAST_STAGES.map(stage => {
     const totals = months.map(m => {
       return deals.filter(d => d.Status === stage && d['Month of Settlement'] && d['Month of Settlement'].startsWith(m))
                   .reduce((s,d) => s + (d.Amount||0), 0)
@@ -176,22 +179,28 @@ function ForecastPanel({ deals }) {
         <tbody>
           {stageRows.map(({ stage, totals, beyond }) => {
             const sc = STAGE_COLORS[stage]
-            const hasAny = totals.some(t => t > 0) || beyond > 0
-            if (!hasAny) return null
+            const showDivider = DIVIDERS_AFTER.includes(stage)
             return (
-              <tr key={stage} style={{ borderTop: '0.5px solid #f0f0f0' }}>
-                <td style={{ padding: '5px 12px' }}>
-                  <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 20, background: sc.bg, color: sc.color, fontWeight: 500 }}>{stage}</span>
-                </td>
-                {totals.map((t, i) => (
-                  <td key={i} style={{ padding: '5px 12px', textAlign: 'right', color: t > 0 ? '#2A3545' : '#d1d5db', fontWeight: t > 0 ? 500 : 400, background: BAND_COLORS[bands[i]].row }}>
-                    {t > 0 ? fmt(t) : '—'}
+              <React.Fragment key={stage}>
+                <tr style={{ borderTop: '0.5px solid #f0f0f0' }}>
+                  <td style={{ padding: '5px 12px' }}>
+                    <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 20, background: sc.bg, color: sc.color, fontWeight: 500 }}>{stage}</span>
                   </td>
-                ))}
-                <td style={{ padding: '5px 12px', textAlign: 'right', color: beyond > 0 ? '#2A3545' : '#d1d5db' }}>
-                  {beyond > 0 ? fmt(beyond) : '—'}
-                </td>
-              </tr>
+                  {totals.map((t, i) => (
+                    <td key={i} style={{ padding: '5px 12px', textAlign: 'right', color: t > 0 ? '#2A3545' : '#d1d5db', fontWeight: t > 0 ? 500 : 400, background: BAND_COLORS[bands[i]].row }}>
+                      {t > 0 ? fmt(t) : '—'}
+                    </td>
+                  ))}
+                  <td style={{ padding: '5px 12px', textAlign: 'right', color: beyond > 0 ? '#2A3545' : '#d1d5db' }}>
+                    {beyond > 0 ? fmt(beyond) : '—'}
+                  </td>
+                </tr>
+                {showDivider && (
+                  <tr>
+                    <td colSpan={6} style={{ padding: 0, background: '#e8eaed', height: 2 }} />
+                  </tr>
+                )}
+              </React.Fragment>
             )
           })}
           {/* Totals row */}
@@ -305,16 +314,6 @@ function SettleModal({ deal, clients, onConfirm, onCancel }) {
 
 export default function CRM({ clients, onUpdateClients }) {
   const navigate = useNavigate()
-  // Nav tabs
-  const CRMNav = () => (
-    <div style={{ display:'flex', gap:2, marginBottom:16, borderBottom:'1px solid #e8eaed', paddingBottom:0 }}>
-      {[['Pipeline','/crm'],['Sales Dashboard','/crm/dashboard']].map(([label,path]) => (
-        <button key={path} onClick={()=>navigate(path)} style={{ padding:'8px 18px', fontSize:12, fontWeight:500, border:'none', background:'transparent', cursor:'pointer', borderBottom: window.location.pathname===path?'2px solid #EB99C2':'2px solid transparent', color:window.location.pathname===path?'#EB99C2':'#7A8090', marginBottom:'-1px' }}>
-          {label}
-        </button>
-      ))}
-    </div>
-  )
   const [deals, setDeals] = useState(() => {
     try {
       const saved = localStorage.getItem('rion-crm-deals')
@@ -480,7 +479,6 @@ export default function CRM({ clients, onUpdateClients }) {
   return (
     <div style={{ padding:'16px 24px' }}>
 
-      <CRMNav />
       {/* Header */}
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
         <div>

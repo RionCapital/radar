@@ -13,6 +13,7 @@ import CRM from './pages/CRM'
 import CRMDashboard from './pages/CRMDashboard'
 import DealPage from './pages/DealPage'
 import BirthdayNotifier from './components/BirthdayNotifier'
+import CRMTopbar from './components/CRMTopbar'
 import OpportunityScore from './pages/OpportunityScore'
 import ProjectStudio from './pages/ProjectStudio'
 import Toast from './components/Toast'
@@ -38,6 +39,7 @@ export default function App() {
   const isHome = location.pathname === '/'
   const isLogin = location.pathname === '/login'
   const isStudio = location.pathname === '/radar/studio'
+  const isCRM = location.pathname.startsWith('/crm')
 
   function showToast(msg) { setToast(msg); setTimeout(() => setToast(null), 2500) }
 
@@ -79,8 +81,9 @@ export default function App() {
 
   return (
     <div style={{ minHeight:'100vh', background: isHome||isLogin ? '#3D5570' : 'var(--bg)' }}>
-      {!isHome && !isLogin && !isStudio && <Topbar clients={clients} onOpenBirthdays={() => setShowBirthdays(true)} />}
-      {showBirthdays && !isHome && !isLogin && !isStudio && <BirthdayNotifier clients={clients} onClose={() => setShowBirthdays(false)} />}
+      {isCRM && <CRMTopbar />}
+      {!isHome && !isLogin && !isStudio && !isCRM && <Topbar clients={clients} onOpenBirthdays={() => setShowBirthdays(true)} />}
+      {showBirthdays && !isHome && !isLogin && !isStudio && !isCRM && <BirthdayNotifier clients={clients} onClose={() => setShowBirthdays(false)} />}
       <Toast message={toast} />
       <Routes>
         <Route path="/login" element={<Login />} />
@@ -91,7 +94,7 @@ export default function App() {
         <Route path="/radar/clients/:name/loan/:loanIdx" element={<RequireAuth><LoanAccount clients={clients} updateClient={updateClient} /></RequireAuth>} />
         <Route path="/crm" element={<RequireAuth><CRM clients={clients} onUpdateClients={updateAllClients} /></RequireAuth>} />
         <Route path="/crm/dashboard" element={<RequireAuth><CRMDashboard /></RequireAuth>} />
-        <Route path="/crm/deal/:dealName" element={<RequireAuth><DealPage deals={crmDeals} onUpdateDeals={updateCrmDeals} /></RequireAuth>} />
+        <Route path="/crm/deal/:dealName" element={<RequireAuth><DealPage deals={crmDeals || (() => { try { const s=localStorage.getItem('rion-crm-deals'); return s?JSON.parse(s):[] } catch{return []} })()} onUpdateDeals={updateCrmDeals} /></RequireAuth>} />
         <Route path="/radar/clients/:name/contacts" element={<RequireAuth><ContactPage clients={clients} updateClient={updateClient} /></RequireAuth>} />
         <Route path="/radar/clients/:name/opportunity" element={<RequireAuth><OpportunityScore clients={clients} updateClient={updateClient} /></RequireAuth>} />
         <Route path="/radar/studio" element={<RequireAuth><ProjectStudio /></RequireAuth>} />

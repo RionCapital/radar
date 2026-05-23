@@ -1,5 +1,7 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { PIPELINE_DATA } from '../lib/pipelineData'
+import CRMTopbar from '../components/CRMTopbar'
 
 const STAGES = ['1. Lead','2. Strategy','3. Pre-Lodged','4. Lodged','5. Conditional','6. Unconditional','7. Settled','8. Withdrawn']
 const CATEGORIES = ['Residential','Asset Finance','Commercial Loans','Business Loans','SMSF','Invoice Finance','Other']
@@ -38,10 +40,24 @@ function ReadRow({ label, value, color }) {
   )
 }
 
-export default function DealPage({ deals, onUpdateDeals }) {
+export default function DealPage({ deals: propDeals, onUpdateDeals }) {
   const { dealName } = useParams()
   const navigate = useNavigate()
   const decodedName = decodeURIComponent(dealName)
+
+  // Load deals from localStorage or fallback to PIPELINE_DATA
+  const [localDeals, setLocalDeals] = useState(() => {
+    try { const s = localStorage.getItem('rion-crm-deals'); if (s) return JSON.parse(s) } catch {}
+    return PIPELINE_DATA
+  })
+
+  const deals = propDeals && propDeals.length > 0 ? propDeals : localDeals
+
+  function onUpdateDealsLocal(updated) {
+    setLocalDeals(updated)
+    try { localStorage.setItem('rion-crm-deals', JSON.stringify(updated)) } catch {}
+    if (onUpdateDeals) onUpdateDeals(updated)
+  }
 
   const deal = deals.find(d => d['Transaction Name'] === decodedName)
   const [editing, setEditing] = useState(false)
@@ -60,7 +76,7 @@ export default function DealPage({ deals, onUpdateDeals }) {
   function set(k, v) { setDraft(d => ({ ...d, [k]: v })) }
 
   function saveEdit() {
-    onUpdateDeals(deals.map(d => d['Transaction Name'] === decodedName ? { ...draft } : d))
+    onUpdateDealsLocal(deals.map(d => d['Transaction Name'] === decodedName ? { ...draft } : d))
     setEditing(false)
     setDraft(null)
     setSaved(true)
@@ -72,7 +88,9 @@ export default function DealPage({ deals, onUpdateDeals }) {
   const fmt = v => v ? `$${Number(v).toLocaleString()}` : '—'
 
   return (
-    <div style={{ padding: '16px 24px', maxWidth: 960, margin: '0 auto' }}>
+    <div>
+      <CRMTopbar />
+      <div style={{ padding: '16px 24px', maxWidth: 960, margin: '0 auto' }}>
       {/* Back */}
       <button onClick={() => navigate('/crm')} style={{ background: 'none', border: 'none', color: '#EB99C2', cursor: 'pointer', fontSize: 12, marginBottom: 14, padding: 0, display: 'flex', alignItems: 'center', gap: 4 }}>
         ← Back to pipeline
@@ -282,6 +300,7 @@ export default function DealPage({ deals, onUpdateDeals }) {
           </div>
         </div>
       </div>
+    </div>
     </div>
   )
 }

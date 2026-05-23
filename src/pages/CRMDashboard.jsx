@@ -72,6 +72,7 @@ function MiniBar({ label, val, max, color }) {
       <div style={{ background: '#f0f0f0', borderRadius: 4, height: 6 }}>
         <div style={{ background: color, borderRadius: 4, height: 6, width: `${pct}%`, transition: 'width 0.4s' }} />
       </div>
+      {selectedCat && <DealListModal category={selectedCat} deals={PIPELINE_DATA.filter(d=>d.Status==='7. Settled'&&d['Date Settled'])} onClose={()=>setSelectedCat(null)} navigate={navigate} />}
     </div>
   )
 }
@@ -123,11 +124,12 @@ function BarChart({ data, title, valueKey = 'amount', labelKey = 'month', color1
           </div>
         </div>
       )}
+      {selectedCat && <DealListModal category={selectedCat} deals={PIPELINE_DATA.filter(d=>d.Status==='7. Settled'&&d['Date Settled'])} onClose={()=>setSelectedCat(null)} navigate={navigate} />}
     </div>
   )
 }
 
-function DonutChart({ data, total }) {
+function DonutChart({ data, total, onSliceClick }) {
   const cx = 80, cy = 80, r = 60, inner = 38
   let startAngle = -90
   const slices = data.map(d => {
@@ -152,8 +154,12 @@ function DonutChart({ data, total }) {
     <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
       <svg width={160} height={160} viewBox="0 0 160 160" style={{ flexShrink: 0 }}>
         {slices.map((s, i) => (
-          <path key={i} d={arc(s.startAngle, s.angle, r)} fill={s.color} opacity={0.9}>
-            <title>{s.label}: {fmt(s.value)} ({Math.round(s.value/total*100)}%)</title>
+          <path key={i} d={arc(s.startAngle, s.angle, r)} fill={s.color} opacity={0.9}
+            style={{ cursor: 'pointer', transition: 'opacity 0.15s' }}
+            onClick={() => onSliceClick && onSliceClick(s.label)}
+            onMouseOver={e => e.currentTarget.setAttribute('opacity','1')}
+            onMouseOut={e => e.currentTarget.setAttribute('opacity','0.9')}>
+            <title>Click to see {s.label} deals</title>
           </path>
         ))}
         <circle cx={cx} cy={cy} r={inner} fill="white" />
@@ -167,18 +173,23 @@ function DonutChart({ data, total }) {
       </svg>
       <div style={{ flex: 1 }}>
         {data.map((d, i) => (
-          <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '3px 0', borderBottom: '0.5px solid #f0f0f0' }}>
+          <div key={i} onClick={() => onSliceClick && onSliceClick(d.label)}
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '5px 4px', borderBottom: '0.5px solid #f0f0f0', cursor: 'pointer', borderRadius: 4 }}
+            onMouseOver={e => e.currentTarget.style.background='#fdf0f6'}
+            onMouseOut={e => e.currentTarget.style.background='transparent'}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <div style={{ width: 8, height: 8, borderRadius: 2, background: d.color, flexShrink: 0 }} />
               <span style={{ fontSize: 11, color: '#2A3545' }}>{d.label}</span>
             </div>
-            <div style={{ textAlign: 'right' }}>
+            <div style={{ textAlign: 'right', display: 'flex', alignItems: 'center', gap: 6 }}>
               <span style={{ fontSize: 11, fontWeight: 500, color: '#2A3545' }}>{fmt(d.value)}</span>
-              <span style={{ fontSize: 10, color: '#9ca3af', marginLeft: 4 }}>{Math.round(d.value/total*100)}%</span>
+              <span style={{ fontSize: 10, color: '#9ca3af' }}>{Math.round(d.value/total*100)}%</span>
+              <span style={{ fontSize: 10, color: '#EB99C2' }}>→</span>
             </div>
           </div>
         ))}
       </div>
+      {selectedCat && <DealListModal category={selectedCat} deals={PIPELINE_DATA.filter(d=>d.Status==='7. Settled'&&d['Date Settled'])} onClose={()=>setSelectedCat(null)} navigate={navigate} />}
     </div>
   )
 }
@@ -201,17 +212,52 @@ const Stat = ({ label, value, sub, color }) => (
   </div>
 )
 
-export default function CRMDashboard() {
-  const navigate = useNavigate()
-  const CRMNav = () => (
-    <div style={{ display:'flex', gap:2, marginBottom:16, borderBottom:'1px solid #e8eaed' }}>
-      {[['Pipeline','/crm'],['Sales Dashboard','/crm/dashboard']].map(([label,path]) => (
-        <button key={path} onClick={()=>navigate(path)} style={{ padding:'8px 18px', fontSize:12, fontWeight:500, border:'none', background:'transparent', cursor:'pointer', borderBottom: window.location.pathname===path?'2px solid #EB99C2':'2px solid transparent', color:window.location.pathname===path?'#EB99C2':'#7A8090', marginBottom:'-1px' }}>
-          {label}
-        </button>
-      ))}
+function DealListModal({ category, deals, onClose, navigate }) {
+  const catDeals = deals.filter(d => cleanCat(d) === category)
+  return (
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.45)', zIndex:9999, display:'flex', alignItems:'center', justifyContent:'center' }}>
+      <div style={{ background:'#fff', borderRadius:12, width:600, maxHeight:'80vh', display:'flex', flexDirection:'column', boxShadow:'0 8px 40px rgba(0,0,0,0.18)', overflow:'hidden' }}>
+        <div style={{ background:'#3D4F6B', padding:'14px 20px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+          <div>
+            <div style={{ fontSize:14, fontWeight:600, color:'#fff' }}>{category}</div>
+            <div style={{ fontSize:11, color:'#9ab0c8', marginTop:1 }}>{catDeals.length} settlements · ${catDeals.reduce((s,d)=>s+(d.Amount||0),0).toLocaleString()}</div>
+          </div>
+          <button onClick={onClose} style={{ background:'rgba(255,255,255,0.1)', border:'none', borderRadius:6, padding:'4px 10px', color:'#9ab0c8', fontSize:12, cursor:'pointer' }}>✕ Close</button>
+        </div>
+        <div style={{ overflowY:'auto', flex:1 }}>
+          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:11 }}>
+            <thead>
+              <tr style={{ background:'#f8f9fa', borderBottom:'1px solid #e8eaed' }}>
+                <th style={{ padding:'8px 12px', textAlign:'left', color:'#7A8090', fontWeight:600, fontSize:10 }}>Deal name</th>
+                <th style={{ padding:'8px 12px', textAlign:'right', color:'#7A8090', fontWeight:600, fontSize:10 }}>Amount</th>
+                <th style={{ padding:'8px 12px', textAlign:'left', color:'#7A8090', fontWeight:600, fontSize:10 }}>Lender</th>
+                <th style={{ padding:'8px 12px', textAlign:'left', color:'#7A8090', fontWeight:600, fontSize:10 }}>Settled</th>
+              </tr>
+            </thead>
+            <tbody>
+              {catDeals.sort((a,b) => (b.Amount||0)-(a.Amount||0)).map((d,i) => (
+                <tr key={i} onClick={() => { onClose(); navigate('/crm/deal/'+encodeURIComponent(d['Transaction Name'])) }}
+                  style={{ borderBottom:'0.5px solid #f0f0f0', cursor:'pointer' }}
+                  onMouseOver={e=>e.currentTarget.style.background='#fdf0f6'}
+                  onMouseOut={e=>e.currentTarget.style.background='transparent'}>
+                  <td style={{ padding:'8px 12px', fontWeight:500, color:'#EB99C2' }}>{d['Transaction Name']}</td>
+                  <td style={{ padding:'8px 12px', textAlign:'right', fontWeight:500 }}>{d.Amount ? '$'+d.Amount.toLocaleString() : '—'}</td>
+                  <td style={{ padding:'8px 12px', color:'#7A8090' }}>{d.Lender || '—'}</td>
+                  <td style={{ padding:'8px 12px', color:'#7A8090' }}>{d['Date Settled']?.slice(0,10) || '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {selectedCat && <DealListModal category={selectedCat} deals={PIPELINE_DATA.filter(d=>d.Status==='7. Settled'&&d['Date Settled'])} onClose={()=>setSelectedCat(null)} navigate={navigate} />}
     </div>
   )
+}
+
+export default function CRMDashboard() {
+  const navigate = useNavigate()
+  const [selectedCat, setSelectedCat] = useState(null)
   const settled = useMemo(() =>
     PIPELINE_DATA.filter(d => d.Status === '7. Settled' && d['Date Settled'])
   , [])
@@ -343,7 +389,6 @@ export default function CRMDashboard() {
 
   return (
     <div style={{ padding: '16px 24px' }}>
-      <CRMNav />
       <div style={{ marginBottom: 14 }}>
         <h1 style={{ fontSize: 18, fontWeight: 700, color: '#2A3545', margin: 0 }}>CRM — Sales Dashboard</h1>
         <div style={{ fontSize: 11, color: '#7A8090', marginTop: 2 }}>Historical settlement data · {totalSettled} deals since inception</div>
@@ -378,7 +423,7 @@ export default function CRMDashboard() {
         </Card>
         <Card>
           <CardTitle>Settlement volume by type</CardTitle>
-          <DonutChart data={catData} total={catTotal} />
+          <DonutChart data={catData} total={catTotal} onSliceClick={setSelectedCat} />
         </Card>
       </div>
 
@@ -519,6 +564,7 @@ export default function CRMDashboard() {
         </div>
       </Card>
 
+      {selectedCat && <DealListModal category={selectedCat} deals={PIPELINE_DATA.filter(d=>d.Status==='7. Settled'&&d['Date Settled'])} onClose={()=>setSelectedCat(null)} navigate={navigate} />}
     </div>
   )
 }
