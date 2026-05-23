@@ -68,7 +68,8 @@ export default function App() {
 
   return (
     <div style={{ minHeight:'100vh', background: isHome||isLogin ? '#3D5570' : 'var(--bg)' }}>
-      {!isHome && !isLogin && !isStudio && <Topbar />}
+      {!isHome && !isLogin && !isStudio && <Topbar clients={clients} onOpenBirthdays={() => setShowBirthdays(true)} />}
+      {showBirthdays && !isHome && !isLogin && !isStudio && <BirthdayNotifier clients={clients} onClose={() => setShowBirthdays(false)} />}
       <Toast message={toast} />
       <Routes>
         <Route path="/login" element={<Login />} />

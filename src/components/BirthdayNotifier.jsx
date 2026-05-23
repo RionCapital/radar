@@ -68,8 +68,6 @@ export function useBirthdayCount(clients) {
 
 export default function BirthdayNotifier({ clients, onClose }) {
   const [sentKeys, setSentKeys] = useState(() => getSentKeys())
-  const [dismissed, setDismissed] = useState(false)
-
   // Build list of upcoming/missed birthdays
   const birthdays = []
   clients.forEach(c => {
@@ -108,11 +106,10 @@ export default function BirthdayNotifier({ clients, onClose }) {
   }
 
   function handleDismiss() {
-    setDismissed(true)
     if (onClose) onClose()
   }
 
-  if (dismissed || birthdays.length === 0) return null
+  if (birthdays.length === 0) return null  // no birthdays, nothing to show
 
   const missed = birthdays.filter(b => b.days < 0)
   const upcoming = birthdays.filter(b => b.days >= 0)
