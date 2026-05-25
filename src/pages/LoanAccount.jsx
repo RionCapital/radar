@@ -140,25 +140,7 @@ export default function LoanAccount({ clients, updateClient }) {
   const todayX = dateToX(todayP)
   const histEndX = todayX
 
-  // Estimated historic line — linear interpolation from settlement amount to today's balance
-  // Shown as a light dashed line in chart. Real statement data overlays this when available.
-  function buildHistEstimate() {
-    if (!loan.settled || !loan.amount) return []
-    const settD = new Date(loan.settled); settD.setDate(1)
-    if (todayP <= settD) return []
-    const monthsElapsed = Math.round((todayP - settD) / (1000*60*60*24*30.44))
-    const pts = []
-    for (let m = 0; m <= monthsElapsed; m++) {
-      const dt = new Date(settD.getFullYear(), settD.getMonth()+m, 1)
-      const frac = m / Math.max(1, monthsElapsed)
-      pts.push({ d: dt, bal: Math.round(loan.amount + (loan.balance - loan.amount) * frac) })
-    }
-    if (pts.length > 0) pts[pts.length-1].bal = loan.balance
-    return pts
-  }
-  const histEstPts = buildHistEstimate()
-
-  // Real commission statement data ONLY
+  // Real commission statement data ONLY — historic line only appears once statements are imported
   const stmtPts = (loan.balanceHistory||[]).map(h => ({ d: new Date(h.month+'-15'), bal: h.balance }))
     .sort((a,b) => a.d - b.d)
 
@@ -170,13 +152,10 @@ export default function LoanAccount({ clients, updateClient }) {
     ...(projection.length > 0 ? [{ d: projection[projection.length-1].date, bal: projEndBal }] : [])
   ]
 
-  const maxChartBal = Math.max(loan.amount||0, ...histEstPts.map(p=>p.bal), ...allLinePts.map(p=>p.bal)) * 1.06 || 1
+  const maxChartBal = Math.max(loan.amount||0, ...allLinePts.map(p=>p.bal)) * 1.06 || 1
   const toY = v => gP.t + gPH - (Math.max(0,v)/maxChartBal)*gPH
 
   // All paths — computed after toY is available
-  const histEstPath = histEstPts.length > 1
-    ? histEstPts.map((p,i) => `${i===0?'M':'L'}${dateToX(p.d).toFixed(1)},${toY(p.bal).toFixed(1)}`).join(' ')
-    : null
 
   // Historic statement path (if data exists)
   const stmtPath = stmtPts.length > 0
@@ -225,7 +204,9 @@ export default function LoanAccount({ clients, updateClient }) {
   const tableHistRows = (loan.balanceHistory||[]).length > 0
     ? (loan.balanceHistory||[]).sort((a,b)=>a.month.localeCompare(b.month)).map((h,i,arr) => {
         const prevBal = i>0 ? arr[i-1].balance : (loan.amount||h.balance)
-        return { date: h.month, balance: h.balance, movement: Math.max(0, Math.round(prevBal - h.balance)), interest: loan.rate ? Math.round(prevBal*loan.rate/100/12) : 0, type:'Statement' }
+        const d = new Date(h.month+'-15')
+        const label = `${MO[d.getMonth()]}-${String(d.getFullYear()).slice(2)}`
+        return { date: label, balance: h.balance, movement: Math.max(0, Math.round(prevBal - h.balance)), interest: loan.rate ? Math.round(prevBal*loan.rate/100/12) : 0, type:'Statement' }
       })
     : []
   const tableProjRows = (tableView==='monthly' ? projection : projection.filter((_,i)=>i%3===0||i===projection.length-1))
@@ -552,7 +533,6 @@ export default function LoanAccount({ clients, updateClient }) {
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
               <div style={{fontSize:10,fontWeight:600,color:'var(--text-secondary)',textTransform:'uppercase',letterSpacing:'0.06em'}}>Balance — Historic &amp; Predicted</div>
               <div style={{display:'flex',gap:12,fontSize:10,color:'var(--text-secondary)',alignItems:'center',flexWrap:'wrap'}}>
-                <div style={{display:'flex',alignItems:'center',gap:4}}><div style={{width:14,height:0,borderTop:'2px dashed #7A8090',opacity:0.6}}/> Est. historic</div>
                 {stmtPts.length>0&&<div style={{display:'flex',alignItems:'center',gap:4}}><div style={{width:8,height:8,borderRadius:'50%',background:'#EB99C2'}}/> Statement data</div>}
                 <div style={{display:'flex',alignItems:'center',gap:4}}><div style={{width:14,height:2,background:'#3D5570'}}/> Predicted</div>
                 {extraMonthly>0&&<div style={{display:'flex',alignItems:'center',gap:4}}><div style={{width:14,height:0,borderTop:'2px dashed #EB99C2'}}/> With extra</div>}
@@ -570,8 +550,8 @@ export default function LoanAccount({ clients, updateClient }) {
                 {/* Pink historic area — settlement to today */}
                 <rect x={gP.l} y={gP.t} width={Math.max(0,histEndX-gP.l)} height={gPH} fill="rgba(235,153,194,0.28)" rx={2}/>
                 <rect x={gP.l} y={gP.t} width={Math.max(0,histEndX-gP.l)} height={gPH} fill="url(#histGrad)" rx={2}/>
-                <text x={Math.max(gP.l+4, (gP.l+histEndX)/2)} y={gP.t+14} textAnchor="middle" fontSize={9} fill="rgba(180,70,120,0.7)" fontStyle="italic">Historic</text>
-                <text x={Math.min(gP.l+gPW-4, (histEndX+gP.l+gPW)/2)} y={gP.t+14} textAnchor="middle" fontSize={9} fill="rgba(61,85,112,0.5)" fontStyle="italic">Predicted</text>
+                <text x={Math.max(gP.l+4, (gP.l+histEndX)/2)} y={gP.t-3} textAnchor="middle" fontSize={9} fill="rgba(180,70,120,0.7)" fontStyle="italic" fontWeight={600}>Historic</text>
+                <text x={Math.min(gP.l+gPW-4, (histEndX+gP.l+gPW)/2)} y={gP.t-3} textAnchor="middle" fontSize={9} fill="rgba(61,85,112,0.5)" fontStyle="italic" fontWeight={600}>Predicted</text>
                 {/* Grid lines */}
                 {yGridVals.map((v,i)=>(
                   <g key={i}>
@@ -581,9 +561,7 @@ export default function LoanAccount({ clients, updateClient }) {
                 ))}
                 {/* Today vertical */}
                 <line x1={todayX} x2={todayX} y1={gP.t} y2={gP.t+gPH} stroke="#EB99C2" strokeWidth={1} strokeDasharray="3,3" opacity={0.7}/>
-                {/* Estimated historic — light dashed line (linear interpolation, not calculated) */}
-                {histEstPath&&<path d={histEstPath} fill="none" stroke="#7A8090" strokeWidth={1.5} strokeDasharray="4,4" opacity={0.5}/>}
-                {/* Real statement data — solid pink line + dots */}
+                {/* Real statement data — solid pink line + dots (only when statements have been imported) */}
                 {stmtPath&&<path d={stmtPath} fill="none" stroke="#EB99C2" strokeWidth={2} opacity={0.85}/>}
                 {stmtPts.map((p,i)=><circle key={i} cx={dateToX(p.d)} cy={toY(p.bal)} r={2.5} fill="#EB99C2" opacity={0.9}/>)}
                 {/* Projected standard balance line */}
@@ -594,7 +572,7 @@ export default function LoanAccount({ clients, updateClient }) {
                 {xLabels.map((xl,i)=>(
                   <text key={i} x={xl.x} y={gH-4} textAnchor="middle" fontSize={8} fill="var(--text-tertiary)">{xl.label}</text>
                 ))}
-                <text x={todayX} y={gH-4} textAnchor="middle" fontSize={8} fill="#EB99C2" fontWeight={600}>{todayLabel}</text>
+                <text x={todayX} y={gP.t+gPH+11} textAnchor="middle" fontSize={8} fill="#EB99C2" fontWeight={600}>{todayLabel}</text>
               </svg>
             </div>
           </Panel>
