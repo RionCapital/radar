@@ -69,18 +69,32 @@ export function calcRepayment(loan) {
   const effectiveRpmt = (loan.rpmt === 'IO' && !ioExpired) ? 'IO' : 'P&I'
   if (!bal || !rate) return null
   if (effectiveRpmt === 'IO') return Math.round(bal * rate)
-  const n = (loan.term || 30) * 12
-  if (!n) return null
-  // Balloon/residual adjusted P&I — present value of balloon subtracted
+
+  // Use remaining months from maturity if available — more accurate than full term
   const balloon = parseFloat(loan.balloon) || 0
-  if (balloon > 0 && !isNaN(balloon)) {
-    // PMT formula adjusted for balloon: PMT = (PV - FV/(1+r)^n) * r / (1 - (1+r)^-n)
-    const pvBalloon = balloon / Math.pow(1+rate, n)
-    const adjustedBal = bal - pvBalloon
-    if (adjustedBal <= 0) return Math.round(bal * rate) // edge case
-    return Math.round((adjustedBal * rate * Math.pow(1+rate,n)) / (Math.pow(1+rate,n)-1))
+  let n
+  if (loan.maturity) {
+    const mat = new Date(loan.maturity)
+    const today = new Date()
+    n = Math.max(1, Math.round((mat - today) / (30.44 * 86400000)))
+  } else {
+    n = (loan.term || 30) * 12
   }
-  return Math.round((bal * rate * Math.pow(1+rate,n)) / (Math.pow(1+rate,n)-1))
+  if (!n) return null
+
+  const factor = Math.pow(1 + rate, n)
+
+  if (balloon > 0 && bal > balloon) {
+    // Correct balloon formula: payment that reduces balance from bal to balloon over n months
+    // pmt = (PV × (1+r)^n − FV) × r / ((1+r)^n − 1)
+    return Math.round((bal * factor - balloon) * rate / (factor - 1))
+  }
+  if (balloon > 0 && bal <= balloon) {
+    // Balance at/below balloon — effectively IO until maturity
+    return Math.round(bal * rate)
+  }
+  // Standard P&I
+  return Math.round((bal * rate * factor) / (factor - 1))
 }
 
 export function effectiveRpmt(loan) {

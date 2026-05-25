@@ -93,17 +93,27 @@ export default function LoanAccount({ clients, updateClient }) {
         principal = extra
       } else {
         const piElapsed = m - ioLeft; const piRem = Math.max(1, piTot - piElapsed)
-        // For balloon loans: only amortise the non-balloon portion each month
-        const amortBal = Math.max(0, bal - balloon)
-        if (r > 0 && amortBal > 0) {
-          const pmt = amortBal*r*Math.pow(1+r,piRem)/(Math.pow(1+r,piRem)-1)
-          principal = Math.max(0, pmt - interest) + extra
+        if (r > 0) {
+          const factor = Math.pow(1+r, piRem)
+          if (balloon > 0 && bal > balloon) {
+            // Balloon P&I: payment that reduces balance from bal to balloon over remaining months
+            // Formula: (PV × (1+r)^n − FV) × r / ((1+r)^n − 1)
+            const pmt = (bal * factor - balloon) * r / (factor - 1)
+            principal = Math.max(0, pmt - interest) + extra
+          } else if (balloon > 0 && bal <= balloon) {
+            // Balance already at/below balloon — interest only until maturity
+            principal = extra
+          } else {
+            // Standard P&I no balloon
+            const pmt = bal * r * factor / (factor - 1)
+            principal = Math.max(0, pmt - interest) + extra
+          }
         } else {
-          principal = (amortBal > 0 ? amortBal/piRem : 0) + extra
+          principal = Math.max(0, bal - balloon) / piRem + extra
         }
-        // During normal months, don't reduce below balloon level
+        // Never reduce below balloon level during normal months
         if (!isLastMonth && balloon > 0) principal = Math.min(principal, Math.max(0, bal - balloon))
-        // On the last month, clear everything including balloon (lump sum payment at maturity)
+        // Last month: balloon paid as lump sum → balance clears to zero
         if (isLastMonth && balloon > 0) principal = bal
       }
       principal = Math.min(principal, bal)
