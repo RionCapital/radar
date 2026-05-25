@@ -25,25 +25,14 @@ function getBusinessDaysLeft() {
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 
-// SVG logo matching brand guide exactly
 function RionLogo({ onClick }) {
   return (
-    <div onClick={onClick} style={{ cursor:'pointer', display:'flex', alignItems:'center', gap:8 }}>
-      {/* Bar chart mark */}
-      <svg width="28" height="22" viewBox="0 0 28 22" fill="none">
-        <rect x="0" y="10" width="5" height="12" rx="1" fill="#7A8090"/>
-        <rect x="6" y="4" width="5" height="18" rx="1" fill="#EB99C2"/>
-        <rect x="12" y="7" width="5" height="15" rx="1" fill="#7A8090"/>
-        <rect x="18" y="0" width="5" height="22" rx="1" fill="#EB99C2"/>
-      </svg>
-      {/* Wordmark */}
-      <div style={{ display:'flex', flexDirection:'column', lineHeight:1 }}>
-        <div style={{ display:'flex', alignItems:'baseline' }}>
-          <span style={{ fontFamily:"'Montserrat',sans-serif", fontWeight:700, fontSize:22, color:'#EB99C2', letterSpacing:'-0.3px' }}>R</span>
-          <span style={{ fontFamily:"'Montserrat',sans-serif", fontWeight:300, fontSize:22, color:'#fff' }}>ION</span>
-        </div>
-        <span style={{ fontFamily:'Georgia,serif', fontStyle:'italic', fontSize:8, color:'rgba(187,198,218,0.5)', letterSpacing:'0.04em', marginTop:1 }}>Capital</span>
-      </div>
+    <div onClick={onClick} style={{ cursor:'pointer', display:'flex', alignItems:'center' }}>
+      <img
+        src="/rion_logo_notag.png"
+        alt="Rion Capital"
+        style={{ height:38, width:'auto', display:'block' }}
+      />
     </div>
   )
 }

@@ -82,7 +82,6 @@ export default function App() {
 
   return (
     <div style={{ minHeight:'100vh', background: isHome||isLogin ? '#3D5570' : 'var(--bg)' }}>
-      {isCRM && <CRMTopbar />}
       {!isHome && !isLogin && !isStudio && !isCRM && <Topbar clients={clients} onOpenBirthdays={() => setShowBirthdays(true)} />}
       {showBirthdays && !isHome && !isLogin && !isStudio && !isCRM && <BirthdayNotifier clients={clients} onClose={() => setShowBirthdays(false)} />}
       <Toast message={toast} />
@@ -94,7 +93,7 @@ export default function App() {
         <Route path="/radar/clients/:name" element={<RequireAuth><ClientDashboard clients={clients} updateClient={updateClient} /></RequireAuth>} />
         <Route path="/radar/clients/:name/loan/:loanIdx" element={<RequireAuth><LoanAccount clients={clients} updateClient={updateClient} /></RequireAuth>} />
         <Route path="/crm/settings" element={<RequireAuth><AdminSettings /></RequireAuth>} />
-        <Route path="/crm/deal/:dealName" element={<RequireAuth><DealPage onUpdateDeals={updateCrmDeals} /></RequireAuth>} />
+        <Route path="/crm/deal/:dealName" element={<RequireAuth><DealPage onUpdateDeals={updateCrmDeals} clients={clients} /></RequireAuth>} />
         <Route path="/crm/dashboard" element={<RequireAuth><CRMDashboard /></RequireAuth>} />
         <Route path="/crm" element={<RequireAuth><CRM clients={clients} onUpdateClients={updateAllClients} /></RequireAuth>} />
         <Route path="/radar/clients/:name/contacts" element={<RequireAuth><ContactPage clients={clients} updateClient={updateClient} /></RequireAuth>} />

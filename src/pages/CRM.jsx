@@ -23,6 +23,18 @@ const STAGE_COLORS = {
   '8. Withdrawn':     { bg:'#f5f5f5', color:'#5a6370', dot:'#9ca3af' },
 }
 
+// Forecast-specific stage pill colours: 1-3 red, 4-6 blue, 7 green
+const FORECAST_STAGE_COLORS = {
+  '1. Lead':          { bg:'#fee2e2', color:'#b91c1c' },
+  '2. Strategy':      { bg:'#fee2e2', color:'#b91c1c' },
+  '3. Pre-Lodged':    { bg:'#fee2e2', color:'#b91c1c' },
+  '4. Lodged':        { bg:'#dbeafe', color:'#1d4ed8' },
+  '5. Conditional':   { bg:'#dbeafe', color:'#1d4ed8' },
+  '6. Unconditional': { bg:'#dbeafe', color:'#1d4ed8' },
+  '7. Settled':       { bg:'#dcfce7', color:'#15803d' },
+  '8. Withdrawn':     { bg:'#f5f5f5', color:'#5a6370' },
+}
+
 const BAND_COLORS = {
   past:    { row:'#fafafa',  header:'#e8e8e8', text:'#5a6370',  label:'Past' },
   current: { row:'#f0fdf4',  header:'#bbf7d0', text:'#166534',  label:'Current month' },
@@ -50,7 +62,19 @@ const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct
 function fmtMonth(str) {
   if (!str) return '—'
   const [y,m] = str.split('-')
-  return `${MONTHS_SHORT[parseInt(m)-1]} ${y.slice(2)}`
+  return `${MONTHS_SHORT[parseInt(m)-1]}-${y.slice(2)}`
+}
+function fmtDateShort(str) {
+  if (!str) return '—'
+  const d = new Date(str)
+  if (isNaN(d)) return '—'
+  return `${String(d.getDate()).padStart(2,'0')}-${MONTHS_SHORT[d.getMonth()]}-${String(d.getFullYear()).slice(2)}`
+}
+function daysToDate(str) {
+  if (!str) return null
+  const target = new Date(str); target.setHours(0,0,0,0)
+  const today = new Date(); today.setHours(0,0,0,0)
+  return Math.round((target - today) / 86400000)
 }
 function getConnName(dealName) {
   if (!dealName) return ''
@@ -179,7 +203,18 @@ function ForecastPanel({ deals, settings }) {
   const colTotals = months.map((_,i) => stageRows.filter(r=>!['7. Settled','8. Withdrawn'].includes(r.stage)).reduce((s,r)=>s+r.totals[i],0))
   const beyondTotal = stageRows.filter(r=>!['7. Settled','8. Withdrawn'].includes(r.stage)).reduce((s,r)=>s+r.beyond,0)
 
-  function getUpfrontForCol(colTotal) { return Math.round(colTotal * 0.0066) }
+  function calcColUpfront(colIdx) {
+    return stageRows.filter(r=>!['7. Settled','8. Withdrawn'].includes(r.stage)).reduce((sum, r) => {
+      const colDeals = deals.filter(d => d.Status===r.stage && d['Month of Settlement']?.startsWith(months[colIdx]))
+      return sum + colDeals.reduce((s,d) => s + calcUpfront(d.Amount, d.Categories), 0)
+    }, 0)
+  }
+  function calcBeyondUpfront() {
+    return stageRows.filter(r=>!['7. Settled','8. Withdrawn'].includes(r.stage)).reduce((sum, r) => {
+      const bDeals = deals.filter(d => d.Status===r.stage && d['Month of Settlement'] && !months.some(m=>d['Month of Settlement'].startsWith(m)))
+      return sum + bDeals.reduce((s,d) => s + calcUpfront(d.Amount, d.Categories), 0)
+    }, 0)
+  }
 
   const thStyle = (band) => ({ padding:'6px 12px', fontSize:10, fontWeight:600, background:BAND_COLORS[band].header, color:BAND_COLORS[band].text, textAlign:'right', whiteSpace:'nowrap' })
 
@@ -187,7 +222,7 @@ function ForecastPanel({ deals, settings }) {
     <div style={{ background:'#fff', borderRadius:8, border:'0.5px solid #e8eaed', overflow:'hidden', marginBottom:10 }}>
       <div style={{ padding:'7px 14px', borderBottom:'0.5px solid #e8eaed', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
         <div style={{ fontSize:10, fontWeight:600, color:'#5a6370', textTransform:'uppercase', letterSpacing:'0.06em' }}>Forecast — pipeline by stage</div>
-        <div style={{ fontSize:10, color:'#7A8090' }}>Upfront est. @ 0.66%</div>
+        <div style={{ fontSize:10, color:'#7A8090' }}>Upfront est. by category rate</div>
       </div>
       <table style={{ width:'100%', borderCollapse:'collapse', fontSize:11, tableLayout:'fixed' }}>
         <colgroup>
@@ -202,7 +237,7 @@ function ForecastPanel({ deals, settings }) {
         </thead>
         <tbody>
           {stageRows.map(({ stage, totals, beyond }) => {
-            const sc = STAGE_COLORS[stage]
+            const sc = FORECAST_STAGE_COLORS[stage] || FORECAST_STAGE_COLORS['8. Withdrawn']
             const addDivider = DIVIDERS_AFTER.includes(stage)
             return (
               <React.Fragment key={stage}>
@@ -232,13 +267,13 @@ function ForecastPanel({ deals, settings }) {
           </tr>
           <tr style={{ background:'#f8f9fa' }}>
             <td style={{ padding:'4px 12px', fontSize:10, color:'#7A8090' }}>Potential upfront</td>
-            {colTotals.map((t,i) => (
+            {months.map((_,i) => (
               <td key={i} style={{ padding:'4px 12px', textAlign:'right', fontSize:10, color:'#EB99C2', fontWeight:500, background:BAND_COLORS[bands[i]].row }}>
-                {t>0?'$'+getUpfrontForCol(t).toLocaleString():'—'}
+                {colTotals[i]>0?'$'+calcColUpfront(i).toLocaleString():'—'}
               </td>
             ))}
             <td style={{ padding:'4px 12px', textAlign:'right', fontSize:10, color:'#EB99C2', fontWeight:500 }}>
-              {beyondTotal>0?'$'+getUpfrontForCol(beyondTotal).toLocaleString():'—'}
+              {beyondTotal>0?'$'+calcBeyondUpfront().toLocaleString():'—'}
             </td>
           </tr>
         </tbody>
@@ -362,6 +397,7 @@ export default function CRM({ clients, onUpdateClients }) {
   const activeDeals = deals.filter(d => ACTIVE_STAGES.includes(d.Status))
   const totalPipeline = activeDeals.reduce((s,d)=>s+(d.Amount||0),0)
   const thisMonthSettled = deals.filter(d=>d.Status==='7. Settled'&&d['Month of Settlement']?.startsWith(curMonth)).reduce((s,d)=>s+(d.Amount||0),0)
+  const thisMonthUpfront = deals.filter(d=>d.Status==='7. Settled'&&d['Month of Settlement']?.startsWith(curMonth)).reduce((s,d)=>s+calcUpfront(d.Amount,d.Categories),0)
 
   function changeStage(deal, newStage) {
     saveDeals(deals.map(d => d['Transaction Name']===deal['Transaction Name'] ? {...d, Status:newStage} : d))
@@ -390,7 +426,7 @@ export default function CRM({ clients, onUpdateClients }) {
     setSettleModal(null)
   }
 
-  const thStyle = { padding:'7px 10px', fontSize:10, fontWeight:600, color:'#5a6370', textAlign:'left', background:'#f8f9fa', borderBottom:'1px solid #e8eaed', whiteSpace:'nowrap' }
+  const thStyle = { padding:'7px 10px', fontSize:10, fontWeight:600, color:'#2A3545', textAlign:'left', background:'#f8f9fa', borderBottom:'1px solid #e8eaed', whiteSpace:'nowrap' }
 
   return (
     <div>
@@ -402,7 +438,7 @@ export default function CRM({ clients, onUpdateClients }) {
             <div>
               <h1 style={{ fontSize:18, fontWeight:700, color:'#1a2535', margin:0 }}>CRM — Pipeline</h1>
               <div style={{ fontSize:11, color:'#5a6370', marginTop:2 }}>
-                {activeDeals.length} active deals · {fmt(totalPipeline)} pipeline · ${Math.round(totalPipeline*0.0066).toLocaleString()} est. upfront
+                {activeDeals.length} active deals · {fmt(totalPipeline)} pipeline · ${calcUpfront(totalPipeline,'Residential').toLocaleString()} est. upfront
               </div>
             </div>
           </div>
@@ -428,7 +464,7 @@ export default function CRM({ clients, onUpdateClients }) {
               {[
                 { label:'Active pipeline', val:fmt(totalPipeline), sub:`${activeDeals.length} deals` },
                 { label:'Settled this month', val:fmt(thisMonthSettled), sub:fmtMonth(curMonth), color:'#22c55e' },
-                { label:'Est. upfront this month', val:`$${Math.round(thisMonthSettled*0.0066).toLocaleString()}`, sub:'@ 0.66%', color:'#EB99C2' },
+                { label:'Est. upfront this month', val:`$${thisMonthUpfront.toLocaleString()}`, sub:'by category rate', color:'#EB99C2' },
                 { label:'Cond. + Uncond.', val:fmt(deals.filter(d=>['5. Conditional','6. Unconditional'].includes(d.Status)).reduce((s,d)=>s+(d.Amount||0),0)), sub:'Near settlement' },
               ].map((s,i) => (
                 <div key={i} style={{ background:'#fff', borderRadius:8, border:'0.5px solid #e8eaed', padding:'10px 12px' }}>
@@ -456,11 +492,13 @@ export default function CRM({ clients, onUpdateClients }) {
                   <th style={thStyle}>Referral</th>
                   <th style={{ ...thStyle }}>
                     <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-                      <span>Settlement / Finance</span>
+                      <span>Settlement Month</span>
                       <MonthFilterDropdown allMonths={allMonths} visibleMonths={visibleMonths} onChange={setVisibleMonths} />
                     </div>
                   </th>
-                  <th style={thStyle}>Next action / Notes</th>
+                  <th style={thStyle}>Settlement Date</th>
+                  <th style={{ ...thStyle, textAlign:'center' }}>Days</th>
+                  <th style={thStyle}>Notes</th>
                   <th style={{ ...thStyle, width:80 }}></th>
                 </tr>
               </thead>
@@ -472,10 +510,11 @@ export default function CRM({ clients, onUpdateClients }) {
                   const bc = BAND_COLORS[band]
                   const activeTotal = monthDeals.filter(d=>ACTIVE_STAGES.includes(d.Status)).reduce((s,d)=>s+(d.Amount||0),0)
                   const total = monthDeals.reduce((s,d)=>s+(d.Amount||0),0)
+                  const potUpfront = monthDeals.filter(d=>ACTIVE_STAGES.includes(d.Status)).reduce((s,d)=>s+calcUpfront(d.Amount,d.Categories),0)
                   return (
                     <React.Fragment key={month}>
                       <tr>
-                        <td colSpan={10} style={{ background:bc.header, padding:'5px 10px', borderTop:'1px solid #e5e7eb' }}>
+                        <td colSpan={12} style={{ background:bc.header, padding:'5px 10px', borderTop:'1px solid #e5e7eb' }}>
                           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
                             <div style={{ display:'flex', alignItems:'center', gap:8 }}>
                               <span style={{ fontSize:11, fontWeight:700, color:bc.text }}>{fmtMonth(month)}</span>
@@ -485,7 +524,7 @@ export default function CRM({ clients, onUpdateClients }) {
                             <div style={{ display:'flex', gap:14, fontSize:10, color:bc.text }}>
                               <span>Active: <strong>{fmt(activeTotal)}</strong></span>
                               <span>Total incl. settled: <strong>{fmt(total)}</strong></span>
-                              <span style={{ opacity:0.7 }}>Pot. upfront: <strong>${Math.round(activeTotal*0.0066).toLocaleString()}</strong></span>
+                              <span style={{ opacity:0.7 }}>Pot. upfront: <strong>${potUpfront.toLocaleString()}</strong></span>
                             </div>
                           </div>
                         </td>
@@ -494,6 +533,9 @@ export default function CRM({ clients, onUpdateClients }) {
                         const sc = STAGE_COLORS[deal.Status]||STAGE_COLORS['1. Lead']
                         const isSettled = deal.Status==='7. Settled'
                         const isWithdrawn = deal.Status==='8. Withdrawn'
+                        const settleDateStr = deal['Date Settled']||deal['Finance Due Date']||null
+                        const days = daysToDate(settleDateStr)
+                        const daysColor = days === null ? '#9ca3af' : days < 0 ? '#ef4444' : days <= 7 ? '#f59e0b' : '#2A3545'
                         return (
                           <tr key={i} style={{ background:bc.row, borderBottom:'0.5px solid #e8eaed' }}
                             onMouseOver={e=>e.currentTarget.style.background='#fdf0f6'}
@@ -508,12 +550,16 @@ export default function CRM({ clients, onUpdateClients }) {
                               onClick={() => navigate(`/crm/deal/${encodeURIComponent(deal['Transaction Name'])}`)}>
                               {deal['Transaction Name']}
                             </td>
-                            <td style={{ padding:'6px 10px', fontSize:10, color:'#5a6370' }}>{deal.Categories||deal['Transaction Type']||'—'}</td>
+                            <td style={{ padding:'6px 10px', fontSize:10, color:'#2A3545' }}>{deal.Categories||deal['Transaction Type']||'—'}</td>
                             <td style={{ padding:'6px 10px', fontSize:11, fontWeight:500, color:'#EB99C2', textAlign:'right', whiteSpace:'nowrap' }}>{deal.Amount?fmt(deal.Amount):'—'}</td>
-                            <td style={{ padding:'6px 10px', fontSize:10, color:'#5a6370' }}>{deal.Lender||'—'}</td>
-                            <td style={{ padding:'6px 10px', fontSize:10, color:'#5a6370' }}>{deal['Lead Source']||'—'}</td>
-                            <td style={{ padding:'6px 10px', fontSize:10, color:'#5a6370' }}>{deal['Date Settled']?deal['Date Settled'].slice(0,10):(deal['Finance Due Date']?deal['Finance Due Date'].slice(0,10):'—')}</td>
-                            <td style={{ padding:'6px 10px', fontSize:10, color:'#5a6370', maxWidth:140, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{deal['Status Notes']||deal['Next Action']||'—'}</td>
+                            <td style={{ padding:'6px 10px', fontSize:10, color:'#2A3545' }}>{deal.Lender||'—'}</td>
+                            <td style={{ padding:'6px 10px', fontSize:10, color:'#2A3545' }}>{deal['Lead Source']||'—'}</td>
+                            <td style={{ padding:'6px 10px', fontSize:10, color:'#2A3545', fontWeight:500 }}>{fmtMonth(deal['Month of Settlement']?.slice(0,7))}</td>
+                            <td style={{ padding:'6px 10px', fontSize:10, color:'#2A3545' }}>{fmtDateShort(settleDateStr)}</td>
+                            <td style={{ padding:'6px 10px', fontSize:10, fontWeight:600, color:daysColor, textAlign:'center', whiteSpace:'nowrap' }}>
+                              {days === null ? '—' : days < 0 ? `${Math.abs(days)}d ago` : `${days}d`}
+                            </td>
+                            <td style={{ padding:'6px 10px', fontSize:10, color:'#2A3545', maxWidth:130, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{deal['Status Notes']||deal['Next Action']||'—'}</td>
                             <td style={{ padding:'6px 10px', textAlign:'right' }}>
                               {!isSettled && !isWithdrawn && (
                                 <button onClick={e=>{e.stopPropagation();handleSettle(deal)}}

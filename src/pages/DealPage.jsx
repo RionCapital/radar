@@ -46,7 +46,151 @@ function saveDeals(deals) {
   try { localStorage.setItem('rion-crm-deals', JSON.stringify(deals)) } catch {}
 }
 
-export default function DealPage({ onUpdateDeals }) {
+function findLinkedClient(deal, clients) {
+  if (!clients?.length) return null
+  if (deal['RradarClient']) {
+    const linked = clients.find(c => c.name === deal['RradarClient'])
+    if (linked) return linked
+  }
+  const dealName = (deal['Transaction Name'] || '').split(/[\s(]/)[0].toLowerCase()
+  return clients.find(c => c.name.toLowerCase().startsWith(dealName) || dealName.startsWith(c.name.toLowerCase().split(' ')[0])) || null
+}
+
+function RradarContactsPanel({ deal, clients, editing, draft, set, inp }) {
+  const [linkMode, setLinkMode] = useState(null)
+  const [searchTerm, setSearchTerm] = useState('')
+  const linkedClient = findLinkedClient(deal, clients)
+  const currentLinked = (editing && draft?.['RradarClient'] !== undefined)
+    ? clients.find(c=>c.name===draft['RradarClient']) || null
+    : linkedClient
+
+  const searchResults = searchTerm.length > 1
+    ? clients.filter(c => c.name.toLowerCase().includes(searchTerm.toLowerCase())).slice(0,6)
+    : []
+
+  function selectClient(c) { set('RradarClient', c.name); setLinkMode(null); setSearchTerm('') }
+  function unlinkClient() { set('RradarClient', ''); setLinkMode(null) }
+
+  const displayClient = currentLinked
+  const contacts = displayClient?.contacts || []
+
+  return (
+    <div style={{ background:'#fff', borderRadius:10, border:'0.5px solid #e8eaed', padding:'16px 18px' }}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
+        <div style={{ fontSize:11, fontWeight:600, color:'#7A8090', textTransform:'uppercase', letterSpacing:'0.06em' }}>Clients &amp; Contacts</div>
+        <div style={{ display:'flex', gap:6, alignItems:'center' }}>
+          {displayClient && <span style={{ fontSize:9, padding:'2px 8px', borderRadius:20, background:'#dcfce7', color:'#15803d', fontWeight:600 }}>● Rradar linked</span>}
+          {editing && (
+            <button onClick={()=>setLinkMode(l=>l==='search'?null:'search')}
+              style={{ fontSize:10, padding:'3px 10px', borderRadius:6, border:'1px solid #e8eaed', background:'#f8f9fa', color:'#2A3545', cursor:'pointer' }}>
+              {displayClient ? '⇄ Change link' : '+ Link to Rradar'}
+            </button>
+          )}
+          {editing && displayClient && (
+            <button onClick={unlinkClient}
+              style={{ fontSize:10, padding:'3px 8px', borderRadius:6, border:'1px solid #fecaca', background:'#fef2f2', color:'#b91c1c', cursor:'pointer' }}>
+              Unlink
+            </button>
+          )}
+        </div>
+      </div>
+
+      {editing && linkMode === 'search' && (
+        <div style={{ marginBottom:14, background:'#f8f9fa', borderRadius:8, padding:'10px 12px', border:'1px solid #e8eaed' }}>
+          <div style={{ fontSize:10, color:'#7A8090', marginBottom:6 }}>Search Rradar clients</div>
+          <input autoFocus value={searchTerm} onChange={e=>setSearchTerm(e.target.value)}
+            placeholder="Type client name…" style={{ ...inp, marginBottom:6 }}/>
+          {searchResults.length > 0 && (
+            <div style={{ border:'1px solid #e8eaed', borderRadius:6, overflow:'hidden' }}>
+              {searchResults.map((c,i) => (
+                <div key={i} onClick={()=>selectClient(c)}
+                  style={{ padding:'7px 10px', fontSize:11, cursor:'pointer', borderBottom:i<searchResults.length-1?'0.5px solid #f0f0f0':'none', display:'flex', justifyContent:'space-between', background:'#fff' }}
+                  onMouseOver={e=>e.currentTarget.style.background='#fdf0f6'}
+                  onMouseOut={e=>e.currentTarget.style.background='#fff'}>
+                  <span style={{ fontWeight:500, color:'#2A3545' }}>{c.name}</span>
+                  <span style={{ fontSize:9, color:'#7A8090' }}>{c.loans?.length||0} loans</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {searchTerm.length > 1 && searchResults.length === 0 && (
+            <div style={{ fontSize:10, color:'#9ca3af', padding:'4px 0' }}>No matching clients found</div>
+          )}
+        </div>
+      )}
+
+      {/* Contacts table */}
+      <table style={{ width:'100%', borderCollapse:'collapse', fontSize:11 }}>
+        <thead>
+          <tr style={{ background:'#3D4F6B' }}>
+            <th style={{ padding:'7px 10px', textAlign:'left', color:'#fff', fontSize:10, fontWeight:600 }}>Name</th>
+            <th style={{ padding:'7px 10px', textAlign:'left', color:'#fff', fontSize:10, fontWeight:600 }}>Type</th>
+            <th style={{ padding:'7px 10px', textAlign:'left', color:'#fff', fontSize:10, fontWeight:600 }}>Email</th>
+            <th style={{ padding:'7px 10px', textAlign:'left', color:'#fff', fontSize:10, fontWeight:600 }}>Mobile</th>
+          </tr>
+        </thead>
+        <tbody>
+          {displayClient && contacts.length > 0 ? contacts.map((c,i) => (
+            <tr key={i} style={{ borderBottom:'0.5px solid #f0f0f0', background:i%2===0?'#fff':'#fafafa' }}>
+              <td style={{ padding:'7px 10px', color:'#2A3545', fontWeight:500 }}>
+                {[c.first,c.middle,c.last].filter(Boolean).join(' ')||'—'}
+              </td>
+              <td style={{ padding:'7px 10px' }}>
+                <span style={{ fontSize:9, padding:'2px 7px', borderRadius:20, background:'#fdf0f6', color:'#9b2c6e' }}>{c.type||'Individual'}</span>
+              </td>
+              <td style={{ padding:'7px 10px' }}>
+                {c.email ? <a href={`mailto:${c.email}`} style={{color:'#EB99C2',textDecoration:'none'}}>{c.email}</a> : '—'}
+              </td>
+              <td style={{ padding:'7px 10px' }}>
+                {c.mobile ? <span style={{display:'flex',gap:6,alignItems:'center'}}>
+                  <a href={`tel:${c.mobile}`} style={{color:'#EB99C2',textDecoration:'none'}}>{c.mobile}</a>
+                  <a href={`sms:${c.mobile}`} style={{background:'#f0f0f0',borderRadius:10,padding:'1px 6px',fontSize:9,color:'#7A8090',textDecoration:'none'}}>💬</a>
+                </span> : '—'}
+              </td>
+            </tr>
+          )) : (
+            <tr>
+              <td style={{ padding:'7px 10px', color:'#2A3545', fontWeight:500 }}>{deal['Full Name(s)']||'—'}</td>
+              <td style={{ padding:'7px 10px' }}><span style={{ fontSize:9, padding:'2px 7px', borderRadius:20, background:'#fdf0f6', color:'#9b2c6e' }}>Individual</span></td>
+              <td style={{ padding:'7px 10px' }}>{deal['Emails(s)']?<a href={`mailto:${deal['Emails(s)']}`} style={{color:'#EB99C2',textDecoration:'none'}}>{deal['Emails(s)']}</a>:'—'}</td>
+              <td style={{ padding:'7px 10px' }}>{deal.Mobile?<span style={{display:'flex',gap:6,alignItems:'center'}}><a href={`tel:${deal.Mobile}`} style={{color:'#EB99C2',textDecoration:'none'}}>{deal.Mobile}</a><a href={`sms:${deal.Mobile}`} style={{background:'#f0f0f0',borderRadius:10,padding:'1px 6px',fontSize:9,color:'#7A8090',textDecoration:'none'}}>💬</a></span>:'—'}</td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+
+      {displayClient && (
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:10 }}>
+          <span style={{ fontSize:10, color:'#7A8090' }}>
+            Rradar: <strong style={{color:'#2A3545'}}>{displayClient.name}</strong> · {displayClient.loans?.filter(l=>!l.closed).length||0} active loans
+          </span>
+          <a href={`/radar/clients/${encodeURIComponent(displayClient.name)}`}
+            style={{ fontSize:10, color:'#EB99C2', textDecoration:'none', padding:'3px 10px', border:'1px solid #EB99C2', borderRadius:6 }}>
+            View in Rradar →
+          </a>
+        </div>
+      )}
+
+      {!displayClient && !editing && (
+        <div style={{ marginTop:8, padding:'8px 10px', background:'#fef9ec', border:'1px solid #fde68a', borderRadius:6, fontSize:10, color:'#92600a' }}>
+          ⚡ Not linked to Rradar — edit this deal to link a client and pull through full contact details
+        </div>
+      )}
+
+      {editing && !displayClient && (
+        <div style={{ marginTop:10, display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, borderTop:'0.5px solid #f0f0f0', paddingTop:10 }}>
+          <Field label="Full name"><input style={inp} value={draft?.['Full Name(s)']||''} onChange={e=>set('Full Name(s)',e.target.value)}/></Field>
+          <Field label="Email"><input style={inp} type="email" value={draft?.['Emails(s)']||''} onChange={e=>set('Emails(s)',e.target.value)}/></Field>
+          <Field label="Mobile"><input style={inp} value={draft?.Mobile||''} onChange={e=>set('Mobile',e.target.value)}/></Field>
+          <Field label="Company"><input style={inp} value={draft?.Company||''} onChange={e=>set('Company',e.target.value)}/></Field>
+          <div style={{gridColumn:'1/-1'}}><Field label="Home address"><textarea style={{...inp,resize:'vertical'}} rows={2} value={draft?.['Home Address']||''} onChange={e=>set('Home Address',e.target.value)}/></Field></div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+export default function DealPage({ onUpdateDeals, clients = [] }) {
   const { dealName } = useParams()
   const navigate = useNavigate()
   const decodedName = decodeURIComponent(dealName)
@@ -167,28 +311,8 @@ export default function DealPage({ onUpdateDeals }) {
 
           {/* RIGHT */}
           <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
-            <div style={{ background:'#fff', borderRadius:10, border:'0.5px solid #e8eaed', padding:'16px 18px' }}>
-              <div style={{ fontSize:11, fontWeight:600, color:'#7A8090', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:14 }}>Client information</div>
-              {editing ? (
-                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
-                  <Field label="Full name"><input style={inp} value={d['Full Name(s)']||''} onChange={e=>set('Full Name(s)',e.target.value)}/></Field>
-                  <Field label="First name(s)"><input style={inp} value={d['First Name(s)']||''} onChange={e=>set('First Name(s)',e.target.value)}/></Field>
-                  <Field label="Last name(s)"><input style={inp} value={d['Last Name(s)']||''} onChange={e=>set('Last Name(s)',e.target.value)}/></Field>
-                  <Field label="Email"><input style={inp} type="email" value={d['Emails(s)']||''} onChange={e=>set('Emails(s)',e.target.value)}/></Field>
-                  <Field label="Mobile"><input style={inp} value={d.Mobile||''} onChange={e=>set('Mobile',e.target.value)}/></Field>
-                  <Field label="Company"><input style={inp} value={d.Company||''} onChange={e=>set('Company',e.target.value)}/></Field>
-                  <div style={{gridColumn:'1/-1'}}><Field label="Home address"><textarea style={{...inp,resize:'vertical'}} rows={2} value={d['Home Address']||''} onChange={e=>set('Home Address',e.target.value)}/></Field></div>
-                </div>
-              ) : (
-                <>
-                  <ReadRow label="Full name" value={d['Full Name(s)']}/>
-                  <ReadRow label="Email" value={d['Emails(s)'] ? <a href={`mailto:${d['Emails(s)']}`} style={{color:'#EB99C2',textDecoration:'none'}}>{d['Emails(s)']}</a> : null}/>
-                  <ReadRow label="Mobile" value={d.Mobile ? <span style={{display:'flex',gap:8,alignItems:'center'}}><a href={`tel:${d.Mobile}`} style={{color:'#EB99C2',textDecoration:'none'}}>{d.Mobile}</a><a href={`sms:${d.Mobile}`} style={{background:'#f0f0f0',borderRadius:10,padding:'1px 7px',fontSize:10,color:'#7A8090',textDecoration:'none'}}>💬</a></span> : null}/>
-                  <ReadRow label="Company" value={d.Company}/>
-                  <ReadRow label="Address" value={d['Home Address']}/>
-                </>
-              )}
-            </div>
+            {/* Clients & Contacts — Rradar linked */}
+            <RradarContactsPanel deal={d} clients={clients} editing={editing} draft={draft} set={set} inp={inp} />
 
             <div style={{ background:'#fff', borderRadius:10, border:'0.5px solid #e8eaed', padding:'16px 18px' }}>
               <div style={{ fontSize:11, fontWeight:600, color:'#7A8090', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:14 }}>Team & notes</div>
