@@ -13,27 +13,18 @@ const ACTIVE_STAGES = ['1. Lead','2. Strategy','3. Pre-Lodged','4. Lodged','5. C
 const DIVIDERS_AFTER = ['3. Pre-Lodged', '6. Unconditional']
 
 const STAGE_COLORS = {
-  '1. Lead':          { bg:'#eef4fb', color:'#185fa5', dot:'#3b82f6' },
-  '2. Strategy':      { bg:'#eef4fb', color:'#185fa5', dot:'#3b82f6' },
-  '3. Pre-Lodged':    { bg:'#fdf0f6', color:'#9b2c6e', dot:'#EB99C2' },
-  '4. Lodged':        { bg:'#fdf0f6', color:'#9b2c6e', dot:'#EB99C2' },
-  '5. Conditional':   { bg:'#fff8e8', color:'#92600a', dot:'#f59e0b' },
-  '6. Unconditional': { bg:'#eaf6ef', color:'#1a7a45', dot:'#22c55e' },
-  '7. Settled':       { bg:'#eaf6ef', color:'#1a7a45', dot:'#22c55e' },
-  '8. Withdrawn':     { bg:'#f5f5f5', color:'#5a6370', dot:'#9ca3af' },
+  '1. Lead':          { bg:'#fee2e2', color:'#b91c1c', dot:'#ef4444' },
+  '2. Strategy':      { bg:'#fee2e2', color:'#b91c1c', dot:'#ef4444' },
+  '3. Pre-Lodged':    { bg:'#fee2e2', color:'#b91c1c', dot:'#ef4444' },
+  '4. Lodged':        { bg:'#dbeafe', color:'#1d4ed8', dot:'#3b82f6' },
+  '5. Conditional':   { bg:'#dbeafe', color:'#1d4ed8', dot:'#3b82f6' },
+  '6. Unconditional': { bg:'#dbeafe', color:'#1d4ed8', dot:'#3b82f6' },
+  '7. Settled':       { bg:'#dcfce7', color:'#15803d', dot:'#22c55e' },
+  '8. Withdrawn':     { bg:'#f3f4f6', color:'#4b5563', dot:'#9ca3af' },
 }
 
-// Forecast-specific stage pill colours: 1-3 red, 4-6 blue, 7 green
-const FORECAST_STAGE_COLORS = {
-  '1. Lead':          { bg:'#fee2e2', color:'#b91c1c' },
-  '2. Strategy':      { bg:'#fee2e2', color:'#b91c1c' },
-  '3. Pre-Lodged':    { bg:'#fee2e2', color:'#b91c1c' },
-  '4. Lodged':        { bg:'#dbeafe', color:'#1d4ed8' },
-  '5. Conditional':   { bg:'#dbeafe', color:'#1d4ed8' },
-  '6. Unconditional': { bg:'#dbeafe', color:'#1d4ed8' },
-  '7. Settled':       { bg:'#dcfce7', color:'#15803d' },
-  '8. Withdrawn':     { bg:'#f5f5f5', color:'#5a6370' },
-}
+// Forecast uses the same colour scheme
+const FORECAST_STAGE_COLORS = STAGE_COLORS
 
 const BAND_COLORS = {
   past:    { row:'#fafafa',  header:'#e8e8e8', text:'#5a6370',  label:'Past' },

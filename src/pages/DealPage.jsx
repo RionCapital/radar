@@ -56,37 +56,84 @@ function findLinkedClient(deal, clients) {
   return clients.find(c => c.name.toLowerCase().startsWith(dealName) || dealName.startsWith(c.name.toLowerCase().split(' ')[0])) || null
 }
 
+const BLANK_CONTACT = { name:'', type:'Individual', email:'', mobile:'' }
+const CONTACT_TYPES = ['Individual','Company','Trust','SMSF','Partnership']
+
 function RradarContactsPanel({ deal, clients, editing, draft, set, inp }) {
   const [linkMode, setLinkMode] = useState(null)
   const [searchTerm, setSearchTerm] = useState('')
+  const [addingContact, setAddingContact] = useState(false)
+  const [newContact, setNewContact] = useState({ ...BLANK_CONTACT })
+  const [editingIdx, setEditingIdx] = useState(null)
+  const [editBuf, setEditBuf] = useState(null)
+
   const linkedClient = findLinkedClient(deal, clients)
   const currentLinked = (editing && draft?.['RradarClient'] !== undefined)
-    ? clients.find(c=>c.name===draft['RradarClient']) || null
+    ? clients.find(c => c.name === draft['RradarClient']) || null
     : linkedClient
 
+  // Deal-level contacts stored as deal.Contacts array
+  const dealContacts = (editing ? (draft?.Contacts || []) : (deal.Contacts || []))
+
+  function setContacts(arr) { set('Contacts', arr) }
+
   const searchResults = searchTerm.length > 1
-    ? clients.filter(c => c.name.toLowerCase().includes(searchTerm.toLowerCase())).slice(0,6)
+    ? clients.filter(c => c.name.toLowerCase().includes(searchTerm.toLowerCase())).slice(0, 6)
     : []
 
   function selectClient(c) { set('RradarClient', c.name); setLinkMode(null); setSearchTerm('') }
   function unlinkClient() { set('RradarClient', ''); setLinkMode(null) }
 
-  const displayClient = currentLinked
-  const contacts = displayClient?.contacts || []
+  // Contacts to display: Rradar-linked contacts take priority, fallback to deal contacts
+  const rradarContacts = currentLinked?.contacts || []
+  const displayContacts = rradarContacts.length > 0
+    ? rradarContacts.map(c => ({
+        name: [c.first, c.middle, c.last].filter(Boolean).join(' ') || c.first || '—',
+        type: c.type || 'Individual',
+        email: c.email || '',
+        mobile: c.mobile || '',
+        fromRradar: true
+      }))
+    : dealContacts
+
+  function saveNewContact() {
+    if (!newContact.name.trim()) return
+    setContacts([...dealContacts, { ...newContact }])
+    setNewContact({ ...BLANK_CONTACT })
+    setAddingContact(false)
+  }
+  function saveEditContact() {
+    const updated = dealContacts.map((c, i) => i === editingIdx ? { ...editBuf } : c)
+    setContacts(updated)
+    setEditingIdx(null); setEditBuf(null)
+  }
+  function removeContact(i) {
+    setContacts(dealContacts.filter((_, idx) => idx !== i))
+  }
+
+  const thStyle = { padding:'7px 10px', textAlign:'left', color:'#fff', fontSize:10, fontWeight:600 }
+  const inpStyle = { ...inp, fontSize:11, padding:'4px 8px' }
 
   return (
     <div style={{ background:'#fff', borderRadius:10, border:'0.5px solid #e8eaed', padding:'16px 18px' }}>
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
+      {/* Header */}
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
         <div style={{ fontSize:11, fontWeight:600, color:'#7A8090', textTransform:'uppercase', letterSpacing:'0.06em' }}>Clients &amp; Contacts</div>
         <div style={{ display:'flex', gap:6, alignItems:'center' }}>
-          {displayClient && <span style={{ fontSize:9, padding:'2px 8px', borderRadius:20, background:'#dcfce7', color:'#15803d', fontWeight:600 }}>● Rradar linked</span>}
-          {editing && (
-            <button onClick={()=>setLinkMode(l=>l==='search'?null:'search')}
-              style={{ fontSize:10, padding:'3px 10px', borderRadius:6, border:'1px solid #e8eaed', background:'#f8f9fa', color:'#2A3545', cursor:'pointer' }}>
-              {displayClient ? '⇄ Change link' : '+ Link to Rradar'}
+          {currentLinked && <span style={{ fontSize:9, padding:'2px 8px', borderRadius:20, background:'#dcfce7', color:'#15803d', fontWeight:600 }}>● Rradar linked</span>}
+          {editing && !addingContact && !rradarContacts.length && (
+            <button onClick={() => { setAddingContact(true); setEditingIdx(null) }}
+              style={{ fontSize:10, padding:'3px 10px', borderRadius:6, border:'1px solid #EB99C2', background:'#fdf0f6', color:'#9b2c6e', cursor:'pointer', fontWeight:500 }}>
+              + Add contact
             </button>
           )}
-          {editing && displayClient && (
+          {editing && (
+            <button onClick={() => setLinkMode(l => l === 'search' ? null : 'search')}
+              style={{ fontSize:10, padding:'3px 10px', borderRadius:6, border:'1px solid #e8eaed', background:'#f8f9fa', color:'#2A3545', cursor:'pointer' }}>
+              {currentLinked ? '⇄ Change Rradar link' : '+ Link to Rradar'}
+            </button>
+          )}
+          {editing && currentLinked && (
             <button onClick={unlinkClient}
               style={{ fontSize:10, padding:'3px 8px', borderRadius:6, border:'1px solid #fecaca', background:'#fef2f2', color:'#b91c1c', cursor:'pointer' }}>
               Unlink
@@ -95,20 +142,21 @@ function RradarContactsPanel({ deal, clients, editing, draft, set, inp }) {
         </div>
       </div>
 
+      {/* Rradar search */}
       {editing && linkMode === 'search' && (
-        <div style={{ marginBottom:14, background:'#f8f9fa', borderRadius:8, padding:'10px 12px', border:'1px solid #e8eaed' }}>
+        <div style={{ marginBottom:12, background:'#f8f9fa', borderRadius:8, padding:'10px 12px', border:'1px solid #e8eaed' }}>
           <div style={{ fontSize:10, color:'#7A8090', marginBottom:6 }}>Search Rradar clients</div>
-          <input autoFocus value={searchTerm} onChange={e=>setSearchTerm(e.target.value)}
-            placeholder="Type client name…" style={{ ...inp, marginBottom:6 }}/>
+          <input autoFocus value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
+            placeholder="Type client name…" style={{ ...inp, marginBottom:6 }} />
           {searchResults.length > 0 && (
             <div style={{ border:'1px solid #e8eaed', borderRadius:6, overflow:'hidden' }}>
-              {searchResults.map((c,i) => (
-                <div key={i} onClick={()=>selectClient(c)}
+              {searchResults.map((c, i) => (
+                <div key={i} onClick={() => selectClient(c)}
                   style={{ padding:'7px 10px', fontSize:11, cursor:'pointer', borderBottom:i<searchResults.length-1?'0.5px solid #f0f0f0':'none', display:'flex', justifyContent:'space-between', background:'#fff' }}
-                  onMouseOver={e=>e.currentTarget.style.background='#fdf0f6'}
-                  onMouseOut={e=>e.currentTarget.style.background='#fff'}>
+                  onMouseOver={e => e.currentTarget.style.background = '#fdf0f6'}
+                  onMouseOut={e => e.currentTarget.style.background = '#fff'}>
                   <span style={{ fontWeight:500, color:'#2A3545' }}>{c.name}</span>
-                  <span style={{ fontSize:9, color:'#7A8090' }}>{c.loans?.length||0} loans</span>
+                  <span style={{ fontSize:9, color:'#7A8090' }}>{c.loans?.length || 0} loans</span>
                 </div>
               ))}
             </div>
@@ -123,67 +171,120 @@ function RradarContactsPanel({ deal, clients, editing, draft, set, inp }) {
       <table style={{ width:'100%', borderCollapse:'collapse', fontSize:11 }}>
         <thead>
           <tr style={{ background:'#3D4F6B' }}>
-            <th style={{ padding:'7px 10px', textAlign:'left', color:'#fff', fontSize:10, fontWeight:600 }}>Name</th>
-            <th style={{ padding:'7px 10px', textAlign:'left', color:'#fff', fontSize:10, fontWeight:600 }}>Type</th>
-            <th style={{ padding:'7px 10px', textAlign:'left', color:'#fff', fontSize:10, fontWeight:600 }}>Email</th>
-            <th style={{ padding:'7px 10px', textAlign:'left', color:'#fff', fontSize:10, fontWeight:600 }}>Mobile</th>
+            <th style={thStyle}>Name</th>
+            <th style={thStyle}>Type</th>
+            <th style={thStyle}>Email</th>
+            <th style={thStyle}>Mobile</th>
+            {editing && !rradarContacts.length && <th style={{ ...thStyle, width:60 }}></th>}
           </tr>
         </thead>
         <tbody>
-          {displayClient && contacts.length > 0 ? contacts.map((c,i) => (
-            <tr key={i} style={{ borderBottom:'0.5px solid #f0f0f0', background:i%2===0?'#fff':'#fafafa' }}>
-              <td style={{ padding:'7px 10px', color:'#2A3545', fontWeight:500 }}>
-                {[c.first,c.middle,c.last].filter(Boolean).join(' ')||'—'}
-              </td>
-              <td style={{ padding:'7px 10px' }}>
-                <span style={{ fontSize:9, padding:'2px 7px', borderRadius:20, background:'#fdf0f6', color:'#9b2c6e' }}>{c.type||'Individual'}</span>
-              </td>
-              <td style={{ padding:'7px 10px' }}>
-                {c.email ? <a href={`mailto:${c.email}`} style={{color:'#EB99C2',textDecoration:'none'}}>{c.email}</a> : '—'}
-              </td>
-              <td style={{ padding:'7px 10px' }}>
-                {c.mobile ? <span style={{display:'flex',gap:6,alignItems:'center'}}>
-                  <a href={`tel:${c.mobile}`} style={{color:'#EB99C2',textDecoration:'none'}}>{c.mobile}</a>
-                  <a href={`sms:${c.mobile}`} style={{background:'#f0f0f0',borderRadius:10,padding:'1px 6px',fontSize:9,color:'#7A8090',textDecoration:'none'}}>💬</a>
-                </span> : '—'}
-              </td>
-            </tr>
+          {displayContacts.length > 0 ? displayContacts.map((c, i) => (
+            editingIdx === i && !c.fromRradar ? (
+              <tr key={i} style={{ background:'#fdf9ff', borderBottom:'0.5px solid #e8eaed' }}>
+                <td style={{ padding:'5px 6px' }}><input style={inpStyle} value={editBuf.name} onChange={e=>setEditBuf(b=>({...b,name:e.target.value}))}/></td>
+                <td style={{ padding:'5px 6px' }}>
+                  <select style={{...inpStyle, width:'100%'}} value={editBuf.type} onChange={e=>setEditBuf(b=>({...b,type:e.target.value}))}>
+                    {CONTACT_TYPES.map(t=><option key={t}>{t}</option>)}
+                  </select>
+                </td>
+                <td style={{ padding:'5px 6px' }}><input style={inpStyle} value={editBuf.email} onChange={e=>setEditBuf(b=>({...b,email:e.target.value}))}/></td>
+                <td style={{ padding:'5px 6px' }}><input style={inpStyle} value={editBuf.mobile} onChange={e=>setEditBuf(b=>({...b,mobile:e.target.value}))}/></td>
+                <td style={{ padding:'5px 6px' }}>
+                  <div style={{display:'flex',gap:4}}>
+                    <button onClick={saveEditContact} style={{fontSize:9,padding:'3px 6px',borderRadius:4,border:'none',background:'#22c55e',color:'#fff',cursor:'pointer'}}>✓</button>
+                    <button onClick={()=>{setEditingIdx(null);setEditBuf(null)}} style={{fontSize:9,padding:'3px 6px',borderRadius:4,border:'1px solid #e8eaed',background:'#fff',color:'#5a6370',cursor:'pointer'}}>✕</button>
+                  </div>
+                </td>
+              </tr>
+            ) : (
+              <tr key={i} style={{ borderBottom:'0.5px solid #f0f0f0', background:i%2===0?'#fff':'#fafafa' }}>
+                <td style={{ padding:'7px 10px', color:'#2A3545', fontWeight:500 }}>{c.name||'—'}</td>
+                <td style={{ padding:'7px 10px' }}>
+                  <span style={{ fontSize:9, padding:'2px 7px', borderRadius:20, background:'#fdf0f6', color:'#9b2c6e' }}>{c.type||'Individual'}</span>
+                </td>
+                <td style={{ padding:'7px 10px' }}>
+                  {c.email ? <a href={`mailto:${c.email}`} style={{color:'#EB99C2',textDecoration:'none'}}>{c.email}</a> : '—'}
+                </td>
+                <td style={{ padding:'7px 10px' }}>
+                  {c.mobile ? <span style={{display:'flex',gap:6,alignItems:'center'}}>
+                    <a href={`tel:${c.mobile}`} style={{color:'#EB99C2',textDecoration:'none'}}>{c.mobile}</a>
+                    <a href={`sms:${c.mobile}`} style={{background:'#f0f0f0',borderRadius:10,padding:'1px 6px',fontSize:9,color:'#7A8090',textDecoration:'none'}}>💬</a>
+                  </span> : '—'}
+                </td>
+                {editing && !c.fromRradar && (
+                  <td style={{ padding:'5px 8px' }}>
+                    <div style={{display:'flex',gap:4}}>
+                      <button onClick={()=>{setEditingIdx(i);setEditBuf({...c});setAddingContact(false)}}
+                        style={{fontSize:9,padding:'3px 6px',borderRadius:4,border:'1px solid #e8eaed',background:'#f8f9fa',color:'#2A3545',cursor:'pointer'}}>Edit</button>
+                      <button onClick={()=>removeContact(i)}
+                        style={{fontSize:9,padding:'3px 6px',borderRadius:4,border:'1px solid #fecaca',background:'#fef2f2',color:'#b91c1c',cursor:'pointer'}}>✕</button>
+                    </div>
+                  </td>
+                )}
+                {editing && c.fromRradar && <td></td>}
+              </tr>
+            )
           )) : (
             <tr>
-              <td style={{ padding:'7px 10px', color:'#2A3545', fontWeight:500 }}>{deal['Full Name(s)']||'—'}</td>
-              <td style={{ padding:'7px 10px' }}><span style={{ fontSize:9, padding:'2px 7px', borderRadius:20, background:'#fdf0f6', color:'#9b2c6e' }}>Individual</span></td>
-              <td style={{ padding:'7px 10px' }}>{deal['Emails(s)']?<a href={`mailto:${deal['Emails(s)']}`} style={{color:'#EB99C2',textDecoration:'none'}}>{deal['Emails(s)']}</a>:'—'}</td>
-              <td style={{ padding:'7px 10px' }}>{deal.Mobile?<span style={{display:'flex',gap:6,alignItems:'center'}}><a href={`tel:${deal.Mobile}`} style={{color:'#EB99C2',textDecoration:'none'}}>{deal.Mobile}</a><a href={`sms:${deal.Mobile}`} style={{background:'#f0f0f0',borderRadius:10,padding:'1px 6px',fontSize:9,color:'#7A8090',textDecoration:'none'}}>💬</a></span>:'—'}</td>
+              <td colSpan={editing ? 5 : 4} style={{ padding:'12px 10px', fontSize:10, color:'#9ca3af', textAlign:'center' }}>
+                No contacts on file
+              </td>
+            </tr>
+          )}
+
+          {/* Add new contact row */}
+          {addingContact && editing && (
+            <tr style={{ background:'#f0fdf4', borderBottom:'0.5px solid #e8eaed' }}>
+              <td style={{ padding:'5px 6px' }}>
+                <input autoFocus style={inpStyle} placeholder="Full name" value={newContact.name} onChange={e=>setNewContact(c=>({...c,name:e.target.value}))}/>
+              </td>
+              <td style={{ padding:'5px 6px' }}>
+                <select style={{...inpStyle, width:'100%'}} value={newContact.type} onChange={e=>setNewContact(c=>({...c,type:e.target.value}))}>
+                  {CONTACT_TYPES.map(t=><option key={t}>{t}</option>)}
+                </select>
+              </td>
+              <td style={{ padding:'5px 6px' }}>
+                <input style={inpStyle} placeholder="Email" value={newContact.email} onChange={e=>setNewContact(c=>({...c,email:e.target.value}))}/>
+              </td>
+              <td style={{ padding:'5px 6px' }}>
+                <input style={inpStyle} placeholder="Mobile" value={newContact.mobile} onChange={e=>setNewContact(c=>({...c,mobile:e.target.value}))}/>
+              </td>
+              <td style={{ padding:'5px 6px' }}>
+                <div style={{display:'flex',gap:4}}>
+                  <button onClick={saveNewContact} style={{fontSize:9,padding:'3px 6px',borderRadius:4,border:'none',background:'#22c55e',color:'#fff',cursor:'pointer',fontWeight:600}}>Save</button>
+                  <button onClick={()=>{setAddingContact(false);setNewContact({...BLANK_CONTACT})}} style={{fontSize:9,padding:'3px 6px',borderRadius:4,border:'1px solid #e8eaed',background:'#fff',color:'#5a6370',cursor:'pointer'}}>✕</button>
+                </div>
+              </td>
             </tr>
           )}
         </tbody>
       </table>
 
-      {displayClient && (
+      {/* Add another contact button (below table) */}
+      {editing && !addingContact && !rradarContacts.length && displayContacts.length > 0 && (
+        <button onClick={() => { setAddingContact(true); setEditingIdx(null) }}
+          style={{ marginTop:8, fontSize:10, padding:'4px 12px', borderRadius:6, border:'1px dashed #EB99C2', background:'transparent', color:'#EB99C2', cursor:'pointer', width:'100%' }}>
+          + Add another contact
+        </button>
+      )}
+
+      {/* Rradar footer */}
+      {currentLinked && (
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:10 }}>
           <span style={{ fontSize:10, color:'#7A8090' }}>
-            Rradar: <strong style={{color:'#2A3545'}}>{displayClient.name}</strong> · {displayClient.loans?.filter(l=>!l.closed).length||0} active loans
+            Rradar: <strong style={{color:'#2A3545'}}>{currentLinked.name}</strong> · {currentLinked.loans?.filter(l=>!l.closed).length||0} active loans
           </span>
-          <a href={`/radar/clients/${encodeURIComponent(displayClient.name)}`}
+          <a href={`/radar/clients/${encodeURIComponent(currentLinked.name)}`}
             style={{ fontSize:10, color:'#EB99C2', textDecoration:'none', padding:'3px 10px', border:'1px solid #EB99C2', borderRadius:6 }}>
             View in Rradar →
           </a>
         </div>
       )}
 
-      {!displayClient && !editing && (
+      {!currentLinked && !editing && displayContacts.length === 0 && (
         <div style={{ marginTop:8, padding:'8px 10px', background:'#fef9ec', border:'1px solid #fde68a', borderRadius:6, fontSize:10, color:'#92600a' }}>
-          ⚡ Not linked to Rradar — edit this deal to link a client and pull through full contact details
-        </div>
-      )}
-
-      {editing && !displayClient && (
-        <div style={{ marginTop:10, display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, borderTop:'0.5px solid #f0f0f0', paddingTop:10 }}>
-          <Field label="Full name"><input style={inp} value={draft?.['Full Name(s)']||''} onChange={e=>set('Full Name(s)',e.target.value)}/></Field>
-          <Field label="Email"><input style={inp} type="email" value={draft?.['Emails(s)']||''} onChange={e=>set('Emails(s)',e.target.value)}/></Field>
-          <Field label="Mobile"><input style={inp} value={draft?.Mobile||''} onChange={e=>set('Mobile',e.target.value)}/></Field>
-          <Field label="Company"><input style={inp} value={draft?.Company||''} onChange={e=>set('Company',e.target.value)}/></Field>
-          <div style={{gridColumn:'1/-1'}}><Field label="Home address"><textarea style={{...inp,resize:'vertical'}} rows={2} value={draft?.['Home Address']||''} onChange={e=>set('Home Address',e.target.value)}/></Field></div>
+          ⚡ Not linked to Rradar — edit this deal to link a client or add contacts manually
         </div>
       )}
     </div>
