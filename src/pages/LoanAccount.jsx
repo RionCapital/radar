@@ -77,7 +77,7 @@ export default function LoanAccount({ clients, updateClient }) {
   const extraMonthly = extraFreq==='weekly' ? Math.round((extraAmount||0)*52/12) : extraFreq==='annually' ? Math.round((extraAmount||0)/12) : (extraAmount||0)
   const piTotal = remainMonths - ioMonthsLeft
 
-  function buildProjection(startBal, rate, remMonths, ioLeft, extra) {
+  function buildProjection(startBal, rate, remMonths, ioLeft, extra, balloon=0) {
     if (!startBal || remMonths <= 0) return []
     const r = (rate||0) / 100 / 12
     const rows = []; let bal = startBal
@@ -86,28 +86,41 @@ export default function LoanAccount({ clients, updateClient }) {
     for (let m = 0; m < remMonths && bal > 0.5; m++) {
       const isIO = m < ioLeft
       const interest = r > 0 ? bal * r : 0
+      const isLastMonth = m === remMonths - 1
       let principal
       if (isIO) {
+        // IO: no principal reduction except extra repayments
         principal = extra
       } else {
         const piElapsed = m - ioLeft; const piRem = Math.max(1, piTot - piElapsed)
-        if (r > 0) { const pmt = bal*r*Math.pow(1+r,piRem)/(Math.pow(1+r,piRem)-1); principal = Math.max(0,pmt-interest)+extra }
-        else { principal = bal/piRem + extra }
+        // For balloon loans: only amortise the non-balloon portion each month
+        const amortBal = Math.max(0, bal - balloon)
+        if (r > 0 && amortBal > 0) {
+          const pmt = amortBal*r*Math.pow(1+r,piRem)/(Math.pow(1+r,piRem)-1)
+          principal = Math.max(0, pmt - interest) + extra
+        } else {
+          principal = (amortBal > 0 ? amortBal/piRem : 0) + extra
+        }
+        // During normal months, don't reduce below balloon level
+        if (!isLastMonth && balloon > 0) principal = Math.min(principal, Math.max(0, bal - balloon))
+        // On the last month, clear everything including balloon (lump sum payment at maturity)
+        if (isLastMonth && balloon > 0) principal = bal
       }
       principal = Math.min(principal, bal)
       const newBal = Math.max(0, bal - principal)
       const dt = new Date(base.getFullYear(), base.getMonth()+m, 1)
-      rows.push({ date:dt, dateStr:fmtMY(dt), openingBal:Math.round(bal), interest:Math.round(interest), principal:Math.round(principal), closingBal:Math.round(newBal), isIO })
+      rows.push({ date:dt, dateStr:fmtMY(dt), openingBal:Math.round(bal), interest:Math.round(interest), principal:Math.round(principal), closingBal:Math.round(newBal), isIO, isBalloonClear: isLastMonth && balloon > 0 })
       if (newBal <= 0) { rows[rows.length-1].closingBal=0; break }
       bal = newBal
     }
     return rows
   }
 
-  const projection = useMemo(() => buildProjection(loan.balance, loan.rate, remainMonths, ioMonthsLeft, 0),
-    [loan.balance, loan.rate, remainMonths, ioMonthsLeft])
-  const projExtra = useMemo(() => extraMonthly>0 ? buildProjection(loan.balance, loan.rate, remainMonths, ioMonthsLeft, extraMonthly) : [],
-    [loan.balance, loan.rate, remainMonths, ioMonthsLeft, extraMonthly])
+  const balloon = loan.balloon || 0
+  const projection = useMemo(() => buildProjection(loan.balance, loan.rate, remainMonths, ioMonthsLeft, 0, balloon),
+    [loan.balance, loan.rate, remainMonths, ioMonthsLeft, balloon])
+  const projExtra = useMemo(() => extraMonthly>0 ? buildProjection(loan.balance, loan.rate, remainMonths, ioMonthsLeft, extraMonthly, balloon) : [],
+    [loan.balance, loan.rate, remainMonths, ioMonthsLeft, extraMonthly, balloon])
 
   const histInterest = history.reduce((s,r)=>s+r.interest,0)
   const stdFutureInt = projection.reduce((s,r)=>s+r.interest,0)
@@ -118,7 +131,6 @@ export default function LoanAccount({ clients, updateClient }) {
   const monthsSaved = projection.length - (projExtra.length>0?projExtra.length:projection.length)
 
   // ── Time-based Chart ────────────────────────────────────────────────────────
-  // All x positions are based on actual dates — today is always at today, regardless of data
   const chartStartD = loan.settled ? new Date(loan.settled) : new Date(todayP.getFullYear()-3, 0, 1)
   const chartEndD = matDateP || new Date(todayP.getFullYear() + Math.ceil(remainMonths/12), todayP.getMonth(), 1)
   const totalChartMs = Math.max(1, chartEndD - chartStartD)
@@ -128,63 +140,49 @@ export default function LoanAccount({ clients, updateClient }) {
   const todayX = dateToX(todayP)
   const histEndX = todayX  // pink shading always runs to today
 
-  // Build estimated historic line using LINEAR INTERPOLATION from settlement amount to today's balance
-  // This avoids the problem of using the current stored rate (which may not reflect historical rate changes)
-  // to model what actually happened. A straight line is honest: we know the start and end, not the path.
-  function buildHistEstimate() {
-    if (!loan.settled || !loan.amount) return []
-    const settD = new Date(loan.settled); settD.setDate(1)
-    const todayMs = todayP.getTime()
-    const settMs = settD.getTime()
-    if (todayMs <= settMs) return [{ d: settD, bal: loan.amount }]
-    const totalMs2 = todayMs - settMs
-    const monthsElapsed = Math.round(totalMs2 / (1000*60*60*24*30.44))
-    const pts = []
-    for (let m = 0; m <= monthsElapsed; m++) {
-      const dt = new Date(settD.getFullYear(), settD.getMonth()+m, 1)
-      // Linear interpolation: balance goes from loan.amount at settlement to loan.balance today
-      const frac = m / Math.max(1, monthsElapsed)
-      const bal = Math.round(loan.amount + (loan.balance - loan.amount) * frac)
-      pts.push({ d: dt, bal })
-    }
-    // Ensure last point exactly matches current balance
-    if (pts.length > 0) pts[pts.length-1].bal = loan.balance
-    return pts
-  }
-
-  const histEstPts = buildHistEstimate()
-
-  // Real commission statement data points (may be empty before first import)
+  // Real commission statement data ONLY — no calculations or estimates for historic section
   const stmtPts = (loan.balanceHistory||[]).map(h => ({ d: new Date(h.month+'-15'), bal: h.balance }))
     .sort((a,b) => a.d - b.d)
 
-  // Full balance line: estimated historic → (real stmt overlay) → today → projection
+  // Balance line:
+  // - Historic: real statement points only (empty if no imports yet)
+  // - Bridge: today's balance (connects last statement → today → projection)
+  // - Projected: from today to maturity
+  const projEndBal = projection.length > 0 ? projection[projection.length-1].closingBal : 0
   const allLinePts = [
-    ...histEstPts,
+    ...stmtPts,
     { d: todayP, bal: loan.balance },
     ...projection.map(p => ({ d: p.date, bal: p.openingBal })),
-    ...(projection.length > 0 ? [{ d: projection[projection.length-1].date, bal: 0 }] : [])
+    ...(projection.length > 0 ? [{ d: projection[projection.length-1].date, bal: projEndBal }] : [])
   ]
 
   const maxChartBal = Math.max(loan.amount||0, ...allLinePts.map(p=>p.bal)) * 1.06 || 1
   const toY = v => gP.t + gPH - (Math.max(0,v)/maxChartBal)*gPH
 
-  const balPath2 = allLinePts.map((p,i) => `${i===0?'M':'L'}${dateToX(p.d).toFixed(1)},${toY(p.bal).toFixed(1)}`).join(' ')
-
-  // Real stmt dots path (overlay on top of estimated line)
-  const stmtPath = stmtPts.length > 1
+  // Historic statement path (if data exists)
+  const stmtPath = stmtPts.length > 0
     ? stmtPts.map((p,i) => `${i===0?'M':'L'}${dateToX(p.d).toFixed(1)},${toY(p.bal).toFixed(1)}`).join(' ')
     : null
 
-  // Extra repayment path — starts from most recent statement date (or today if none)
-  // "History can't be changed" — only show extra repayment impact from last known balance forward
+  // Projected path — starts at today regardless of statement data
+  const projLinePts = [
+    { d: todayP, bal: loan.balance },
+    ...projection.map(p => ({ d: p.date, bal: p.openingBal })),
+    ...(projection.length > 0 ? [{ d: projection[projection.length-1].date, bal: projEndBal }] : [])
+  ]
+  const projPath = projLinePts.length > 1
+    ? projLinePts.map((p,i) => `${i===0?'M':'L'}${dateToX(p.d).toFixed(1)},${toY(p.bal).toFixed(1)}`).join(' ')
+    : null
+
+  // Extra repayment path — from last statement date (or today) forward only
   const lastStmt = stmtPts.length > 0 ? stmtPts[stmtPts.length-1] : null
   const extraStartD = lastStmt ? lastStmt.d : todayP
   const extraStartBal = lastStmt ? lastStmt.bal : loan.balance
+  const extraProjEndBal = projExtra.length > 0 ? projExtra[projExtra.length-1].closingBal : 0
   const extraLinePts = projExtra.length > 1 ? [
     { d: extraStartD, bal: extraStartBal },
     ...projExtra.map(p => ({ d: p.date, bal: p.openingBal })),
-    { d: projExtra[projExtra.length-1].date, bal: 0 }
+    { d: projExtra[projExtra.length-1].date, bal: extraProjEndBal }
   ] : []
   const extraPath2 = extraLinePts.length > 1
     ? extraLinePts.map((p,i) => `${i===0?'M':'L'}${dateToX(p.d).toFixed(1)},${toY(p.bal).toFixed(1)}`).join(' ')
@@ -204,20 +202,15 @@ export default function LoanAccount({ clients, updateClient }) {
     if (d > chartStartD && d < chartEndD) xLabels.push({ x: dateToX(d), label: y })
   }
 
-  // Amortisation table rows
-  // Historic: real statement data if available, otherwise modelled
-  const hasStmtData = stmtPts.length > 0
-  const tableHistRows = hasStmtData
+  // Amortisation table rows — historic from real statements only, no estimates
+  const tableHistRows = (loan.balanceHistory||[]).length > 0
     ? (loan.balanceHistory||[]).sort((a,b)=>a.month.localeCompare(b.month)).map((h,i,arr) => {
         const prevBal = i>0 ? arr[i-1].balance : (loan.amount||h.balance)
         return { date: h.month, balance: h.balance, movement: Math.max(0, Math.round(prevBal - h.balance)), interest: loan.rate ? Math.round(prevBal*loan.rate/100/12) : 0, type:'Statement' }
       })
-    : histEstPts.filter((_,i)=>i%3===0).map((p,i,arr) => {
-        const prevBal = i>0 ? arr[i-1].bal : loan.amount
-        return { date: fmtMY(p.d), balance: p.bal, movement: Math.max(0, Math.round(prevBal - p.bal)), interest: loan.rate ? Math.round(prevBal*loan.rate/100/12) : 0, type:'Est.' }
-      })
+    : []
   const tableProjRows = (tableView==='monthly' ? projection : projection.filter((_,i)=>i%3===0||i===projection.length-1))
-    .map(r => ({ date:r.dateStr, balance:r.openingBal, movement:r.principal, interest:r.interest, type:r.isIO?'IO':'P&I' }))
+    .map(r => ({ date:r.dateStr, balance:r.openingBal, movement:r.principal, interest:r.interest, type:r.isIO?'IO':r.isBalloonClear?'Balloon':'P&I' }))
 
   return (
     <div style={{padding:'16px 24px'}}>
@@ -537,10 +530,10 @@ export default function LoanAccount({ clients, updateClient }) {
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
               <div style={{fontSize:10,fontWeight:600,color:'var(--text-secondary)',textTransform:'uppercase',letterSpacing:'0.06em'}}>Balance — Historic &amp; Predicted</div>
               <div style={{display:'flex',gap:12,fontSize:10,color:'var(--text-secondary)',alignItems:'center'}}>
-                <div style={{display:'flex',alignItems:'center',gap:4}}><div style={{width:14,height:2,background:'#3D5570'}}/> Modelled</div>
                 {stmtPts.length>0&&<div style={{display:'flex',alignItems:'center',gap:4}}><div style={{width:8,height:8,borderRadius:'50%',background:'#EB99C2'}}/> Statement data</div>}
+                <div style={{display:'flex',alignItems:'center',gap:4}}><div style={{width:14,height:2,background:'#3D5570'}}/> Predicted</div>
                 {extraMonthly>0&&<div style={{display:'flex',alignItems:'center',gap:4}}><div style={{width:14,height:0,borderTop:'2px dashed #EB99C2'}}/> With extra</div>}
-                <div style={{display:'flex',alignItems:'center',gap:4}}><div style={{width:10,height:10,background:'rgba(235,153,194,0.28)',border:'0.5px solid rgba(235,153,194,0.5)',borderRadius:2}}/> Historic</div>
+                <div style={{display:'flex',alignItems:'center',gap:4}}><div style={{width:10,height:10,background:'rgba(235,153,194,0.28)',border:'0.5px solid rgba(235,153,194,0.5)',borderRadius:2}}/> Historic period</div>
               </div>
             </div>
             <div style={{overflowX:'auto'}}>
@@ -565,12 +558,12 @@ export default function LoanAccount({ clients, updateClient }) {
                 ))}
                 {/* Today vertical */}
                 <line x1={todayX} x2={todayX} y1={gP.t} y2={gP.t+gPH} stroke="#EB99C2" strokeWidth={1} strokeDasharray="3,3" opacity={0.7}/>
-                {/* Estimated/modelled balance line */}
-                {allLinePts.length>1&&<path d={balPath2} fill="none" stroke="#3D5570" strokeWidth={2}/>}
-                {/* Real statement data overlay — brighter line where actual data exists */}
-                {stmtPath&&<path d={stmtPath} fill="none" stroke="#EB99C2" strokeWidth={2} opacity={0.8}/>}
+                {/* Historic: real statement line (only drawn if commission data exists) */}
+                {stmtPath&&<path d={stmtPath} fill="none" stroke="#EB99C2" strokeWidth={2} opacity={0.85}/>}
                 {stmtPts.map((p,i)=><circle key={i} cx={dateToX(p.d)} cy={toY(p.bal)} r={2.5} fill="#EB99C2" opacity={0.9}/>)}
-                {/* With-extra path */}
+                {/* Projected standard balance line */}
+                {projPath&&<path d={projPath} fill="none" stroke="#3D5570" strokeWidth={2}/>}
+                {/* With-extra dashed path */}
                 {extraPath2&&<path d={extraPath2} fill="none" stroke="#EB99C2" strokeWidth={1.5} strokeDasharray="5,3"/>}
                 {/* X labels */}
                 {xLabels.map((xl,i)=>(
@@ -600,6 +593,11 @@ export default function LoanAccount({ clients, updateClient }) {
                   </tr>
                 </thead>
                 <tbody>
+                  {tableHistRows.length === 0 && (
+                    <tr><td colSpan={5} style={{padding:'10px 8px',fontSize:10,color:'#9ca3af',textAlign:'center',background:'rgba(235,153,194,0.04)',fontStyle:'italic'}}>
+                      No statement data yet — import your first commission statement to populate this section
+                    </td></tr>
+                  )}
                   {tableHistRows.map((row,i)=>(
                     <tr key={`h${i}`} style={{background:'rgba(235,153,194,0.06)'}}>
                       <td style={td({color:'var(--text-secondary)',fontSize:10})}>{row.date}</td>
@@ -620,7 +618,13 @@ export default function LoanAccount({ clients, updateClient }) {
                       <td style={td({textAlign:'right',fontWeight:500,color:'var(--text-primary)'})}>${row.balance.toLocaleString()}</td>
                       <td style={td({textAlign:'right',color:'#166534'})}>${row.movement.toLocaleString()}</td>
                       <td style={td({textAlign:'right',color:'#c0392b'})}>${row.interest.toLocaleString()}</td>
-                      <td style={td({fontSize:9})}><span style={{background:row.type==='IO'?'#fef9c3':'#f0fdf4',color:row.type==='IO'?'#92600a':'#166534',padding:'1px 6px',borderRadius:10,fontSize:9}}>{row.type}</span></td>
+                      <td style={td({fontSize:9})}>
+                        <span style={{
+                          background:row.type==='IO'?'#fef9c3':row.type==='Balloon'?'#fee2e2':'#f0fdf4',
+                          color:row.type==='IO'?'#92600a':row.type==='Balloon'?'#b91c1c':'#166534',
+                          padding:'1px 6px',borderRadius:10,fontSize:9
+                        }}>{row.type}</span>
+                      </td>
                     </tr>
                   ))}
                   {tableProjRows.length>0&&(
