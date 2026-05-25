@@ -117,45 +117,101 @@ export default function LoanAccount({ clients, updateClient }) {
   const intSaved = stdFutureInt - extraFutureInt
   const monthsSaved = projection.length - (projExtra.length>0?projExtra.length:projection.length)
 
-  // Chart data: combine historic + projection for continuous line
-  const histPts = (loan.balanceHistory||[]).map(h=>({bal:h.balance,isHist:true}))
-  const projPts = projection.map(p=>({bal:p.openingBal,isHist:false}))
-  if (projection.length>0) projPts.push({bal:projection[projection.length-1].closingBal,isHist:false})
-  const extraPts = projExtra.map(p=>({bal:p.openingBal}))
-  if (projExtra.length>0) extraPts.push({bal:projExtra[projExtra.length-1].closingBal})
-  const allPts = [...histPts,...projPts]
-  const todayChartIdx = histPts.length
-  const maxChartBal = Math.max(...allPts.map(p=>p.bal), loan.amount||0)*1.06||1
+  // ── Time-based Chart ────────────────────────────────────────────────────────
+  // All x positions are based on actual dates — today is always at today, regardless of data
+  const chartStartD = loan.settled ? new Date(loan.settled) : new Date(todayP.getFullYear()-3, 0, 1)
+  const chartEndD = matDateP || new Date(todayP.getFullYear() + Math.ceil(remainMonths/12), todayP.getMonth(), 1)
+  const totalChartMs = Math.max(1, chartEndD - chartStartD)
   const gW=560,gH=175,gP={l:52,r:10,t:12,b:28}
   const gPW=gW-gP.l-gP.r, gPH=gH-gP.t-gP.b
-  const toX=i=>gP.l+(i/Math.max(1,allPts.length-1))*gPW
-  const toY=v=>gP.t+gPH-(Math.max(0,v)/maxChartBal)*gPH
-  const todayX = todayChartIdx>0 ? toX(todayChartIdx) : gP.l+gPW*0.4
-  const balPath2 = allPts.map((p,i)=>`${i===0?'M':'L'}${toX(i).toFixed(1)},${toY(p.bal).toFixed(1)}`).join(' ')
-  // Extra path uses the same toX scale — each point maps to todayChartIdx+i so it ends proportionally earlier
-  const extraPath2 = extraPts.length>1 ? extraPts.map((p,i)=>{
-    const x = toX(todayChartIdx + i)
-    return `${i===0?'M':'L'}${x.toFixed(1)},${toY(p.bal).toFixed(1)}`
-  }).join(' ') : null
-  const histEndX = histPts.length>0 ? toX(histPts.length-1) : gP.l
+  const dateToX = d => gP.l + (Math.max(0, d-chartStartD) / totalChartMs) * gPW
+  const todayX = dateToX(todayP)
+  const histEndX = todayX  // pink shading always runs to today
 
-  // Y-axis grid labels
-  const yGridVals = [0,0.25,0.5,0.75,1].map(p=>Math.round(maxChartBal*p))
-  // X-axis: year labels at every ~24 projPoints
-  const xLabels = []
-  allPts.forEach((p,i)=>{
-    if (i===0) { xLabels.push({x:toX(i),label:loan.settled?new Date(loan.settled).getFullYear():''}); return }
-    if (i===todayChartIdx) { xLabels.push({x:toX(i),label:'Today'}); return }
-    if ((i-todayChartIdx)>0 && (i-todayChartIdx)%24===0) {
-      const projI = i - todayChartIdx
-      if (projI < projection.length) xLabels.push({x:toX(i), label:projection[projI].date.getFullYear()})
+  // Build estimated historic line from settlement → today
+  // Uses modelled amortisation — real commission data overlays on top when available
+  function buildHistEstimate() {
+    if (!loan.settled || !loan.amount || !loan.rate) return []
+    const r = loan.rate / 100 / 12
+    const settD = new Date(loan.settled); settD.setDate(1)
+    const ioD = loan.io ? new Date(loan.io) : null
+    const totalLoanMonths = matDateP ? Math.round((matDateP - settD) / (1000*60*60*24*30.44)) : (loan.term||30)*12
+    const monthsElapsed = Math.round((todayP - settD) / (1000*60*60*24*30.44))
+    let bal = loan.amount; const pts = []
+    for (let m = 0; m <= monthsElapsed && bal > 0.5; m++) {
+      const dt = new Date(settD.getFullYear(), settD.getMonth()+m, 1)
+      pts.push({ d: dt, bal: Math.round(bal) })
+      if (m >= monthsElapsed) break
+      const isIO = ioD && dt < ioD
+      const interest = r > 0 ? bal * r : 0
+      const piRem = Math.max(1, totalLoanMonths - m)
+      let principal = isIO ? 0 : (r > 0 ? Math.max(0, bal*r*Math.pow(1+r,piRem)/(Math.pow(1+r,piRem)-1) - interest) : bal/piRem)
+      bal = Math.max(0, bal - Math.min(principal, bal))
     }
-  })
+    // Snap last point to today's actual balance
+    if (pts.length > 0) pts[pts.length-1].bal = loan.balance
+    return pts
+  }
 
-  // Amortisation table rows: show historic + future
-  const tableHistRows = history.map(h=>({...h,type:'Historic',rowColor:'#f9f9f9'}))
+  const histEstPts = buildHistEstimate()
+
+  // Real commission statement data points (may be empty before first import)
+  const stmtPts = (loan.balanceHistory||[]).map(h => ({ d: new Date(h.month+'-15'), bal: h.balance }))
+    .sort((a,b) => a.d - b.d)
+
+  // Full balance line: estimated historic → (real stmt overlay) → today → projection
+  const allLinePts = [
+    ...histEstPts,
+    { d: todayP, bal: loan.balance },
+    ...projection.map(p => ({ d: p.date, bal: p.openingBal })),
+    ...(projection.length > 0 ? [{ d: projection[projection.length-1].date, bal: 0 }] : [])
+  ]
+
+  const maxChartBal = Math.max(loan.amount||0, ...allLinePts.map(p=>p.bal)) * 1.06 || 1
+  const toY = v => gP.t + gPH - (Math.max(0,v)/maxChartBal)*gPH
+
+  const balPath2 = allLinePts.map((p,i) => `${i===0?'M':'L'}${dateToX(p.d).toFixed(1)},${toY(p.bal).toFixed(1)}`).join(' ')
+
+  // Real stmt dots path (overlay on top of estimated line)
+  const stmtPath = stmtPts.length > 1
+    ? stmtPts.map((p,i) => `${i===0?'M':'L'}${dateToX(p.d).toFixed(1)},${toY(p.bal).toFixed(1)}`).join(' ')
+    : null
+
+  // Extra repayment path — starts at today using same date scale
+  const extraLinePts = projExtra.length > 1 ? [
+    { d: todayP, bal: loan.balance },
+    ...projExtra.map(p => ({ d: p.date, bal: p.openingBal })),
+    { d: projExtra[projExtra.length-1].date, bal: 0 }
+  ] : []
+  const extraPath2 = extraLinePts.length > 1
+    ? extraLinePts.map((p,i) => `${i===0?'M':'L'}${dateToX(p.d).toFixed(1)},${toY(p.bal).toFixed(1)}`).join(' ')
+    : null
+
+  // Y-axis grid
+  const yGridVals = [0, 0.25, 0.5, 0.75, 1].map(p => Math.round(maxChartBal * p))
+
+  // X-axis year labels — every 2 years across the full range
+  const xLabels = []
+  const startY = chartStartD.getFullYear(); const endY = chartEndD.getFullYear()
+  for (let y = Math.ceil(startY/2)*2; y <= endY; y += 2) {
+    const d = new Date(y, 0, 1)
+    if (d > chartStartD && d < chartEndD) xLabels.push({ x: dateToX(d), label: y })
+  }
+
+  // Amortisation table rows
+  // Historic: real statement data if available, otherwise modelled
+  const hasStmtData = stmtPts.length > 0
+  const tableHistRows = hasStmtData
+    ? (loan.balanceHistory||[]).sort((a,b)=>a.month.localeCompare(b.month)).map((h,i,arr) => {
+        const prevBal = i>0 ? arr[i-1].balance : (loan.amount||h.balance)
+        return { date: h.month, balance: h.balance, movement: Math.max(0, Math.round(prevBal - h.balance)), interest: loan.rate ? Math.round(prevBal*loan.rate/100/12) : 0, type:'Statement' }
+      })
+    : histEstPts.filter((_,i)=>i%3===0).map((p,i,arr) => {
+        const prevBal = i>0 ? arr[i-1].bal : loan.amount
+        return { date: fmtMY(p.d), balance: p.bal, movement: Math.max(0, Math.round(prevBal - p.bal)), interest: loan.rate ? Math.round(prevBal*loan.rate/100/12) : 0, type:'Est.' }
+      })
   const tableProjRows = (tableView==='monthly' ? projection : projection.filter((_,i)=>i%3===0||i===projection.length-1))
-    .map(r=>({date:r.dateStr,balance:r.openingBal,movement:r.principal,interest:r.interest,type:r.isIO?'IO':'P&I',rowColor:'#fff'}))
+    .map(r => ({ date:r.dateStr, balance:r.openingBal, movement:r.principal, interest:r.interest, type:r.isIO?'IO':'P&I' }))
 
   return (
     <div style={{padding:'16px 24px'}}>
@@ -475,9 +531,10 @@ export default function LoanAccount({ clients, updateClient }) {
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
               <div style={{fontSize:10,fontWeight:600,color:'var(--text-secondary)',textTransform:'uppercase',letterSpacing:'0.06em'}}>Balance — Historic &amp; Predicted</div>
               <div style={{display:'flex',gap:12,fontSize:10,color:'var(--text-secondary)',alignItems:'center'}}>
-                <div style={{display:'flex',alignItems:'center',gap:4}}><div style={{width:14,height:2,background:'#3D5570'}}/> Standard</div>
+                <div style={{display:'flex',alignItems:'center',gap:4}}><div style={{width:14,height:2,background:'#3D5570'}}/> Modelled</div>
+                {stmtPts.length>0&&<div style={{display:'flex',alignItems:'center',gap:4}}><div style={{width:8,height:8,borderRadius:'50%',background:'#EB99C2'}}/> Statement data</div>}
                 {extraMonthly>0&&<div style={{display:'flex',alignItems:'center',gap:4}}><div style={{width:14,height:0,borderTop:'2px dashed #EB99C2'}}/> With extra</div>}
-                <div style={{display:'flex',alignItems:'center',gap:4}}><div style={{width:10,height:10,background:'rgba(235,153,194,0.15)',border:'0.5px solid rgba(235,153,194,0.3)',borderRadius:2}}/> Historic</div>
+                <div style={{display:'flex',alignItems:'center',gap:4}}><div style={{width:10,height:10,background:'rgba(235,153,194,0.28)',border:'0.5px solid rgba(235,153,194,0.5)',borderRadius:2}}/> Historic</div>
               </div>
             </div>
             <div style={{overflowX:'auto'}}>
@@ -488,11 +545,11 @@ export default function LoanAccount({ clients, updateClient }) {
                     <stop offset="100%" stopColor="rgba(235,153,194,0.08)"/>
                   </linearGradient>
                 </defs>
-                {/* Pink historic area */}
-                <rect x={gP.l} y={gP.t} width={Math.max(0,histEndX-gP.l)} height={gPH} fill="rgba(235,153,194,0.28)" rx={3}/>
-                <rect x={gP.l} y={gP.t} width={Math.max(0,histEndX-gP.l)} height={gPH} fill="url(#histGrad)" rx={3}/>
-                <text x={(gP.l+histEndX)/2} y={gP.t+14} textAnchor="middle" fontSize={9} fill="rgba(235,153,194,0.7)" fontStyle="italic">Historic</text>
-                <text x={(histEndX+gP.l+gPW)/2} y={gP.t+14} textAnchor="middle" fontSize={9} fill="rgba(61,85,112,0.5)" fontStyle="italic">Predicted</text>
+                {/* Pink historic area — settlement to today */}
+                <rect x={gP.l} y={gP.t} width={Math.max(0,histEndX-gP.l)} height={gPH} fill="rgba(235,153,194,0.28)" rx={2}/>
+                <rect x={gP.l} y={gP.t} width={Math.max(0,histEndX-gP.l)} height={gPH} fill="url(#histGrad)" rx={2}/>
+                <text x={Math.max(gP.l+4, (gP.l+histEndX)/2)} y={gP.t+14} textAnchor="middle" fontSize={9} fill="rgba(180,70,120,0.7)" fontStyle="italic">Historic</text>
+                <text x={Math.min(gP.l+gPW-4, (histEndX+gP.l+gPW)/2)} y={gP.t+14} textAnchor="middle" fontSize={9} fill="rgba(61,85,112,0.5)" fontStyle="italic">Predicted</text>
                 {/* Grid lines */}
                 {yGridVals.map((v,i)=>(
                   <g key={i}>
@@ -501,15 +558,19 @@ export default function LoanAccount({ clients, updateClient }) {
                   </g>
                 ))}
                 {/* Today vertical */}
-                <line x1={todayX} x2={todayX} y1={gP.t} y2={gP.t+gPH} stroke="#EB99C2" strokeWidth={1} strokeDasharray="3,3" opacity={0.6}/>
-                {/* Balance path */}
-                {allPts.length>1&&<path d={balPath2} fill="none" stroke="#3D5570" strokeWidth={2}/>}
+                <line x1={todayX} x2={todayX} y1={gP.t} y2={gP.t+gPH} stroke="#EB99C2" strokeWidth={1} strokeDasharray="3,3" opacity={0.7}/>
+                {/* Estimated/modelled balance line */}
+                {allLinePts.length>1&&<path d={balPath2} fill="none" stroke="#3D5570" strokeWidth={2}/>}
+                {/* Real statement data overlay — brighter line where actual data exists */}
+                {stmtPath&&<path d={stmtPath} fill="none" stroke="#EB99C2" strokeWidth={2} opacity={0.8}/>}
+                {stmtPts.map((p,i)=><circle key={i} cx={dateToX(p.d)} cy={toY(p.bal)} r={2.5} fill="#EB99C2" opacity={0.9}/>)}
                 {/* With-extra path */}
                 {extraPath2&&<path d={extraPath2} fill="none" stroke="#EB99C2" strokeWidth={1.5} strokeDasharray="5,3"/>}
                 {/* X labels */}
                 {xLabels.map((xl,i)=>(
-                  <text key={i} x={xl.x} y={gH-4} textAnchor="middle" fontSize={8} fill={xl.label==='Today'?'#EB99C2':'var(--text-tertiary)'} fontWeight={xl.label==='Today'?600:400}>{xl.label}</text>
+                  <text key={i} x={xl.x} y={gH-4} textAnchor="middle" fontSize={8} fill="var(--text-tertiary)">{xl.label}</text>
                 ))}
+                <text x={todayX} y={gH-4} textAnchor="middle" fontSize={8} fill="#EB99C2" fontWeight={600}>Apr-26</text>
               </svg>
             </div>
           </Panel>
@@ -534,12 +595,14 @@ export default function LoanAccount({ clients, updateClient }) {
                 </thead>
                 <tbody>
                   {tableHistRows.map((row,i)=>(
-                    <tr key={`h${i}`} style={{background:'rgba(235,153,194,0.05)'}}>
+                    <tr key={`h${i}`} style={{background:'rgba(235,153,194,0.06)'}}>
                       <td style={td({color:'var(--text-secondary)',fontSize:10})}>{row.date}</td>
                       <td style={td({textAlign:'right',fontWeight:500,color:'var(--pk)'})}>${row.balance.toLocaleString()}</td>
-                      <td style={td({textAlign:'right',color:'var(--text-secondary)'})}>{row.interest?'$'+row.interest.toLocaleString():'—'}</td>
-                      <td style={td({textAlign:'right'})}>{row.interest?'$'+row.interest.toLocaleString():'—'}</td>
-                      <td style={td({fontSize:9,color:'var(--text-secondary)'})}><span style={{background:'rgba(235,153,194,0.2)',color:'#9b2c6e',padding:'1px 6px',borderRadius:10,fontSize:9}}>Historic</span></td>
+                      <td style={td({textAlign:'right',color:'#166534'})}>${(row.movement||0).toLocaleString()}</td>
+                      <td style={td({textAlign:'right',color:'#c0392b'})}>{row.interest?'$'+row.interest.toLocaleString():'—'}</td>
+                      <td style={td({fontSize:9})}>
+                        <span style={{background:row.type==='Statement'?'rgba(235,153,194,0.2)':'#f3f4f6',color:row.type==='Statement'?'#9b2c6e':'#5a6370',padding:'1px 6px',borderRadius:10,fontSize:9}}>{row.type}</span>
+                      </td>
                     </tr>
                   ))}
                   {tableHistRows.length>0&&tableProjRows.length>0&&(
