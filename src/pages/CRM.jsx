@@ -385,7 +385,8 @@ export default function CRM({ clients, onUpdateClients }) {
 
   const groupedDeals = useMemo(() => {
     const groups = {}
-    visibleMonths.forEach(m => { groups[m] = [] })
+    const sortedMonths = [...visibleMonths].sort()
+    sortedMonths.forEach(m => { groups[m] = [] })
     deals.forEach(d => {
       const m = d['Month of Settlement']?.slice(0,7)
       if (m && groups[m] !== undefined) groups[m].push(d)
@@ -520,7 +521,7 @@ export default function CRM({ clients, onUpdateClients }) {
                 </tr>
               </thead>
               <tbody>
-                {visibleMonths.map(month => {
+                {[...visibleMonths].sort().map(month => {
                   const monthDeals = groupedDeals[month]||[]
                   if (monthDeals.length===0) return null
                   const band = getMonthBand(month)

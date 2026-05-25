@@ -56,7 +56,7 @@ export default function CRMTopbar() {
 
   return (
     <div style={{
-      background:'#2A3545', borderBottom:'1px solid rgba(255,255,255,0.08)',
+      background:'#3D5570', borderBottom:'1px solid rgba(255,255,255,0.08)',
       padding:'0 24px', display:'flex', alignItems:'center', justifyContent:'space-between',
       height:56, flexShrink:0
     }}>
@@ -66,7 +66,6 @@ export default function CRMTopbar() {
         <nav style={{ display:'flex', alignItems:'center' }}>
           {navBtn('Pipeline', '/crm')}
           {navBtn('Sales Dashboard', '/crm/dashboard')}
-          {navBtn('Settings', '/crm/settings')}
         </nav>
       </div>
       <button onClick={() => navigate('/')} style={{

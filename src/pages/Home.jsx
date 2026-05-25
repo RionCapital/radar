@@ -26,6 +26,7 @@ const TOOLS = [
   { id: 'marketing', label: 'Marketing', icon: icon_marketing, desc: 'Client & referral lists',   path: null,               active: false },
   { id: 'planner',   label: 'Planner',   icon: icon_planner,   desc: 'Weekly & monthly organiser',path: null,               active: false },
   { id: 'studio',    label: 'Project Studio', icon: icon_studio,  desc: 'Projects & milestones',     path: '/radar/studio',    active: true  },
+  { id: 'settings',  label: 'Settings',  icon: null,            desc: 'Rates, preferences & users', path: '/settings',        active: true  },
 ]
 
 export default function Home() {
@@ -47,6 +48,7 @@ export default function Home() {
         <img src={logo_rion_notag} alt="RION Capital" style={{ height:52, width:'auto', objectFit:'contain', cursor:'pointer' }} onClick={()=>navigate('/')}/>
         <div style={{display:'flex',alignItems:'center',gap:16}}>
           <div style={{fontSize:11,color:'rgba(187,198,218,0.7)'}}>Welcome, {auth.name}</div>
+          <button onClick={()=>navigate('/settings')} style={{fontSize:11,padding:'5px 12px',borderRadius:6,border:'0.5px solid rgba(187,198,218,0.2)',background:'transparent',color:'rgba(187,198,218,0.7)',cursor:'pointer'}}>⚙ Settings</button>
           <button onClick={()=>{sessionStorage.removeItem('rion-auth');navigate('/login')}} style={{fontSize:11,padding:'5px 12px',borderRadius:6,border:'0.5px solid rgba(187,198,218,0.2)',background:'transparent',color:'rgba(187,198,218,0.7)',cursor:'pointer'}}>Sign out</button>
         </div>
       </header>
@@ -97,8 +99,11 @@ function ToolCard({ tool, index, visible, navigate }) {
           Soon
         </div>
       )}
-      <div style={{ width:68, height:68, filter:tool.active?(hovered?'brightness(1.1)':'brightness(1)'):'brightness(0.3) saturate(0)', transition:'filter 0.25s ease' }}>
-        <img src={tool.icon} alt={tool.label} style={{ width:'100%', height:'100%', objectFit:'contain' }}/>
+      <div style={{ width:68, height:68, filter:tool.active?(hovered?'brightness(1.1)':'brightness(1)'):'brightness(0.3) saturate(0)', transition:'filter 0.25s ease', display:'flex', alignItems:'center', justifyContent:'center' }}>
+        {tool.icon
+          ? <img src={tool.icon} alt={tool.label} style={{ width:'100%', height:'100%', objectFit:'contain' }}/>
+          : <span style={{ fontSize:36, opacity: tool.active ? 1 : 0.3 }}>⚙️</span>
+        }
       </div>
       <div style={{ textAlign:'center', width:'100%' }}>
         <div style={{ fontSize:13, fontWeight:500, color:tool.active?(hovered?'#EB99C2':'#fff'):'rgba(187,198,218,0.3)', transition:'color 0.25s ease', letterSpacing:'0.02em' }}>
