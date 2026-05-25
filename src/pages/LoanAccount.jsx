@@ -128,27 +128,26 @@ export default function LoanAccount({ clients, updateClient }) {
   const todayX = dateToX(todayP)
   const histEndX = todayX  // pink shading always runs to today
 
-  // Build estimated historic line from settlement → today
-  // Uses modelled amortisation — real commission data overlays on top when available
+  // Build estimated historic line using LINEAR INTERPOLATION from settlement amount to today's balance
+  // This avoids the problem of using the current stored rate (which may not reflect historical rate changes)
+  // to model what actually happened. A straight line is honest: we know the start and end, not the path.
   function buildHistEstimate() {
-    if (!loan.settled || !loan.amount || !loan.rate) return []
-    const r = loan.rate / 100 / 12
+    if (!loan.settled || !loan.amount) return []
     const settD = new Date(loan.settled); settD.setDate(1)
-    const ioD = loan.io ? new Date(loan.io) : null
-    const totalLoanMonths = matDateP ? Math.round((matDateP - settD) / (1000*60*60*24*30.44)) : (loan.term||30)*12
-    const monthsElapsed = Math.round((todayP - settD) / (1000*60*60*24*30.44))
-    let bal = loan.amount; const pts = []
-    for (let m = 0; m <= monthsElapsed && bal > 0.5; m++) {
+    const todayMs = todayP.getTime()
+    const settMs = settD.getTime()
+    if (todayMs <= settMs) return [{ d: settD, bal: loan.amount }]
+    const totalMs2 = todayMs - settMs
+    const monthsElapsed = Math.round(totalMs2 / (1000*60*60*24*30.44))
+    const pts = []
+    for (let m = 0; m <= monthsElapsed; m++) {
       const dt = new Date(settD.getFullYear(), settD.getMonth()+m, 1)
-      pts.push({ d: dt, bal: Math.round(bal) })
-      if (m >= monthsElapsed) break
-      const isIO = ioD && dt < ioD
-      const interest = r > 0 ? bal * r : 0
-      const piRem = Math.max(1, totalLoanMonths - m)
-      let principal = isIO ? 0 : (r > 0 ? Math.max(0, bal*r*Math.pow(1+r,piRem)/(Math.pow(1+r,piRem)-1) - interest) : bal/piRem)
-      bal = Math.max(0, bal - Math.min(principal, bal))
+      // Linear interpolation: balance goes from loan.amount at settlement to loan.balance today
+      const frac = m / Math.max(1, monthsElapsed)
+      const bal = Math.round(loan.amount + (loan.balance - loan.amount) * frac)
+      pts.push({ d: dt, bal })
     }
-    // Snap last point to today's actual balance
+    // Ensure last point exactly matches current balance
     if (pts.length > 0) pts[pts.length-1].bal = loan.balance
     return pts
   }
@@ -177,15 +176,22 @@ export default function LoanAccount({ clients, updateClient }) {
     ? stmtPts.map((p,i) => `${i===0?'M':'L'}${dateToX(p.d).toFixed(1)},${toY(p.bal).toFixed(1)}`).join(' ')
     : null
 
-  // Extra repayment path — starts at today using same date scale
+  // Extra repayment path — starts from most recent statement date (or today if none)
+  // "History can't be changed" — only show extra repayment impact from last known balance forward
+  const lastStmt = stmtPts.length > 0 ? stmtPts[stmtPts.length-1] : null
+  const extraStartD = lastStmt ? lastStmt.d : todayP
+  const extraStartBal = lastStmt ? lastStmt.bal : loan.balance
   const extraLinePts = projExtra.length > 1 ? [
-    { d: todayP, bal: loan.balance },
+    { d: extraStartD, bal: extraStartBal },
     ...projExtra.map(p => ({ d: p.date, bal: p.openingBal })),
     { d: projExtra[projExtra.length-1].date, bal: 0 }
   ] : []
   const extraPath2 = extraLinePts.length > 1
     ? extraLinePts.map((p,i) => `${i===0?'M':'L'}${dateToX(p.d).toFixed(1)},${toY(p.bal).toFixed(1)}`).join(' ')
     : null
+
+  // Dynamic today label
+  const todayLabel = `${MO[todayP.getMonth()]}-${String(todayP.getFullYear()).slice(2)}`
 
   // Y-axis grid
   const yGridVals = [0, 0.25, 0.5, 0.75, 1].map(p => Math.round(maxChartBal * p))
@@ -570,7 +576,7 @@ export default function LoanAccount({ clients, updateClient }) {
                 {xLabels.map((xl,i)=>(
                   <text key={i} x={xl.x} y={gH-4} textAnchor="middle" fontSize={8} fill="var(--text-tertiary)">{xl.label}</text>
                 ))}
-                <text x={todayX} y={gH-4} textAnchor="middle" fontSize={8} fill="#EB99C2" fontWeight={600}>Apr-26</text>
+                <text x={todayX} y={gH-4} textAnchor="middle" fontSize={8} fill="#EB99C2" fontWeight={600}>{todayLabel}</text>
               </svg>
             </div>
           </Panel>
