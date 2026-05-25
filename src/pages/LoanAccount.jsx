@@ -132,9 +132,9 @@ export default function LoanAccount({ clients, updateClient }) {
   const toY=v=>gP.t+gPH-(Math.max(0,v)/maxChartBal)*gPH
   const todayX = todayChartIdx>0 ? toX(todayChartIdx) : gP.l+gPW*0.4
   const balPath2 = allPts.map((p,i)=>`${i===0?'M':'L'}${toX(i).toFixed(1)},${toY(p.bal).toFixed(1)}`).join(' ')
+  // Extra path uses the same toX scale — each point maps to todayChartIdx+i so it ends proportionally earlier
   const extraPath2 = extraPts.length>1 ? extraPts.map((p,i)=>{
-    const xFrac = todayChartIdx>0?(allPts.length-1-todayChartIdx):1
-    const x = todayX + (i/Math.max(1,extraPts.length-1))*(gP.l+gPW-todayX)
+    const x = toX(todayChartIdx + i)
     return `${i===0?'M':'L'}${x.toFixed(1)},${toY(p.bal).toFixed(1)}`
   }).join(' ') : null
   const histEndX = histPts.length>0 ? toX(histPts.length-1) : gP.l
@@ -482,8 +482,15 @@ export default function LoanAccount({ clients, updateClient }) {
             </div>
             <div style={{overflowX:'auto'}}>
               <svg width="100%" viewBox={`0 0 ${gW} ${gH}`} style={{display:'block',minWidth:320}}>
+                <defs>
+                  <linearGradient id="histGrad" x1="0" x2="1" y1="0" y2="0">
+                    <stop offset="0%" stopColor="rgba(235,153,194,0.22)"/>
+                    <stop offset="100%" stopColor="rgba(235,153,194,0.08)"/>
+                  </linearGradient>
+                </defs>
                 {/* Pink historic area */}
-                <rect x={gP.l} y={gP.t} width={Math.max(0,histEndX-gP.l)} height={gPH} fill="rgba(235,153,194,0.13)" rx={3}/>
+                <rect x={gP.l} y={gP.t} width={Math.max(0,histEndX-gP.l)} height={gPH} fill="rgba(235,153,194,0.28)" rx={3}/>
+                <rect x={gP.l} y={gP.t} width={Math.max(0,histEndX-gP.l)} height={gPH} fill="url(#histGrad)" rx={3}/>
                 <text x={(gP.l+histEndX)/2} y={gP.t+14} textAnchor="middle" fontSize={9} fill="rgba(235,153,194,0.7)" fontStyle="italic">Historic</text>
                 <text x={(histEndX+gP.l+gPW)/2} y={gP.t+14} textAnchor="middle" fontSize={9} fill="rgba(61,85,112,0.5)" fontStyle="italic">Predicted</text>
                 {/* Grid lines */}

@@ -1,9 +1,16 @@
 import React, { useState, useRef } from 'react'
 import { Panel, PanelTitle, SaveBtn, CancelBtn } from '../components/UI'
 
+function defaultStatementMonth() {
+  const d = new Date()
+  d.setMonth(d.getMonth() - 1) // default to previous month
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`
+}
+
 export default function CommissionImport({ clients, onImport, onClose }) {
-  const [status, setStatus] = useState('idle') // idle | parsing | review | done
+  const [status, setStatus] = useState('idle')
   const [results, setResults] = useState(null)
+  const [statementMonth, setStatementMonth] = useState(defaultStatementMonth)
   const fileRef = useRef()
 
   async function handleFile(e) {
@@ -89,7 +96,7 @@ export default function CommissionImport({ clients, onImport, onClose }) {
 
   function applyUpdates() {
     if (!results) return
-    onImport(results.updates, results.stmtMap)
+    onImport(results.updates, results.stmtMap, statementMonth)
     setStatus('done')
   }
 
@@ -135,6 +142,16 @@ export default function CommissionImport({ clients, onImport, onClose }) {
 
         {status === 'review' && results && (
           <div>
+            {/* Statement month */}
+            <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:16, padding:'10px 14px', background:'#f0f4f8', borderRadius:8, border:'1px solid #d1dae6' }}>
+              <div style={{ fontSize:12, fontWeight:500, color:'#3D4F6B' }}>📅 Statement month:</div>
+              <input type="month" value={statementMonth} onChange={e=>setStatementMonth(e.target.value)}
+                style={{ fontSize:12, padding:'5px 10px', borderRadius:6, border:'1px solid #d1dae6', background:'#fff', color:'#2A3545', fontFamily:'inherit' }}/>
+              <div style={{ fontSize:11, color:'#5a6370' }}>
+                Each loan's balance will be recorded under this month in the historic chart.
+              </div>
+            </div>
+
             {/* Summary */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10, marginBottom: 18 }}>
               {[

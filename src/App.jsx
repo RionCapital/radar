@@ -64,21 +64,31 @@ export default function App() {
     saveClients(updated)
   }
 
-  function handleImport(updates, stmtMap) {
+  function handleImport(updates, stmtMap, statementMonth) {
+    const month = statementMonth || (() => {
+      const d = new Date(); d.setMonth(d.getMonth()-1)
+      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`
+    })()
     setClients(prev => {
       const next = prev.map(c => ({
         ...c,
         loans: c.loans.map(l => {
           const acc = String(l.acc || '').trim()
           const found = stmtMap[acc]
-          if (found && Math.abs((found.bal||0) - l.balance) > 1) return {...l, balance: found.bal}
-          return l
+          if (!found || Math.abs((found.bal||0) - l.balance) <= 1 && (l.balanceHistory||[]).some(h=>h.month===month)) return l
+          const newBal = found?.bal ?? l.balance
+          // Append or update this month in balanceHistory
+          const existing = l.balanceHistory || []
+          const withoutThisMonth = existing.filter(h => h.month !== month)
+          const newHistory = [...withoutThisMonth, { month, balance: newBal }]
+            .sort((a,b) => a.month.localeCompare(b.month))
+          return { ...l, balance: newBal, balanceHistory: newHistory }
         })
       }))
       saveClients(next)
       return next
     })
-    showToast('Balances updated')
+    showToast(`Balances updated — ${month} recorded in history`)
   }
 
   return (
