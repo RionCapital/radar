@@ -14,7 +14,7 @@ function isBusinessDay(date) {
   return !NSW_HOLIDAYS.has(date.toISOString().slice(0,10))
 }
 
-function getBusinessDaysLeft() {
+export function getBusinessDaysLeft() {
   const today = new Date(); today.setHours(0,0,0,0)
   const lastDay = new Date(today.getFullYear(), today.getMonth()+1, 0); lastDay.setHours(0,0,0,0)
   let count = 0
@@ -23,7 +23,7 @@ function getBusinessDaysLeft() {
   return count
 }
 
-const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+export const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 
 function RionLogo({ onClick }) {
   return (
@@ -31,7 +31,7 @@ function RionLogo({ onClick }) {
       <img
         src="/rion_logo_notag.png"
         alt="Rion Capital"
-        style={{ height:38, width:'auto', display:'block' }}
+        style={{ height:38, width:'auto', display:'block', mixBlendMode:'lighten' }}
       />
     </div>
   )
@@ -41,9 +41,6 @@ export default function CRMTopbar() {
   const navigate = useNavigate()
   const location = useLocation()
   const isActive = (path) => path === '/crm' ? location.pathname === '/crm' : location.pathname.startsWith(path)
-  const bizDays = useMemo(() => getBusinessDaysLeft(), [])
-  const monthName = MONTHS[new Date().getMonth()]
-  const urgent = bizDays <= 5
 
   const navBtn = (label, path) => (
     <button onClick={() => navigate(path)} style={{
@@ -72,19 +69,10 @@ export default function CRMTopbar() {
           {navBtn('Settings', '/crm/settings')}
         </nav>
       </div>
-
-      <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-        {/* Business days — subtle */}
-        <div style={{ display:'flex', alignItems:'center', gap:7, background:'rgba(255,255,255,0.05)', borderRadius:7, padding:'5px 10px', border:`1px solid ${urgent?'rgba(239,68,68,0.3)':'rgba(255,255,255,0.08)'}` }}>
-          <span style={{ fontSize:11, color:urgent?'#fca5a5':'rgba(187,198,218,0.55)', whiteSpace:'nowrap' }}>{monthName} biz days left</span>
-          <span style={{ fontSize:16, fontWeight:700, color:urgent?'#ef4444':'rgba(255,255,255,0.8)', minWidth:20, textAlign:'center' }}>{bizDays}</span>
-          {urgent && <span style={{ fontSize:13 }}>⚡</span>}
-        </div>
-        <button onClick={() => navigate('/')} style={{
-          background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:7,
-          padding:'5px 12px', color:'rgba(255,255,255,0.5)', fontSize:12, cursor:'pointer', whiteSpace:'nowrap'
-        }}>⌂ Home</button>
-      </div>
+      <button onClick={() => navigate('/')} style={{
+        background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:7,
+        padding:'5px 12px', color:'rgba(255,255,255,0.5)', fontSize:12, cursor:'pointer', whiteSpace:'nowrap'
+      }}>⌂ Home</button>
     </div>
   )
 }

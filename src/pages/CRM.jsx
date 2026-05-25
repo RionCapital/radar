@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { PIPELINE_DATA } from '../lib/pipelineData'
 import { loadSettings, calcUpfront } from '../lib/settings'
 import { fmt } from '../lib/data'
-import CRMTopbar from '../components/CRMTopbar'
+import CRMTopbar, { getBusinessDaysLeft, MONTH_NAMES } from '../components/CRMTopbar'
 
 const STAGES = ['1. Lead','2. Strategy','3. Pre-Lodged','4. Lodged','5. Conditional','6. Unconditional','7. Settled','8. Withdrawn']
 const FORECAST_STAGES = STAGES
@@ -139,7 +139,7 @@ function MonthFilterDropdown({ allMonths, visibleMonths, onChange }) {
     if (visibleMonths.includes(m)) {
       if (visibleMonths.length > 1) onChange(visibleMonths.filter(v => v !== m))
     } else {
-      onChange([...visibleMonths, m].sort())
+      onChange([...visibleMonths, m].sort().reverse())
     }
   }
 
@@ -366,7 +366,7 @@ export default function CRM({ clients, onUpdateClients }) {
   const allMonths = useMemo(() => {
     const ms = new Set()
     deals.forEach(d => { if(d['Month of Settlement']) ms.add(d['Month of Settlement'].slice(0,7)) })
-    return [...ms].sort()
+    return [...ms].sort().reverse()
   }, [deals])
 
   const today = new Date()
@@ -428,6 +428,10 @@ export default function CRM({ clients, onUpdateClients }) {
 
   const thStyle = { padding:'7px 10px', fontSize:10, fontWeight:600, color:'#2A3545', textAlign:'left', background:'#f8f9fa', borderBottom:'1px solid #e8eaed', whiteSpace:'nowrap' }
 
+  const bizDays = useMemo(() => getBusinessDaysLeft(), [])
+  const bizUrgent = bizDays <= 5
+  const bizMonth = MONTH_NAMES[new Date().getMonth()]
+
   return (
     <div>
       <CRMTopbar />
@@ -436,7 +440,14 @@ export default function CRM({ clients, onUpdateClients }) {
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
           <div style={{ display:'flex', alignItems:'center', gap:16 }}>
             <div>
-              <h1 style={{ fontSize:18, fontWeight:700, color:'#1a2535', margin:0 }}>CRM — Pipeline</h1>
+              <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                <h1 style={{ fontSize:18, fontWeight:700, color:'#1a2535', margin:0 }}>CRM — Pipeline</h1>
+                <div style={{ display:'flex', alignItems:'center', gap:5, background:bizUrgent?'#fef2f2':'#f0f4f8', borderRadius:6, padding:'3px 10px', border:`1px solid ${bizUrgent?'#fecaca':'#d1dae6'}` }}>
+                  <span style={{ fontSize:11, fontWeight:700, color:bizUrgent?'#b91c1c':'#3D4F6B' }}>{bizDays}</span>
+                  <span style={{ fontSize:10, color:bizUrgent?'#b91c1c':'#5a6370', whiteSpace:'nowrap' }}>{bizMonth} biz days left</span>
+                  {bizUrgent && <span style={{ fontSize:11 }}>⚡</span>}
+                </div>
+              </div>
               <div style={{ fontSize:11, color:'#5a6370', marginTop:2 }}>
                 {activeDeals.length} active deals · {fmt(totalPipeline)} pipeline · ${calcUpfront(totalPipeline,'Residential').toLocaleString()} est. upfront
               </div>
@@ -480,10 +491,16 @@ export default function CRM({ clients, onUpdateClients }) {
         {/* List view */}
         {viewMode==='list' && (
           <div style={{ background:'#fff', borderRadius:8, border:'0.5px solid #e8eaed', overflow:'hidden' }}>
-            <table style={{ width:'100%', borderCollapse:'collapse' }}>
+            <table style={{ width:'100%', borderCollapse:'collapse', tableLayout:'fixed' }}>
+              <colgroup>
+                <col style={{width:14}}/><col style={{width:'11%'}}/><col style={{width:'16%'}}/>
+                <col style={{width:'9%'}}/><col style={{width:'7%'}}/><col style={{width:'9%'}}/>
+                <col style={{width:'8%'}}/><col style={{width:'9%'}}/><col style={{width:'9%'}}/>
+                <col style={{width:50}}/><col style={{width:'12%'}}/><col style={{width:72}}/>
+              </colgroup>
               <thead>
                 <tr>
-                  <th style={{ ...thStyle, width:20 }}></th>
+                  <th style={{ ...thStyle, width:14 }}></th>
                   <th style={thStyle}>Stage</th>
                   <th style={thStyle}>Deal name</th>
                   <th style={thStyle}>Category</th>
@@ -491,15 +508,15 @@ export default function CRM({ clients, onUpdateClients }) {
                   <th style={thStyle}>Lender</th>
                   <th style={thStyle}>Referral</th>
                   <th style={{ ...thStyle }}>
-                    <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-                      <span>Settlement Month</span>
+                    <div style={{ display:'flex', alignItems:'center', gap:4 }}>
+                      <span>Sett. Month</span>
                       <MonthFilterDropdown allMonths={allMonths} visibleMonths={visibleMonths} onChange={setVisibleMonths} />
                     </div>
                   </th>
-                  <th style={thStyle}>Settlement Date</th>
+                  <th style={thStyle}>Sett. Date</th>
                   <th style={{ ...thStyle, textAlign:'center' }}>Days</th>
                   <th style={thStyle}>Notes</th>
-                  <th style={{ ...thStyle, width:80 }}></th>
+                  <th style={{ ...thStyle }}></th>
                 </tr>
               </thead>
               <tbody>
@@ -582,11 +599,12 @@ export default function CRM({ clients, onUpdateClients }) {
         {/* Kanban */}
         {viewMode==='kanban' && (
           <div style={{ display:'flex', gap:10, overflowX:'auto', paddingBottom:8 }}>
-            {ACTIVE_STAGES.map(stage => {
+            {[...ACTIVE_STAGES, '7. Settled'].map(stage => {
               const stageDeals = deals.filter(d=>d.Status===stage)
               const sc = STAGE_COLORS[stage]
+              const isSettled = stage === '7. Settled'
               return (
-                <div key={stage} style={{ minWidth:220, background:'#f8f9fa', borderRadius:8, border:'0.5px solid #e8eaed', overflow:'hidden', flexShrink:0 }}>
+                <div key={stage} style={{ minWidth:220, background:'#f8f9fa', borderRadius:8, border:`0.5px solid ${isSettled?'#bbf7d0':'#e8eaed'}`, overflow:'hidden', flexShrink:0 }}>
                   <div style={{ background:sc.bg, padding:'8px 12px', borderBottom:'0.5px solid #e8eaed' }}>
                     <div style={{ fontSize:10, fontWeight:600, color:sc.color }}>{stage}</div>
                     <div style={{ fontSize:11, fontWeight:500, color:sc.color, marginTop:1 }}>{fmt(stageDeals.reduce((s,d)=>s+(d.Amount||0),0))} · {stageDeals.length}</div>
