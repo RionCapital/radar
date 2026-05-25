@@ -11,7 +11,6 @@ export default function LoanAccount({ clients, updateClient }) {
   const idx = parseInt(loanIdx)
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(null)
-  const [propGrowthRate, setPropGrowthRate] = useState(5)
 
   if (!client) return <div style={{padding:24}}>Client not found.</div>
   const loan = client.loans[idx]
@@ -59,26 +58,6 @@ export default function LoanAccount({ clients, updateClient }) {
 
   const th = {padding:'6px 8px',background:'#3D5570',color:'#fff',fontSize:10,fontWeight:500,textAlign:'left',whiteSpace:'nowrap'}
   const td = (extra={}) => ({padding:'6px 8px',borderBottom:'0.5px solid var(--border-light)',fontSize:11,color:'var(--text-primary)',verticalAlign:'middle',...extra})
-
-  // Graph
-  const graphData = history.filter((_,i)=>i%2===0)
-  const maxBal = Math.max(loan.amount||0, ...graphData.map(d=>d.balance)) * 1.1 || 1
-  const gW=520,gH=140,pad={l:50,r:20,t:10,b:30}
-  const plotW=gW-pad.l-pad.r, plotH=gH-pad.t-pad.b
-  const toX=i=>pad.l+(i/(graphData.length-1||1))*plotW
-  const toY=val=>pad.t+plotH-(val/maxBal)*plotH
-  const propStart=security?.estVal||0
-  const monthlyGrowth=propGrowthRate/100/12
-  const todayIdx=graphData.findIndex(d=>!d.isPast)
-  const todayX=todayIdx>0?toX(todayIdx):null
-  const balPath=graphData.map((d,i)=>`${i===0?'M':'L'}${toX(i)},${toY(d.balance)}`).join(' ')
-  const propPath=propStart?graphData.map((d,i)=>{
-    const months=i*2
-    const pv=Math.min(propStart*Math.pow(1+monthlyGrowth,months),maxBal*1.5)
-    return `${i===0?'M':'L'}${toX(i)},${toY(pv)}`
-  }).join(' '):null
-  const yearLabels=[]
-  graphData.forEach((d,i)=>{if(d.date&&(d.date.startsWith('01/')||d.date.startsWith('Jan')))yearLabels.push({x:toX(i),label:d.date.slice(-4)||d.date})})
 
   // ── Loan Predictor ─────────────────────────────────────────────────────────
   const [extraAmount, setExtraAmount] = useState(0)
