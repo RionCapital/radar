@@ -111,8 +111,8 @@ export default function LoanAccount({ clients, updateClient }) {
         </div>
         <div style={{display:'grid',gridTemplateColumns:'repeat(6,1fr)',gap:8}}>
           {[
-            ['Current balance',fmt(loan.balance),'#fff'],
             ['Original limit',fmt(loan.amount),'#fff'],
+            ['Current balance',fmt(loan.balance),'#fff'],
             ['Interest rate',loan.rate>0?loan.rate.toFixed(2)+'%':'—','#fff'],
             ['Rate type',loan.rateType||'Var',loan.rateType==='Fix'?'#EB99C2':'var(--sbl)'],
             ['Repayment',eRpmt,eRpmt==='P&I*'?'#EB99C2':'var(--sbl)'],
@@ -276,16 +276,17 @@ export default function LoanAccount({ clients, updateClient }) {
         <Panel>
           <PanelTitle>Key dates &amp; expiry flags</PanelTitle>
           {[
-            ['Settlement date',loan.settled,false],
-            ['Maturity date',loan.maturity,true],
-            ['Fixed rate expiry',loan.fixed,true],
-            ['Interest only expiry',loan.io,true],
-            ['Balloon / residual',loan.balloon>0?String(loan.balloon):null,false],
-          ].map(([label,val,showBadge])=>{
+            ['Settlement date',loan.settled,false,null],
+            ['Maturity date',loan.maturity,true,'Maturity'],
+            ['Fixed rate expiry',loan.fixed,true,'Fixed Term'],
+            ['Interest only expiry',loan.io,true,'IO Term'],
+            ['Balloon / residual',loan.balloon>0?String(loan.balloon):null,false,null],
+          ].map(([label,val,showBadge,noteKeyword])=>{
             const badge=showBadge&&val?expiryBadge(val):null
-            const isActioned = badge && loan.actionNotes && loan.actionNotes.length > 0
-            // Extract just the date from the first matching action note if possible
-            const actionedDate = isActioned ? (loan.actionNotes[loan.actionNotes.length-1].split(' \u2014 ')[1] || '') : ''
+            // Only mark as actioned if there's a note that specifically matches this field
+            const matchingNote = noteKeyword && loan.actionNotes?.find(n => n.includes(noteKeyword))
+            const isActioned = !!matchingNote
+            const actionedDate = isActioned ? (matchingNote.split(' \u2014 ')[1] || '') : ''
             return (
               <div key={label} style={{padding:'9px 0',borderBottom:'0.5px solid var(--border-light)'}}>
                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:(badge||isActioned)?4:0}}>
@@ -295,7 +296,7 @@ export default function LoanAccount({ clients, updateClient }) {
                 {isActioned
                   ? <div style={{textAlign:'right'}}>
                       <span style={{padding:'2px 10px',borderRadius:20,fontSize:10,fontWeight:500,background:'#dcfce7',color:'#166534'}}>
-                        \u2713 Actioned{actionedDate ? ' — ' + actionedDate : ''}
+                        \u2713 Actioned{actionedDate ? ' \u2014 ' + actionedDate : ''}
                       </span>
                     </div>
                   : badge
