@@ -1,0 +1,40 @@
+// Commission rates and app settings — stored in localStorage
+
+const SETTINGS_KEY = 'rion-settings-v1'
+
+export const DEFAULT_SETTINGS = {
+  commissionRates: {
+    'Residential':      { upfront: 0.66, trail: 0.15, label: 'Residential Home Loans' },
+    'Asset Finance':    { upfront: 2.50, trail: 0.00, label: 'Asset Finance' },
+    'Commercial Loans': { upfront: 0.50, trail: 0.15, label: 'Commercial Loans' },
+    'Business Loans':   { upfront: 0.50, trail: 0.15, label: 'Business Loans' },
+    'SMSF':             { upfront: 0.66, trail: 0.15, label: 'SMSF' },
+    'Invoice Finance':  { upfront: 0.50, trail: 0.00, label: 'Invoice Finance' },
+    'Other':            { upfront: 0.50, trail: 0.15, label: 'Other' },
+  },
+  brokerName: 'Cameron Finlayson',
+  brokerEmail: 'cameron@rioncapital.com.au',
+  businessName: 'Rion Capital Investments Pty Ltd',
+}
+
+export function loadSettings() {
+  try {
+    const s = localStorage.getItem(SETTINGS_KEY)
+    if (s) return { ...DEFAULT_SETTINGS, ...JSON.parse(s) }
+  } catch {}
+  return DEFAULT_SETTINGS
+}
+
+export function saveSettings(settings) {
+  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)) } catch {}
+}
+
+export function getUpfrontRate(category) {
+  const settings = loadSettings()
+  return (settings.commissionRates[category]?.upfront || 0.50) / 100
+}
+
+export function calcUpfront(amount, category) {
+  if (!amount) return 0
+  return Math.round(amount * getUpfrontRate(category))
+}

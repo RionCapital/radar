@@ -12,6 +12,7 @@ import ContactPage from './pages/ContactPage'
 import CRM from './pages/CRM'
 import CRMDashboard from './pages/CRMDashboard'
 import DealPage from './pages/DealPage'
+import AdminSettings from './pages/AdminSettings'
 import BirthdayNotifier from './components/BirthdayNotifier'
 import CRMTopbar from './components/CRMTopbar'
 import OpportunityScore from './pages/OpportunityScore'
@@ -92,6 +93,7 @@ export default function App() {
         <Route path="/radar/clients" element={<RequireAuth><ClientList clients={clients} onAddClient={addClient} /></RequireAuth>} />
         <Route path="/radar/clients/:name" element={<RequireAuth><ClientDashboard clients={clients} updateClient={updateClient} /></RequireAuth>} />
         <Route path="/radar/clients/:name/loan/:loanIdx" element={<RequireAuth><LoanAccount clients={clients} updateClient={updateClient} /></RequireAuth>} />
+        <Route path="/crm/settings" element={<RequireAuth><AdminSettings /></RequireAuth>} />
         <Route path="/crm/deal/:dealName" element={<RequireAuth><DealPage onUpdateDeals={updateCrmDeals} /></RequireAuth>} />
         <Route path="/crm/dashboard" element={<RequireAuth><CRMDashboard /></RequireAuth>} />
         <Route path="/crm" element={<RequireAuth><CRM clients={clients} onUpdateClients={updateAllClients} /></RequireAuth>} />
