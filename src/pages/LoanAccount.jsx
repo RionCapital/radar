@@ -138,16 +138,30 @@ export default function LoanAccount({ clients, updateClient }) {
   const gPW=gW-gP.l-gP.r, gPH=gH-gP.t-gP.b
   const dateToX = d => gP.l + (Math.max(0, d-chartStartD) / totalChartMs) * gPW
   const todayX = dateToX(todayP)
-  const histEndX = todayX  // pink shading always runs to today
+  const histEndX = todayX
 
-  // Real commission statement data ONLY — no calculations or estimates for historic section
+  // Estimated historic line — linear interpolation from settlement amount to today's balance
+  // Shown as a light dashed line in chart. Real statement data overlays this when available.
+  function buildHistEstimate() {
+    if (!loan.settled || !loan.amount) return []
+    const settD = new Date(loan.settled); settD.setDate(1)
+    if (todayP <= settD) return []
+    const monthsElapsed = Math.round((todayP - settD) / (1000*60*60*24*30.44))
+    const pts = []
+    for (let m = 0; m <= monthsElapsed; m++) {
+      const dt = new Date(settD.getFullYear(), settD.getMonth()+m, 1)
+      const frac = m / Math.max(1, monthsElapsed)
+      pts.push({ d: dt, bal: Math.round(loan.amount + (loan.balance - loan.amount) * frac) })
+    }
+    if (pts.length > 0) pts[pts.length-1].bal = loan.balance
+    return pts
+  }
+  const histEstPts = buildHistEstimate()
+
+  // Real commission statement data ONLY
   const stmtPts = (loan.balanceHistory||[]).map(h => ({ d: new Date(h.month+'-15'), bal: h.balance }))
     .sort((a,b) => a.d - b.d)
 
-  // Balance line:
-  // - Historic: real statement points only (empty if no imports yet)
-  // - Bridge: today's balance (connects last statement → today → projection)
-  // - Projected: from today to maturity
   const projEndBal = projection.length > 0 ? projection[projection.length-1].closingBal : 0
   const allLinePts = [
     ...stmtPts,
@@ -156,8 +170,13 @@ export default function LoanAccount({ clients, updateClient }) {
     ...(projection.length > 0 ? [{ d: projection[projection.length-1].date, bal: projEndBal }] : [])
   ]
 
-  const maxChartBal = Math.max(loan.amount||0, ...allLinePts.map(p=>p.bal)) * 1.06 || 1
+  const maxChartBal = Math.max(loan.amount||0, ...histEstPts.map(p=>p.bal), ...allLinePts.map(p=>p.bal)) * 1.06 || 1
   const toY = v => gP.t + gPH - (Math.max(0,v)/maxChartBal)*gPH
+
+  // All paths — computed after toY is available
+  const histEstPath = histEstPts.length > 1
+    ? histEstPts.map((p,i) => `${i===0?'M':'L'}${dateToX(p.d).toFixed(1)},${toY(p.bal).toFixed(1)}`).join(' ')
+    : null
 
   // Historic statement path (if data exists)
   const stmtPath = stmtPts.length > 0
@@ -385,8 +404,6 @@ export default function LoanAccount({ clients, updateClient }) {
                     if (loan.io&&loan.settled) { const mo=Math.round((new Date(loan.io)-new Date(loan.settled))/(30.44*86400000)); if(mo>0) return mo>=12?(mo/12).toFixed(1).replace('.0','')+'y':mo+'mo' }
                     return '—'
                   })()],
-                  ['Settlement date',fmtDate(loan.settled)],
-                  ['Maturity date',fmtDate(loan.maturity)],
                   ['Est. monthly repayment',estRepayment?'$'+estRepayment.toLocaleString():loan.rate?'—':'Rate not set'],
                   ...(loan.balloon>0?[['Balloon / residual','$'+Number(loan.balloon).toLocaleString()]]:[]),
                 ].map(([label,val])=>(
@@ -416,14 +433,19 @@ export default function LoanAccount({ clients, updateClient }) {
               const actionedDate = isActioned ? (matchingNote.split(' \u2014 ')[1]||'') : ''
               return (
                 <div key={label} style={{padding:'9px 0',borderBottom:'0.5px solid var(--border-light)'}}>
-                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:(badge||isActioned)?4:0}}>
+                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
                     <span style={{fontSize:11,color:'var(--text-secondary)'}}>{label}</span>
-                    <span style={{fontSize:11,fontWeight:500,color:'var(--text-primary)'}}>{label==='Balloon / residual'?fmt(loan.balloon):fmtDate(val)}</span>
+                    <div style={{display:'flex',alignItems:'center',gap:8}}>
+                      {/* Days badge inline — only show for future dates with badge */}
+                      {!isActioned && badge && (
+                        <span style={{padding:'1px 8px',borderRadius:20,fontSize:10,fontWeight:500,background:badge.bg,color:badge.color}}>{badge.label}</span>
+                      )}
+                      {isActioned && (
+                        <span style={{padding:'1px 8px',borderRadius:20,fontSize:10,fontWeight:500,background:'#dcfce7',color:'#166534'}}>✓ Actioned{actionedDate?' — '+actionedDate:''}</span>
+                      )}
+                      <span style={{fontSize:11,fontWeight:500,color:'var(--text-primary)'}}>{label==='Balloon / residual'?fmt(loan.balloon):fmtDate(val)}</span>
+                    </div>
                   </div>
-                  {isActioned
-                    ? <div style={{textAlign:'right'}}><span style={{padding:'2px 10px',borderRadius:20,fontSize:10,fontWeight:500,background:'#dcfce7',color:'#166534'}}>✓ Actioned{actionedDate?' — '+actionedDate:''}</span></div>
-                    : badge ? <div style={{textAlign:'right'}}><span style={{padding:'2px 10px',borderRadius:20,fontSize:10,fontWeight:500,background:badge.bg,color:badge.color}}>{badge.label}</span></div>
-                    : null}
                 </div>
               )
             })}
@@ -529,7 +551,8 @@ export default function LoanAccount({ clients, updateClient }) {
           <Panel>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
               <div style={{fontSize:10,fontWeight:600,color:'var(--text-secondary)',textTransform:'uppercase',letterSpacing:'0.06em'}}>Balance — Historic &amp; Predicted</div>
-              <div style={{display:'flex',gap:12,fontSize:10,color:'var(--text-secondary)',alignItems:'center'}}>
+              <div style={{display:'flex',gap:12,fontSize:10,color:'var(--text-secondary)',alignItems:'center',flexWrap:'wrap'}}>
+                <div style={{display:'flex',alignItems:'center',gap:4}}><div style={{width:14,height:0,borderTop:'2px dashed #7A8090',opacity:0.6}}/> Est. historic</div>
                 {stmtPts.length>0&&<div style={{display:'flex',alignItems:'center',gap:4}}><div style={{width:8,height:8,borderRadius:'50%',background:'#EB99C2'}}/> Statement data</div>}
                 <div style={{display:'flex',alignItems:'center',gap:4}}><div style={{width:14,height:2,background:'#3D5570'}}/> Predicted</div>
                 {extraMonthly>0&&<div style={{display:'flex',alignItems:'center',gap:4}}><div style={{width:14,height:0,borderTop:'2px dashed #EB99C2'}}/> With extra</div>}
@@ -558,7 +581,9 @@ export default function LoanAccount({ clients, updateClient }) {
                 ))}
                 {/* Today vertical */}
                 <line x1={todayX} x2={todayX} y1={gP.t} y2={gP.t+gPH} stroke="#EB99C2" strokeWidth={1} strokeDasharray="3,3" opacity={0.7}/>
-                {/* Historic: real statement line (only drawn if commission data exists) */}
+                {/* Estimated historic — light dashed line (linear interpolation, not calculated) */}
+                {histEstPath&&<path d={histEstPath} fill="none" stroke="#7A8090" strokeWidth={1.5} strokeDasharray="4,4" opacity={0.5}/>}
+                {/* Real statement data — solid pink line + dots */}
                 {stmtPath&&<path d={stmtPath} fill="none" stroke="#EB99C2" strokeWidth={2} opacity={0.85}/>}
                 {stmtPts.map((p,i)=><circle key={i} cx={dateToX(p.d)} cy={toY(p.bal)} r={2.5} fill="#EB99C2" opacity={0.9}/>)}
                 {/* Projected standard balance line */}

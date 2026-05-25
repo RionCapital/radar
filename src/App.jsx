@@ -74,10 +74,11 @@ export default function App() {
         ...c,
         loans: c.loans.map(l => {
           const acc = String(l.acc || '').trim()
+          if (!acc) return l
           const found = stmtMap[acc]
-          if (!found || Math.abs((found.bal||0) - l.balance) <= 1 && (l.balanceHistory||[]).some(h=>h.month===month)) return l
-          const newBal = found?.bal ?? l.balance
-          // Append or update this month in balanceHistory
+          if (!found) return l  // Not in this statement — leave unchanged
+          const newBal = found.bal ?? l.balance
+          // Always record this month in balanceHistory (deduped by month)
           const existing = l.balanceHistory || []
           const withoutThisMonth = existing.filter(h => h.month !== month)
           const newHistory = [...withoutThisMonth, { month, balance: newBal }]
