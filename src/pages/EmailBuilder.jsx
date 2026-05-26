@@ -79,7 +79,19 @@ function emailFooter(brokerName, brokerPhone) {
     </div>`
 }
 
-// Generate and download an .eml file — opens in Outlook as a draft with full HTML
+// Send HTML email via Rradar's /api/send-email endpoint
+async function sendEmail(to, subject, html, brokerName, brokerEmail) {
+  const res = await fetch('/api/send-email', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ to, subject, html, fromName: brokerName || 'Rion Capital', from: brokerEmail || undefined }),
+  })
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.error || 'Failed to send')
+  return data
+}
+
+// Fallback: download .eml file (opens in Outlook as draft)
 function downloadEml(to, subject, htmlBody) {
   const boundary = 'rion_boundary_' + Date.now()
   const eml = [
@@ -147,6 +159,8 @@ function AnnualReview({ client, onBack }) {
   const [brokerEmail, setBrokerEmail] = useState('')
   const [reviewDate, setReviewDate] = useState(new Date().toISOString().slice(0, 10))
   const [notes, setNotes] = useState('')
+  const [sending, setSending] = useState(null) // null | 'sending' | 'sent' | 'error'
+  const [sendError, setSendError] = useState('')
   const [comparisons, setComparisons] = useState([
     { lender: '', rate: '', compRate: '', monthly: '', features: '' },
     { lender: '', rate: '', compRate: '', monthly: '', features: '' },
@@ -287,6 +301,20 @@ function AnnualReview({ client, onBack }) {
       </div></body></html>`
   }
 
+  async function handleSend() {
+    const to = contacts.filter(c => c.email).map(c => c.email).join(', ')
+    const subject = `Annual Portfolio Review — ${client.name} · ${fmtDate(reviewDate)}`
+    setSending('sending'); setSendError('')
+    try {
+      await sendEmail(to, subject, buildHtml(), brokerName, brokerEmail)
+      setSending('sent')
+      setTimeout(() => setSending(null), 4000)
+    } catch (err) {
+      setSendError(err.message)
+      setSending('error')
+    }
+  }
+
   function openOutlook() {
     const to = contacts.filter(c => c.email).map(c => c.email).join(', ')
     const subject = `Annual Portfolio Review — ${client.name} · ${fmtDate(reviewDate)}`
@@ -384,14 +412,20 @@ function AnnualReview({ client, onBack }) {
       <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <div style={{ padding: '10px 16px', background: '#fff', borderBottom: '0.5px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: NAVY }}>📋 Annual Review — Live Preview</div>
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            {sending === 'sent' && <span style={{ fontSize: 11, color: '#22c55e', fontWeight: 600 }}>✓ Sent!</span>}
+            {sending === 'error' && <span style={{ fontSize: 11, color: '#ef4444', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={sendError}>✕ {sendError}</span>}
             <button onClick={copyHtml}
               style={{ fontSize: 11, padding: '5px 14px', borderRadius: 6, border: `1px solid ${PINK}`, color: PINK, background: '#fff', cursor: 'pointer', fontWeight: 600 }}>
               Copy HTML
             </button>
             <button onClick={openOutlook}
-              style={{ fontSize: 11, padding: '5px 14px', borderRadius: 6, border: 'none', background: NAVY, color: '#fff', cursor: 'pointer', fontWeight: 600 }}>
-              ✉ Open in Outlook
+              style={{ fontSize: 11, padding: '5px 12px', borderRadius: 6, border: `1px solid ${NAVY}`, color: NAVY, background: '#fff', cursor: 'pointer', fontWeight: 600 }}>
+              ↓ .eml
+            </button>
+            <button onClick={handleSend} disabled={sending === 'sending'}
+              style={{ fontSize: 11, padding: '5px 16px', borderRadius: 6, border: 'none', background: sending === 'sending' ? '#94a3b8' : NAVY, color: '#fff', cursor: sending === 'sending' ? 'default' : 'pointer', fontWeight: 600 }}>
+              {sending === 'sending' ? 'Sending…' : '✉ Send Email'}
             </button>
           </div>
         </div>
@@ -505,7 +539,8 @@ function ExpiryEmail({ client, onBack, expiryType }) {
           <div style={{ fontSize: 12, fontWeight: 700, color: NAVY }}>🔒 {expiryLabel} — Live Preview</div>
           <div style={{ display: 'flex', gap: 8 }}>
             <button onClick={() => navigator.clipboard.writeText(buildHtml())} style={{ fontSize: 11, padding: '5px 14px', borderRadius: 6, border: `1px solid ${PINK}`, color: PINK, background: '#fff', cursor: 'pointer', fontWeight: 600 }}>Copy HTML</button>
-            <button onClick={openOutlook} style={{ fontSize: 11, padding: '5px 14px', borderRadius: 6, border: 'none', background: NAVY, color: '#fff', cursor: 'pointer', fontWeight: 600 }}>↓ Open as .eml</button>
+            <button onClick={openOutlook} style={{ fontSize: 11, padding: '5px 12px', borderRadius: 6, border: `1px solid ${NAVY}`, color: NAVY, background: '#fff', cursor: 'pointer', fontWeight: 600 }}>↓ .eml</button>
+            <button onClick={async () => { const to = contacts.filter(c=>c.email).map(c=>c.email).join(', '); try { await sendEmail(to, buildSubject ? buildSubject() : 'Email from Rion Capital', buildHtml()); alert('Sent!') } catch(e) { alert('Error: ' + e.message) } }} style={{ fontSize: 11, padding: '5px 16px', borderRadius: 6, border: 'none', background: NAVY, color: '#fff', cursor: 'pointer', fontWeight: 600 }}>✉ Send Email</button>
           </div>
         </div>
         <div style={{ flex: 1, overflowY: 'auto', padding: 20, background: '#f1f5f9' }}>
@@ -606,7 +641,8 @@ function MaturityEmail({ client, onBack }) {
           <div style={{ fontSize: 12, fontWeight: 700, color: NAVY }}>📅 Loan Maturity — Live Preview</div>
           <div style={{ display: 'flex', gap: 8 }}>
             <button onClick={() => navigator.clipboard.writeText(buildHtml())} style={{ fontSize: 11, padding: '5px 14px', borderRadius: 6, border: `1px solid ${PINK}`, color: PINK, background: '#fff', cursor: 'pointer', fontWeight: 600 }}>Copy HTML</button>
-            <button onClick={openOutlook} style={{ fontSize: 11, padding: '5px 14px', borderRadius: 6, border: 'none', background: NAVY, color: '#fff', cursor: 'pointer', fontWeight: 600 }}>↓ Open as .eml</button>
+            <button onClick={openOutlook} style={{ fontSize: 11, padding: '5px 12px', borderRadius: 6, border: `1px solid ${NAVY}`, color: NAVY, background: '#fff', cursor: 'pointer', fontWeight: 600 }}>↓ .eml</button>
+            <button onClick={async () => { const to = contacts.filter(c=>c.email).map(c=>c.email).join(', '); try { await sendEmail(to, buildSubject ? buildSubject() : 'Email from Rion Capital', buildHtml()); alert('Sent!') } catch(e) { alert('Error: ' + e.message) } }} style={{ fontSize: 11, padding: '5px 16px', borderRadius: 6, border: 'none', background: NAVY, color: '#fff', cursor: 'pointer', fontWeight: 600 }}>✉ Send Email</button>
           </div>
         </div>
         <div style={{ flex: 1, overflowY: 'auto', padding: 20, background: '#f1f5f9' }}>
@@ -671,7 +707,8 @@ function GeneralEmail({ client, onBack }) {
           <div style={{ fontSize: 12, fontWeight: 700, color: NAVY }}>✉️ General Email — Live Preview</div>
           <div style={{ display: 'flex', gap: 8 }}>
             <button onClick={() => navigator.clipboard.writeText(buildHtml())} style={{ fontSize: 11, padding: '5px 14px', borderRadius: 6, border: `1px solid ${PINK}`, color: PINK, background: '#fff', cursor: 'pointer', fontWeight: 600 }}>Copy HTML</button>
-            <button onClick={openOutlook} style={{ fontSize: 11, padding: '5px 14px', borderRadius: 6, border: 'none', background: NAVY, color: '#fff', cursor: 'pointer', fontWeight: 600 }}>↓ Open as .eml</button>
+            <button onClick={openOutlook} style={{ fontSize: 11, padding: '5px 12px', borderRadius: 6, border: `1px solid ${NAVY}`, color: NAVY, background: '#fff', cursor: 'pointer', fontWeight: 600 }}>↓ .eml</button>
+            <button onClick={async () => { const to = contacts.filter(c=>c.email).map(c=>c.email).join(', '); try { await sendEmail(to, buildSubject ? buildSubject() : 'Email from Rion Capital', buildHtml()); alert('Sent!') } catch(e) { alert('Error: ' + e.message) } }} style={{ fontSize: 11, padding: '5px 16px', borderRadius: 6, border: 'none', background: NAVY, color: '#fff', cursor: 'pointer', fontWeight: 600 }}>✉ Send Email</button>
           </div>
         </div>
         <div style={{ flex: 1, overflowY: 'auto', padding: 20, background: '#f1f5f9' }}>
