@@ -17,6 +17,7 @@ import BirthdayNotifier from './components/BirthdayNotifier'
 import CRMTopbar from './components/CRMTopbar'
 import OpportunityScore from './pages/OpportunityScore'
 import ProjectStudio from './pages/ProjectStudio'
+import Toast from './components/Toast'
 import EmailBuilder from './pages/EmailBuilder'
 
 function RequireAuth({ children }) {
