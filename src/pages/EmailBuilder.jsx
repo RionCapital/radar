@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { calcRepayment } from '../lib/dateUtils'
+import { getCurrentUser } from '../lib/settings'
 
 const NAVY = '#3D4F6B'
 const PINK = '#EB99C2'
@@ -151,20 +152,35 @@ function AnnualReview({ client, onBack }) {
   const contacts = client.contacts || []
   const loans = client.loans || []
   const securities = client.securities || []
+  const currentUser = getCurrentUser()
 
   const defaultGreeting = contactGreeting(contacts) || client.name || ''
 
-  const [brokerName, setBrokerName] = useState('')
-  const [brokerPhone, setBrokerPhone] = useState('')
-  const [brokerEmail, setBrokerEmail] = useState('')
+  const [brokerName, setBrokerName] = useState(currentUser?.name || '')
+  const [brokerPhone, setBrokerPhone] = useState(currentUser?.phone || '')
+  const [brokerEmail, setBrokerEmail] = useState(currentUser?.email || '')
   const [reviewDate, setReviewDate] = useState(new Date().toISOString().slice(0, 10))
   const [notes, setNotes] = useState('')
-  const [sending, setSending] = useState(null) // null | 'sending' | 'sent' | 'error'
+  const [sending, setSending] = useState(null)
   const [sendError, setSendError] = useState('')
+
+  // Recipients — editable list pre-populated from client contacts
+  const [recipients, setRecipients] = useState(
+    contacts.filter(c => c.email).map(c => ({ name: contactName(c), email: c.email }))
+  )
+  const [addEmail, setAddEmail] = useState('')
+  const [addName, setAddName] = useState('')
+  function addRecipient() {
+    if (!addEmail.trim()) return
+    setRecipients(r => [...r, { name: addName.trim() || addEmail.trim(), email: addEmail.trim() }])
+    setAddEmail(''); setAddName('')
+  }
+  function removeRecipient(i) { setRecipients(r => r.filter((_, j) => j !== i)) }
+
   const [comparisons, setComparisons] = useState([
-    { lender: '', rate: '', compRate: '', monthly: '', features: '' },
-    { lender: '', rate: '', compRate: '', monthly: '', features: '' },
-    { lender: '', rate: '', compRate: '', monthly: '', features: '' },
+    { lender: '', rate: '', compRate: '', repayment: '', features: '' },
+    { lender: '', rate: '', compRate: '', repayment: '', features: '' },
+    { lender: '', rate: '', compRate: '', repayment: '', features: '' },
   ])
   const [secValues, setSecValues] = useState(securities.map(s => ({ ...s, coreLogicVal: s.estVal || '' })))
 
@@ -202,8 +218,8 @@ function AnnualReview({ client, onBack }) {
       <td style="padding:12px;text-align:center;vertical-align:top;width:33%">
         <div style="font-weight:700;color:#3D4F6B;font-size:13px;margin-bottom:8px">${c.lender}</div>
         ${c.rate ? `<div style="font-size:11px;margin-bottom:4px">Rate: <strong>${c.rate}%</strong></div>` : ''}
-        ${c.compRate ? `<div style="font-size:11px;margin-bottom:4px">Comparison: <strong>${c.compRate}%</strong></div>` : ''}
-        ${c.monthly ? `<div style="font-size:11px;margin-bottom:4px">Monthly: <strong>$${c.monthly}</strong></div>` : ''}
+        ${c.compRate ? `<div style="font-size:11px;margin-bottom:4px">Comparison rate: <strong>${c.compRate}%</strong></div>` : ''}
+        ${c.repayment ? `<div style="font-size:12px;margin-bottom:4px;color:#3D4F6B;font-weight:700">Est. monthly: <strong>$${Number(c.repayment).toLocaleString()}</strong></div>` : ''}
         ${c.features ? `<div style="font-size:10px;color:#64748b;margin-top:6px">${c.features}</div>` : ''}
       </td>`).join('')
 
@@ -275,6 +291,9 @@ function AnnualReview({ client, onBack }) {
           <table style="width:100%;border-collapse:collapse;border:0.5px solid #e2e8f0">
             <tbody><tr>${compCols}</tr></tbody>
           </table>
+          <p style="font-size:10px;color:#94a3b8;font-style:italic;margin-top:4px;padding:8px;background:#f8fafc;border-radius:6px;border-left:3px solid #e2e8f0">
+            <strong>Repayment disclaimer:</strong> Estimated monthly repayments shown above are indicative only, calculated on a 30-year principal &amp; interest term. Actual repayments will vary based on the loan term, repayment type, fees and individual lender assessment. These figures do not constitute financial advice.
+          </p>
         </div>` : ''}
 
         <div style="margin-top:24px;padding:16px;background:#f8fafc;border-radius:8px;border-left:4px solid #EB99C2">
@@ -282,7 +301,8 @@ function AnnualReview({ client, onBack }) {
           ${['Review your current loan facilities against the market options above.',
             'Consider whether your current rate and structure still meets your needs.',
             'Speak with us about refinancing, equity release or debt consolidation opportunities.',
-            'Book a 30-minute review call — no obligation, just a conversation.'].map((s, i) => `
+            'Book a 30-minute review call — no obligation, just a conversation.',
+            '<strong>Loan term:</strong> Consider whether your current loan term still suits your goals — shortening or extending your term can significantly impact your repayments and total interest paid.'].map((s, i) => `
           <div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:8px">
             <div style="width:20px;height:20px;border-radius:50%;background:#3D4F6B;color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">${i + 1}</div>
             <div style="font-size:12px;color:#2A3545;line-height:1.5">${s}</div>
@@ -302,7 +322,8 @@ function AnnualReview({ client, onBack }) {
   }
 
   async function handleSend() {
-    const to = contacts.filter(c => c.email).map(c => c.email).join(', ')
+    const to = recipients.map(r => r.email).join(', ')
+    if (!to) { alert('Please add at least one recipient'); return }
     const subject = `Annual Portfolio Review — ${client.name} · ${fmtDate(reviewDate)}`
     setSending('sending'); setSendError('')
     try {
@@ -316,7 +337,7 @@ function AnnualReview({ client, onBack }) {
   }
 
   function openOutlook() {
-    const to = contacts.filter(c => c.email).map(c => c.email).join(', ')
+    const to = recipients.map(r => r.email).join(', ')
     const subject = `Annual Portfolio Review — ${client.name} · ${fmtDate(reviewDate)}`
     downloadEml(to, subject, buildHtml())
   }
@@ -332,10 +353,27 @@ function AnnualReview({ client, onBack }) {
       {/* Left: Inputs */}
       <div style={{ overflowY: 'auto', padding: '16px', background: '#f8fafc', borderRight: '0.5px solid #e2e8f0' }}>
         <button onClick={onBack} style={{ fontSize: 11, color: '#64748b', background: 'none', border: 'none', cursor: 'pointer', padding: '0 0 12px', display: 'flex', alignItems: 'center', gap: 4 }}>← Back to templates</button>
+        <Section title="Recipients">
+          {recipients.map((r, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+              <div style={{ flex: 1, fontSize: 11, padding: '4px 8px', background: 'rgba(235,153,194,0.1)', borderRadius: 6, border: '0.5px solid #EB99C2', color: '#334155' }}>
+                {r.name} · <span style={{ color: '#64748b' }}>{r.email}</span>
+              </div>
+              <button onClick={() => removeRecipient(i)} style={{ fontSize: 12, color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px' }}>✕</button>
+            </div>
+          ))}
+          <div style={{ display: 'flex', gap: 4, marginTop: 6 }}>
+            <input style={{ ...inp, flex: 1 }} placeholder="Name (optional)" value={addName} onChange={e => setAddName(e.target.value)} />
+            <input style={{ ...inp, flex: 2 }} placeholder="email@example.com" value={addEmail} onChange={e => setAddEmail(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && addRecipient()} />
+            <button onClick={addRecipient} style={{ padding: '5px 10px', borderRadius: 6, border: 'none', background: '#3D4F6B', color: '#fff', fontSize: 11, cursor: 'pointer' }}>+ Add</button>
+          </div>
+        </Section>
+
         <Section title="Broker details">
           <Field lbl="Broker name" value={brokerName} onChange={setBrokerName} placeholder="Cameron Finlayson" />
           <Field lbl="Broker phone" value={brokerPhone} onChange={setBrokerPhone} placeholder="0400 000 000" />
-          <Field lbl="Broker email" value={brokerEmail} onChange={setBrokerEmail} placeholder="broker@rioncapital.com.au" />
+          <Field lbl="Broker email" value={brokerEmail} onChange={setBrokerEmail} placeholder="broker@rion-capital.com.au" />
           <Field lbl="Review date" value={reviewDate} onChange={setReviewDate} type="date" />
         </Section>
 
@@ -378,20 +416,29 @@ function AnnualReview({ client, onBack }) {
         </Section>
 
         <Section title="Lender comparisons">
+          <div style={{ fontSize: 10, color: '#94a3b8', marginBottom: 8, fontStyle: 'italic' }}>
+            Monthly repayments are indicative. A disclaimer noting 30-year P&I assumption is included automatically in the email.
+          </div>
           {comparisons.map((c, i) => (
             <div key={i} style={{ marginBottom: 12, padding: '10px', background: '#f8fafc', borderRadius: 6, border: '0.5px solid #e2e8f0' }}>
               <div style={{ fontSize: 10, fontWeight: 700, color: NAVY, marginBottom: 6 }}>Option {i + 1}</div>
               <Field lbl="Lender" value={c.lender} onChange={v => setComparisons(prev => prev.map((x, j) => j === i ? { ...x, lender: v } : x))} placeholder="e.g. CBA, Westpac" />
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
                 <div>
                   {label('Rate (%)')}
                   <input type="number" step="0.01" style={inp} value={c.rate}
                     onChange={e => setComparisons(prev => prev.map((x, j) => j === i ? { ...x, rate: e.target.value } : x))} />
                 </div>
                 <div>
-                  {label('Comparison rate (%)')}
+                  {label('Comp. rate (%)')}
                   <input type="number" step="0.01" style={inp} value={c.compRate}
                     onChange={e => setComparisons(prev => prev.map((x, j) => j === i ? { ...x, compRate: e.target.value } : x))} />
+                </div>
+                <div>
+                  {label('Monthly repayment ($)')}
+                  <input type="number" step="1" style={inp} value={c.repayment}
+                    onChange={e => setComparisons(prev => prev.map((x, j) => j === i ? { ...x, repayment: e.target.value } : x))}
+                    placeholder="e.g. 2450" />
                 </div>
               </div>
               <div style={{ marginTop: 6 }}>

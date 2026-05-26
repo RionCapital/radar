@@ -1,10 +1,7 @@
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { logo_rion_login } from '../lib/icons'
-
-const USERS = [
-  { email: 'cameron@rion-capital.com', password: 'RionDash2', name: 'Cameron Finlayson' },
-]
+import { loadSettings } from '../lib/settings'
 
 export default function Login() {
   const navigate = useNavigate()
@@ -18,9 +15,21 @@ export default function Login() {
     setLoading(true)
     setError('')
     setTimeout(() => {
-      const user = USERS.find(u => u.email.toLowerCase() === email.toLowerCase() && u.password === password)
+      const settings = loadSettings()
+      const users = settings.users || []
+      const user = users.find(u =>
+        u.active !== false &&
+        u.email.toLowerCase() === email.toLowerCase() &&
+        u.password === password
+      )
       if (user) {
-        sessionStorage.setItem('rion-auth', JSON.stringify({ email: user.email, name: user.name }))
+        sessionStorage.setItem('rion-auth', JSON.stringify({
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          phone: user.phone || '',
+          role: user.role || 'broker',
+        }))
         navigate('/')
       } else {
         setError('Invalid email or password. Please try again.')
