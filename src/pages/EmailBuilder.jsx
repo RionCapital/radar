@@ -5,6 +5,10 @@ import { calcRepayment } from '../lib/dateUtils'
 const NAVY = '#3D4F6B'
 const PINK = '#EB99C2'
 const fmt = v => v ? '$' + Number(v).toLocaleString() : '—'
+const contactName = c => c ? (c.first ? `${c.first}${c.last?' '+c.last:''}`.trim() : c.name || '') : ''
+const contactGreeting = (contacts) => contacts.length > 0 
+  ? contacts.filter(c=>c.type==='Ind'||c.type==='Individual').map(c=>c.first||contactName(c)).filter(Boolean).join(' & ') || contacts.map(contactName).filter(Boolean).join(' & ')
+  : ''
 const fmtPct = v => v ? Number(v).toFixed(2) + '%' : '—'
 const fmtDate = s => { if (!s) return '—'; const d = new Date(s); return d.toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric' }) }
 
@@ -18,9 +22,7 @@ const TEMPLATES = [
 
 function TemplatePicker({ client, onSelect }) {
   const contacts = client.contacts || []
-  const greeting = contacts.length > 0
-    ? contacts.map(c => c.name.split(' ')[0]).join(' & ')
-    : client.name
+  const greeting = contactGreeting(contacts) || client.name || ''
 
   return (
     <div style={{ maxWidth: 720, margin: '0 auto', padding: '32px 24px' }}>
@@ -31,7 +33,7 @@ function TemplatePicker({ client, onSelect }) {
           <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
             {contacts.map((c, i) => (
               <span key={i} style={{ fontSize: 11, padding: '2px 10px', borderRadius: 20, background: 'rgba(235,153,194,0.15)', color: NAVY, border: `1px solid ${PINK}` }}>
-                {c.name} {c.email ? `· ${c.email}` : ''}
+                {contactName(c)} {c.email ? `· ${c.email}` : ''}
               </span>
             ))}
           </div>
@@ -103,9 +105,7 @@ function AnnualReview({ client, onBack }) {
   const loans = client.loans || []
   const securities = client.securities || []
 
-  const defaultGreeting = contacts.length > 0
-    ? contacts.map(c => c.name.split(' ')[0]).join(' & ')
-    : client.name
+  const defaultGreeting = contactGreeting(contacts) || client.name || ''
 
   const [brokerName, setBrokerName] = useState('')
   const [brokerPhone, setBrokerPhone] = useState('')
@@ -124,7 +124,7 @@ function AnnualReview({ client, onBack }) {
 
   // LVR + Equity calc
   const portfolioLVR = totalSecValue > 0 ? Math.round((totalBalance / totalSecValue) * 100) : null
-  const resiEquity = secValues.filter(s => s.type !== 'Commercial').reduce((sum, s) => sum + Math.max(0, (Number(s.coreLogicVal) || 0) * 0.8 - totalBalance / Math.max(1, secValues.length)), 0)
+  const resiEquity = secValues.filter(s => s.type !== 'Commercial').reduce((sum, s) => sum + Math.max(0, (Number(s.coreLogicVal) || 0) * ((s.lvr||80)/100) - totalBalance / Math.max(1, secValues.length)), 0)
   const commEquity = secValues.filter(s => s.type === 'Commercial').reduce((sum, s) => sum + Math.max(0, (Number(s.coreLogicVal) || 0) * 0.7 - totalBalance / Math.max(1, secValues.length)), 0)
   const borrowingEquity = Math.round(resiEquity + commEquity)
 
@@ -304,7 +304,7 @@ function AnnualReview({ client, onBack }) {
                   </div>
                   <div style={{ width: 90 }}>
                     {label('Type')}
-                    <select style={inp} value={s.type || 'Residential'}
+                    <select style={inp} value={s.type || (s.lvr <= 70 ? 'Commercial' : 'Residential')}
                       onChange={e => setSecValues(prev => prev.map((sv, j) => j === i ? { ...sv, type: e.target.value } : sv))}>
                       <option>Residential</option><option>Commercial</option>
                     </select>
@@ -374,7 +374,7 @@ function AnnualReview({ client, onBack }) {
 function ExpiryEmail({ client, onBack, expiryType }) {
   const contacts = client.contacts || []
   const loans = client.loans || []
-  const greeting = contacts.length > 0 ? contacts.map(c => c.name.split(' ')[0]).join(' & ') : client.name
+  const greeting = contactGreeting(contacts) || client.name || ''
 
   const [brokerName, setBrokerName] = useState('')
   const [brokerPhone, setBrokerPhone] = useState('')
@@ -487,7 +487,7 @@ function ExpiryEmail({ client, onBack, expiryType }) {
 function MaturityEmail({ client, onBack }) {
   const contacts = client.contacts || []
   const loans = client.loans || []
-  const greeting = contacts.length > 0 ? contacts.map(c => c.name.split(' ')[0]).join(' & ') : client.name
+  const greeting = contactGreeting(contacts) || client.name || ''
   const [brokerName, setBrokerName] = useState('')
   const [brokerPhone, setBrokerPhone] = useState('')
   const [selectedLoan, setSelectedLoan] = useState(0)
@@ -588,7 +588,7 @@ function MaturityEmail({ client, onBack }) {
 // ── GENERAL / FREEFORM ────────────────────────────────────────────────────────
 function GeneralEmail({ client, onBack }) {
   const contacts = client.contacts || []
-  const greeting = contacts.length > 0 ? contacts.map(c => c.name.split(' ')[0]).join(' & ') : client.name
+  const greeting = contactGreeting(contacts) || client.name || ''
   const [brokerName, setBrokerName] = useState('')
   const [brokerPhone, setBrokerPhone] = useState('')
   const [subject, setSubject] = useState('')
