@@ -420,9 +420,9 @@ export default function ClientDashboard({ clients, updateClient }) {
         <Panel>
           <PanelTitle action={
             <div style={{display:'flex',gap:6,alignItems:'center'}}>
-              <button onClick={()=>navigate(`/radar/clients/${encodeURIComponent(client.name)}/contacts`)}
+              <button onClick={()=>navigate(`/radar/clients/${encodeURIComponent(client.name)}/email`)}
                 style={{fontSize:10,padding:'3px 10px',borderRadius:6,border:'1px solid var(--pk)',color:'var(--pk)',background:'transparent',cursor:'pointer'}}>
-                ✉ Email & manage
+                ✉ Email clients
               </button>
               {editBtns('contacts')}
             </div>
@@ -666,7 +666,7 @@ export default function ClientDashboard({ clients, updateClient }) {
             </div>
           </div>
           <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-            <ActionBtn variant="filled" label="Draft review email" onClick={()=>{}}/>
+            <ActionBtn variant="filled" label="Draft review email" onClick={()=>navigate(`/radar/clients/${encodeURIComponent(client.name)}/email`)}/>
             <ActionBtn variant="blue" label="Identify opportunities" onClick={()=>{}}/>
           </div>
         </Panel>

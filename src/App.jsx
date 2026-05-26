@@ -17,7 +17,7 @@ import BirthdayNotifier from './components/BirthdayNotifier'
 import CRMTopbar from './components/CRMTopbar'
 import OpportunityScore from './pages/OpportunityScore'
 import ProjectStudio from './pages/ProjectStudio'
-import Toast from './components/Toast'
+import EmailBuilder from './pages/EmailBuilder'
 
 function RequireAuth({ children }) {
   const auth = sessionStorage.getItem('rion-auth')
@@ -111,6 +111,7 @@ export default function App() {
         <Route path="/crm" element={<RequireAuth><CRM clients={clients} onUpdateClients={updateAllClients} /></RequireAuth>} />
         <Route path="/radar/clients/:name/contacts" element={<RequireAuth><ContactPage clients={clients} updateClient={updateClient} /></RequireAuth>} />
         <Route path="/radar/clients/:name/opportunity" element={<RequireAuth><OpportunityScore clients={clients} updateClient={updateClient} /></RequireAuth>} />
+        <Route path="/radar/clients/:name/email" element={<RequireAuth><EmailBuilder clients={clients} /></RequireAuth>} />
         <Route path="/radar/studio" element={<RequireAuth><ProjectStudio /></RequireAuth>} />
       </Routes>
     </div>
