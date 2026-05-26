@@ -336,6 +336,24 @@ export default function LoanAccount({ clients, updateClient }) {
 
         {/* LEFT COL — Loan details */}
         <div style={{display:'flex',flexDirection:'column',gap:14}}>
+
+          {/* Linked Security — top of left column */}
+          {allSecurities.length>0&&(
+            <Panel>
+              <PanelTitle>{crossedSecurities.length>0 ? <span>Cross-collateralised <span style={{color:'#e8a020'}}>✕ {loan.crossed}</span></span> : 'Linked security'}</PanelTitle>
+              {allSecurities.map((sec,si)=>(
+                <div key={si} style={{marginBottom:si<allSecurities.length-1?10:0,paddingBottom:si<allSecurities.length-1?10:0,borderBottom:si<allSecurities.length-1?'0.5px solid var(--border)':'none'}}>
+                  <div style={{fontSize:12,fontWeight:500,color:'var(--text-primary)',marginBottom:4}}>#{sec.num} — {sec.address}</div>
+                  <div style={{display:'flex',gap:16,fontSize:11,color:'var(--text-secondary)'}}>
+                    <span>Est. value: <strong style={{color:'var(--text-primary)'}}>{sec.estVal?fmt(sec.estVal):'—'}</strong></span>
+                    <span>LVR: <strong style={{color:'var(--text-primary)'}}>{sec.lvr||80}%</strong></span>
+                    <span>Equity: <strong style={{color:'#27ae60'}}>{sec.estVal?fmt(Math.round(sec.estVal-(loan.balance||0))):'—'}</strong></span>
+                  </div>
+                </div>
+              ))}
+            </Panel>
+          )}
+
           <Panel>
             <PanelTitle>Loan particulars</PanelTitle>
             {editing?(
@@ -454,23 +472,6 @@ export default function LoanAccount({ clients, updateClient }) {
                 </div>
               ))}
             </div>
-            {allSecurities.length>0&&(
-              <div style={{marginTop:10,background:'var(--bg)',borderRadius:8,padding:'10px 12px'}}>
-                <div style={{fontSize:10,fontWeight:500,color:'var(--text-secondary)',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:8}}>
-                  {crossedSecurities.length>0 ? <span>Cross-collateralised <span style={{color:'#e8a020'}}>✕ {loan.crossed}</span></span> : 'Linked security'}
-                </div>
-                {allSecurities.map((sec,si)=>(
-                  <div key={si} style={{marginBottom:si<allSecurities.length-1?10:0,paddingBottom:si<allSecurities.length-1?10:0,borderBottom:si<allSecurities.length-1?'0.5px solid var(--border)':'none'}}>
-                    <div style={{fontSize:12,fontWeight:500,color:'var(--text-primary)',marginBottom:4}}>#{sec.num} — {sec.address}</div>
-                    <div style={{display:'flex',gap:16,fontSize:11,color:'var(--text-secondary)'}}>
-                      <span>Est. value: <strong style={{color:'var(--text-primary)'}}>{sec.estVal?fmt(sec.estVal):'—'}</strong></span>
-                      <span>LVR: <strong style={{color:'var(--text-primary)'}}>{sec.lvr||80}%</strong></span>
-                      <span>Equity: <strong style={{color:'#27ae60'}}>{sec.estVal?fmt(Math.round(sec.estVal-(loan.balance||0))):'—'}</strong></span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
           </Panel>
 
           {rateHistory.length>0&&(
@@ -497,48 +498,7 @@ export default function LoanAccount({ clients, updateClient }) {
         {/* RIGHT COL — Loan predictor */}
         <div style={{display:'flex',flexDirection:'column',gap:14}}>
 
-          {/* Extra repayment calculator */}
-          <Panel>
-            <PanelTitle>Extra repayment calculator</PanelTitle>
-            <div style={{display:'grid',gridTemplateColumns:'1fr auto auto',gap:8,alignItems:'end',marginBottom:12}}>
-              <FieldGroup label="Additional repayment amount ($)">
-                <input type="number" min="0" value={extraAmount||''} onChange={e=>setExtraAmount(+e.target.value||0)}
-                  placeholder="e.g. 500" style={{...inp,fontSize:13,padding:'7px 10px'}}/>
-              </FieldGroup>
-              <FieldGroup label="Frequency">
-                <select value={extraFreq} onChange={e=>setExtraFreq(e.target.value)} style={{...inp,fontSize:12,padding:'7px 10px'}}>
-                  <option value="weekly">Weekly</option>
-                  <option value="monthly">Monthly</option>
-                  <option value="annually">Annually</option>
-                </select>
-              </FieldGroup>
-              {extraMonthly>0&&<div style={{paddingBottom:2,fontSize:10,color:'var(--text-secondary)',whiteSpace:'nowrap'}}>≈ ${extraMonthly.toLocaleString()}/mo</div>}
-            </div>
-            {/* Summary stats */}
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
-              {[
-                {label:'Remaining term',val:`${Math.floor(remainMonths/12)}y ${remainMonths%12}m`,sub:'Standard'},
-                {label:extraMonthly>0?'New payoff':'Loan payoff',
-                 val:extraMonthly>0&&projExtra.length>0?`${Math.floor(projExtra.length/12)}y ${projExtra.length%12}m`:`${Math.floor(projection.length/12)}y ${projection.length%12}m`,
-                 sub:extraMonthly>0?'With extra repayments':'Standard',color:extraMonthly>0?'#22c55e':undefined},
-                {label:'Est. total interest (standard)',val:'$'+stdFutureInt.toLocaleString(),sub:'Future interest only',color:'#c0392b'},
-                {label:'Est. total interest (with extra)',val:extraMonthly>0?'$'+extraFutureInt.toLocaleString():'—',sub:extraMonthly>0?`Save $${intSaved.toLocaleString()}`:' ',color:extraMonthly>0?'#22c55e':undefined},
-              ].map((s,i)=>(
-                <div key={i} style={{background:'var(--bg)',borderRadius:7,padding:'9px 12px',border:'0.5px solid var(--border-light)'}}>
-                  <div style={{fontSize:9,color:'var(--text-secondary)',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:3}}>{s.label}</div>
-                  <div style={{fontSize:14,fontWeight:600,color:s.color||'var(--text-primary)'}}>{s.val}</div>
-                  <div style={{fontSize:9,color:'var(--text-secondary)',marginTop:2}}>{s.sub}</div>
-                </div>
-              ))}
-            </div>
-            {extraMonthly>0&&monthsSaved>0&&(
-              <div style={{marginTop:10,padding:'8px 12px',background:'#f0fdf4',border:'1px solid #86efac',borderRadius:7,fontSize:11,color:'#166534'}}>
-                🎉 With an extra <strong>${extraMonthly.toLocaleString()}/mo</strong> you save <strong>${intSaved.toLocaleString()}</strong> in interest and pay off <strong>{Math.floor(monthsSaved/12)}y {monthsSaved%12}m</strong> sooner.
-              </div>
-            )}
-          </Panel>
-
-          {/* Chart */}
+          {/* Balance — Historic & Predicted */}
           <Panel>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
               <div style={{fontSize:10,fontWeight:600,color:'var(--text-secondary)',textTransform:'uppercase',letterSpacing:'0.06em'}}>Balance — Historic &amp; Predicted</div>
@@ -587,7 +547,48 @@ export default function LoanAccount({ clients, updateClient }) {
             </div>
           </Panel>
 
-          {/* Amortisation table */}
+{/* Extra repayment calculator */}
+          <Panel>
+            <PanelTitle>Extra repayment calculator</PanelTitle>
+            <div style={{display:'grid',gridTemplateColumns:'1fr auto auto',gap:8,alignItems:'end',marginBottom:12}}>
+              <FieldGroup label="Additional repayment amount ($)">
+                <input type="number" min="0" value={extraAmount||''} onChange={e=>setExtraAmount(+e.target.value||0)}
+                  placeholder="e.g. 500" style={{...inp,fontSize:13,padding:'7px 10px'}}/>
+              </FieldGroup>
+              <FieldGroup label="Frequency">
+                <select value={extraFreq} onChange={e=>setExtraFreq(e.target.value)} style={{...inp,fontSize:12,padding:'7px 10px'}}>
+                  <option value="weekly">Weekly</option>
+                  <option value="monthly">Monthly</option>
+                  <option value="annually">Annually</option>
+                </select>
+              </FieldGroup>
+              {extraMonthly>0&&<div style={{paddingBottom:2,fontSize:10,color:'var(--text-secondary)',whiteSpace:'nowrap'}}>≈ ${extraMonthly.toLocaleString()}/mo</div>}
+            </div>
+            {/* Summary stats */}
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+              {[
+                {label:'Remaining term',val:`${Math.floor(remainMonths/12)}y ${remainMonths%12}m`,sub:'Standard'},
+                {label:extraMonthly>0?'New payoff':'Loan payoff',
+                 val:extraMonthly>0&&projExtra.length>0?`${Math.floor(projExtra.length/12)}y ${projExtra.length%12}m`:`${Math.floor(projection.length/12)}y ${projection.length%12}m`,
+                 sub:extraMonthly>0?'With extra repayments':'Standard',color:extraMonthly>0?'#22c55e':undefined},
+                {label:'Est. total interest (standard)',val:'$'+stdFutureInt.toLocaleString(),sub:'Future interest only',color:'#c0392b'},
+                {label:'Est. total interest (with extra)',val:extraMonthly>0?'$'+extraFutureInt.toLocaleString():'—',sub:extraMonthly>0?`Save $${intSaved.toLocaleString()}`:' ',color:extraMonthly>0?'#22c55e':undefined},
+              ].map((s,i)=>(
+                <div key={i} style={{background:'var(--bg)',borderRadius:7,padding:'9px 12px',border:'0.5px solid var(--border-light)'}}>
+                  <div style={{fontSize:9,color:'var(--text-secondary)',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:3}}>{s.label}</div>
+                  <div style={{fontSize:14,fontWeight:600,color:s.color||'var(--text-primary)'}}>{s.val}</div>
+                  <div style={{fontSize:9,color:'var(--text-secondary)',marginTop:2}}>{s.sub}</div>
+                </div>
+              ))}
+            </div>
+            {extraMonthly>0&&monthsSaved>0&&(
+              <div style={{marginTop:10,padding:'8px 12px',background:'#f0fdf4',border:'1px solid #86efac',borderRadius:7,fontSize:11,color:'#166534'}}>
+                🎉 With an extra <strong>${extraMonthly.toLocaleString()}/mo</strong> you save <strong>${intSaved.toLocaleString()}</strong> in interest and pay off <strong>{Math.floor(monthsSaved/12)}y {monthsSaved%12}m</strong> sooner.
+              </div>
+            )}
+          </Panel>
+
+                    {/* Amortisation table */}
           <Panel>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
               <PanelTitle style={{margin:0}}>Amortisation schedule</PanelTitle>
