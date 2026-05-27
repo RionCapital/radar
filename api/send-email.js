@@ -12,7 +12,7 @@ export default async function handler(req, res) {
   const apiKey = process.env.RESEND_API_KEY
   if (!apiKey) return res.status(500).json({ error: 'RESEND_API_KEY not configured' })
 
-  const { to, subject, html, from, fromName } = req.body
+  const { to, subject, html, from, fromName, attachments } = req.body
   if (!to || !subject || !html) {
     return res.status(400).json({ error: 'Missing required fields: to, subject, html' })
   }
@@ -32,6 +32,7 @@ export default async function handler(req, res) {
         to: Array.isArray(to) ? to : to.split(',').map(e => e.trim()).filter(Boolean),
         subject,
         html,
+        ...(attachments && attachments.length > 0 ? { attachments } : {}),
       }),
     })
 

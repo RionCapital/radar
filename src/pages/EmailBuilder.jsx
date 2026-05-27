@@ -64,7 +64,7 @@ const LOGO_DATA_URI = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAA
 function emailHeader(greeting) {
   return `
     <div style="background:#3D4F6B;padding:20px 32px;text-align:center">
-      <img src="${LOGO_DATA_URI}" alt="Rion Capital" style="height:60px;max-width:220px;object-fit:contain;display:block;margin:0 auto" />
+      <img src="${LOGO_DATA_URI}" alt="Rion Capital" style="height:188px;max-width:600px;object-fit:contain;display:block;margin:0 auto" />
     </div>
     <div style="background:#fff;padding:32px;font-family:Helvetica,Arial,sans-serif;color:#2A3545">
       <p style="font-size:15px;font-weight:600;margin:0 0 8px">Dear ${greeting},</p>`
@@ -81,11 +81,16 @@ function emailFooter(brokerName, brokerPhone) {
 }
 
 // Send HTML email via Rradar's /api/send-email endpoint
-async function sendEmail(to, subject, html, brokerName, brokerEmail) {
+async function sendEmail(to, subject, html, brokerName, brokerEmail, attachments = []) {
   const res = await fetch('/api/send-email', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ to, subject, html, fromName: brokerName || 'Rion Capital', from: brokerEmail || undefined }),
+    body: JSON.stringify({
+      to, subject, html,
+      fromName: brokerName || 'Rion Capital',
+      from: brokerEmail || undefined,
+      attachments: attachments.map(a => ({ filename: a.filename, content: a.content })),
+    }),
   })
   const data = await res.json()
   if (!res.ok) throw new Error(data.error || 'Failed to send')
@@ -176,6 +181,22 @@ function AnnualReview({ client, onBack }) {
     setAddEmail(''); setAddName('')
   }
   function removeRecipient(i) { setRecipients(r => r.filter((_, j) => j !== i)) }
+
+  const [attachments, setAttachments] = useState([])
+
+  function handleAttachFiles(e) {
+    const files = Array.from(e.target.files)
+    files.forEach(file => {
+      const reader = new FileReader()
+      reader.onload = ev => {
+        const b64 = ev.target.result.split(',')[1]
+        setAttachments(prev => [...prev, { filename: file.name, content: b64, size: file.size }])
+      }
+      reader.readAsDataURL(file)
+    })
+    e.target.value = '' // reset so same file can be re-added
+  }
+  function removeAttachment(i) { setAttachments(a => a.filter((_, j) => j !== i)) }
 
   const [comparisons, setComparisons] = useState([
     { lender: '', rate: '', compRate: '', repayment: '', features: '' },
@@ -327,7 +348,7 @@ function AnnualReview({ client, onBack }) {
     const subject = `Annual Portfolio Review — ${client.name} · ${fmtDate(reviewDate)}`
     setSending('sending'); setSendError('')
     try {
-      await sendEmail(to, subject, buildHtml(), brokerName, brokerEmail)
+      await sendEmail(to, subject, buildHtml(), brokerName, brokerEmail, attachments)
       setSending('sent')
       setTimeout(() => setSending(null), 4000)
     } catch (err) {
@@ -448,6 +469,24 @@ function AnnualReview({ client, onBack }) {
               </div>
             </div>
           ))}
+        </Section>
+
+        <Section title="Attachments">
+          <div style={{ fontSize: 10, color: '#94a3b8', marginBottom: 8, fontStyle: 'italic' }}>
+            Add files to include with the email (e.g. CoreLogic property report, fact find).
+          </div>
+          {attachments.map((a, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5, padding: '4px 8px', background: '#f8fafc', borderRadius: 5, border: '0.5px solid #e2e8f0' }}>
+              <span style={{ fontSize: 11, flex: 1, color: '#334155', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>📎 {a.filename}</span>
+              <span style={{ fontSize: 10, color: '#94a3b8' }}>{(a.size / 1024).toFixed(0)}KB</span>
+              <button onClick={() => removeAttachment(i)} style={{ fontSize: 12, color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px' }}>✕</button>
+            </div>
+          ))}
+          <label style={{ display: 'block', marginTop: 6, padding: '6px 10px', background: '#3D4F6B', color: '#fff', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer', textAlign: 'center' }}>
+            + Attach files
+            <input type="file" multiple style={{ display: 'none' }} onChange={handleAttachFiles}
+              accept=".pdf,.doc,.docx,.xlsx,.xls,.png,.jpg,.jpeg" />
+          </label>
         </Section>
 
         <Section title="Additional notes">
