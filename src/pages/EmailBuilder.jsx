@@ -223,23 +223,23 @@ function AnnualReview({ client, onBack }) {
 
   function buildHtml() {
     const greeting = defaultGreeting
+    const fmtWhole = v => v ? '$' + Math.round(Number(v)).toLocaleString() : '—'
+
     const loanRows = loans.filter(l => l.acc || l.lname).map(l => `
       <tr style="border-bottom:0.5px solid #f1f5f9">
-        <td style="padding:5px 4px;font-size:10px">${l.lname || l.acc || '—'}</td>
-        <td style="padding:5px 4px;font-size:10px">${l.bank || '—'}</td>
-        <td style="padding:5px 4px;font-size:10px">${l.rpmt || '—'}</td>
-        <td style="padding:5px 4px;font-size:10px;text-align:right">${fmtDate(l.maturity)}</td>
-        <td style="padding:5px 4px;font-size:10px;text-align:right">${fmt(l.balance)}</td>
-        <td style="padding:5px 4px;font-size:10px;text-align:right">${l.rate ? l.rate.toFixed(2) + '%' : '—'}</td>
-        <td style="padding:5px 4px;font-size:10px;text-align:right">${calcRepayment(l) ? '$' + calcRepayment(l).toLocaleString() : '—'}</td>
+        <td style="padding:6px 6px;font-size:10px">${l.lname || l.acc || '—'}</td>
+        <td style="padding:6px 6px;font-size:10px">${l.bank || '—'}</td>
+        <td style="padding:6px 6px;font-size:10px">${l.rpmt || '—'}</td>
+        <td style="padding:6px 8px;font-size:10px;text-align:right;min-width:80px">${fmtWhole(l.balance)}</td>
+        <td style="padding:6px 6px;font-size:10px;text-align:right">${l.rate ? l.rate.toFixed(2) + '%' : '—'}</td>
+        <td style="padding:6px 6px;font-size:10px;text-align:right">${calcRepayment(l) ? '$' + calcRepayment(l).toLocaleString() : '—'}</td>
       </tr>`).join('')
 
     const secRows = secValues.map(s => `
       <tr style="border-bottom:0.5px solid #f1f5f9">
-        <td style="padding:7px 8px;font-size:11px">#${s.num} — ${s.address || '—'}</td>
+        <td style="padding:7px 8px;font-size:11px">${s.address || '—'}</td>
         <td style="padding:7px 8px;font-size:11px">${s.type || 'Residential'}</td>
-        <td style="padding:5px 4px;font-size:10px;text-align:right">${s.coreLogicVal ? fmt(s.coreLogicVal) : '—'}</td>
-        <td style="padding:7px 8px;font-size:11px;text-align:right;color:#64748b;font-style:italic">CoreLogic estimate — report attached</td>
+        <td style="padding:7px 8px;font-size:11px;text-align:right">${s.coreLogicVal ? fmtWhole(s.coreLogicVal) : '—'}</td>
       </tr>`).join('')
 
     const compCols = comparisons.filter(c => c.lender).map(c => `
@@ -251,6 +251,16 @@ function AnnualReview({ client, onBack }) {
         ${c.features ? `<div style="font-size:10px;color:#64748b;margin-top:6px">${c.features}</div>` : ''}
       </td>`).join('')
 
+    // Build combined disclaimer block for bottom of email
+    const hasEquity = totalSecValue > 0
+    const hasComparisons = comparisons.some(c => c.lender)
+    const disclaimerBlock = (hasEquity || hasComparisons) ? `
+      <div style="margin-top:20px;padding:12px 14px;background:#f8fafc;border-radius:6px;border-left:3px solid #e2e8f0">
+        <p style="font-size:10px;color:#94a3b8;margin:0 0 6px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em">Disclaimers</p>
+        ${hasEquity ? `<p style="font-size:10px;color:#94a3b8;margin:0 0 6px;line-height:1.5;font-style:italic"><strong>Borrowing equity:</strong> Borrowing equity figures are estimates only based on CoreLogic valuations and standard LVR benchmarks (Residential 80% / Commercial 70%). Actual borrowing capacity is subject to formal valuation, lender assessment and serviceability criteria. These figures do not constitute financial advice.</p>` : ''}
+        ${hasComparisons ? `<p style="font-size:10px;color:#94a3b8;margin:0;line-height:1.5;font-style:italic"><strong>Repayments:</strong> Estimated monthly repayments shown in the market comparison are indicative only, calculated on a 30-year principal &amp; interest term. Actual repayments will vary based on the loan term, repayment type, fees and individual lender assessment. These figures do not constitute financial advice.</p>` : ''}
+      </div>` : ''
+
     return `<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;background:#f8fafc">
       <div style="max-width:600px;margin:0 auto;background:#fff">
         ${emailHeader(greeting)}
@@ -261,12 +271,12 @@ function AnnualReview({ client, onBack }) {
         </div>
         <table style="width:100%;border-collapse:collapse;font-family:Helvetica,Arial,sans-serif;border:0.5px solid #e2e8f0;table-layout:fixed;word-break:break-word">
           <thead style="background:#f8fafc">
-            <tr>${['Facility','Lender','Type','Maturity','Balance','Rate','Repayment'].map(h => `<th style="padding:5px 4px;font-size:9px;text-align:${['Balance','Rate','Repayment','Maturity'].includes(h)?'right':'left'};color:#64748b;font-weight:600;text-transform:uppercase">${h}</th>`).join('')}</tr>
+            <tr>${['Facility','Lender','Type','Balance','Rate','Repayment'].map(h => `<th style="padding:5px 6px;font-size:9px;text-align:${['Balance','Rate','Repayment'].includes(h)?'right':'left'};color:#64748b;font-weight:600;text-transform:uppercase">${h}</th>`).join('')}</tr>
           </thead>
           <tbody>${loanRows}</tbody>
           <tfoot style="background:#f8fafc">
-            <tr><td colspan="4" style="padding:5px 4px;font-size:10px;font-weight:700">Total portfolio</td>
-            <td style="padding:7px 8px;font-size:11px;font-weight:700;text-align:right">${fmt(totalBalance)}</td>
+            <tr><td colspan="3" style="padding:5px 6px;font-size:10px;font-weight:700">Total portfolio</td>
+            <td style="padding:6px 8px;font-size:11px;font-weight:700;text-align:right">${fmtWhole(totalBalance)}</td>
             <td colspan="2"></td></tr>
           </tfoot>
         </table>
@@ -278,7 +288,7 @@ function AnnualReview({ client, onBack }) {
           </div>
           <table style="width:100%;border-collapse:collapse;border:0.5px solid #e2e8f0">
             <thead style="background:#f8fafc">
-              <tr>${['Property','Type','CoreLogic Est. Value','Note'].map(h => `<th style="padding:7px 8px;font-size:10px;text-align:${['CoreLogic Est. Value'].includes(h)?'right':'left'};color:#64748b;font-weight:600;text-transform:uppercase">${h}</th>`).join('')}</tr>
+              <tr>${['Property','Type','CoreLogic Est. Value'].map(h => `<th style="padding:7px 8px;font-size:10px;text-align:${h==='CoreLogic Est. Value'?'right':'left'};color:#64748b;font-weight:600;text-transform:uppercase">${h}</th>`).join('')}</tr>
             </thead>
             <tbody>${secRows}</tbody>
           </table>
@@ -286,7 +296,7 @@ function AnnualReview({ client, onBack }) {
         </div>` : ''}
 
         ${totalSecValue > 0 ? `
-        <div style="margin-top:20px;display:flex;gap:12px">
+        <div style="margin-top:20px">
           <table style="width:100%;border-collapse:collapse"><tr>
             <td style="width:33%;padding:14px;background:#f0fdf4;border-radius:8px;text-align:center;vertical-align:top">
               <div style="font-size:10px;color:#64748b;font-weight:600;text-transform:uppercase;margin-bottom:4px">Portfolio LVR</div>
@@ -296,20 +306,17 @@ function AnnualReview({ client, onBack }) {
             <td style="width:6px"></td>
             <td style="width:33%;padding:14px;background:#fef9c3;border-radius:8px;text-align:center;vertical-align:top">
               <div style="font-size:10px;color:#64748b;font-weight:600;text-transform:uppercase;margin-bottom:4px">Est. Borrowing Equity</div>
-              <div style="font-size:22px;font-weight:700;color:#3D4F6B">${fmt(borrowingEquity)}</div>
+              <div style="font-size:22px;font-weight:700;color:#3D4F6B">${fmtWhole(borrowingEquity)}</div>
               <div style="font-size:10px;color:#64748b;margin-top:2px">Resi @80% / Comm @70%</div>
             </td>
             <td style="width:6px"></td>
             <td style="width:33%;padding:14px;background:#eff6ff;border-radius:8px;text-align:center;vertical-align:top">
               <div style="font-size:10px;color:#64748b;font-weight:600;text-transform:uppercase;margin-bottom:4px">Total Sec. Value</div>
-              <div style="font-size:22px;font-weight:700;color:#3D4F6B">${fmt(totalSecValue)}</div>
+              <div style="font-size:22px;font-weight:700;color:#3D4F6B">${fmtWhole(totalSecValue)}</div>
               <div style="font-size:10px;color:#64748b;margin-top:2px">CoreLogic estimates</div>
             </td>
           </tr></table>
-        </div>
-        <p style="font-size:10px;color:#94a3b8;font-style:italic;margin-top:6px;padding:8px;background:#fffbeb;border-radius:6px;border-left:3px solid #f59e0b">
-          <strong>Disclaimer:</strong> Borrowing equity figures are estimates only based on CoreLogic valuations and standard LVR benchmarks (Residential 80% / Commercial 70%). Actual borrowing capacity is subject to formal valuation, lender assessment and serviceability criteria. These figures do not constitute financial advice.
-        </p>` : ''}
+        </div>` : ''}
 
         ${comparisons.some(c => c.lender) ? `
         <div style="margin-top:24px">
@@ -319,9 +326,6 @@ function AnnualReview({ client, onBack }) {
           <table style="width:100%;border-collapse:collapse;border:0.5px solid #e2e8f0">
             <tbody><tr>${compCols}</tr></tbody>
           </table>
-          <p style="font-size:10px;color:#94a3b8;font-style:italic;margin-top:4px;padding:8px;background:#f8fafc;border-radius:6px;border-left:3px solid #e2e8f0">
-            <strong>Repayment disclaimer:</strong> Estimated monthly repayments shown above are indicative only, calculated on a 30-year principal &amp; interest term. Actual repayments will vary based on the loan term, repayment type, fees and individual lender assessment. These figures do not constitute financial advice.
-          </p>
         </div>` : ''}
 
         <div style="margin-top:24px;padding:16px;background:#f8fafc;border-radius:8px;border-left:4px solid #EB99C2">
@@ -351,6 +355,9 @@ function AnnualReview({ client, onBack }) {
         </div>
 
         <p style="font-size:13px;margin-top:20px;line-height:1.7">Warm regards,<br/><strong>${brokerName || '[Broker Name]'}</strong><br/>${brokerPhone || ''}</p>
+
+        ${disclaimerBlock}
+
         ${emailFooter(brokerName, brokerPhone)}
       </div></body></html>`
   }
