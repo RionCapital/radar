@@ -324,10 +324,16 @@ function AnnualReview({ client, onBack }) {
             'Speak with us about refinancing, equity release or debt consolidation opportunities.',
             'Book a 30-minute review call — no obligation, just a conversation.',
             '<strong>Loan term:</strong> Consider whether your current loan term still suits your goals — shortening or extending your term can significantly impact your repayments and total interest paid.'].map((s, i) => `
-          <div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:8px">
-            <div style="width:20px;height:20px;border-radius:50%;background:#3D4F6B;color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">${i + 1}</div>
-            <div style="font-size:12px;color:#2A3545;line-height:1.5">${s}</div>
-          </div>`).join('')}
+          <table style="width:100%;border-collapse:collapse;margin-bottom:8px">
+            <tr>
+              <td style="width:26px;vertical-align:top;padding-top:2px">
+                <table style="border-collapse:collapse">
+                  <tr><td style="width:22px;height:22px;background:#3D4F6B;color:#ffffff;font-size:11px;font-weight:700;text-align:center;vertical-align:middle;border-radius:11px">${i + 1}</td></tr>
+                </table>
+              </td>
+              <td style="font-size:12px;color:#2A3545;line-height:1.6;padding-left:10px">${s}</td>
+            </tr>
+          </table>`).join('')}
         </div>
 
         ${notes ? `<div style="margin-top:16px;padding:14px;background:#fff;border:0.5px solid #e2e8f0;border-radius:8px"><p style="font-size:12px;color:#2A3545;margin:0;line-height:1.7">${notes}</p></div>` : ''}
@@ -579,10 +585,14 @@ function ExpiryEmail({ client, onBack, expiryType }) {
               'Extend your IO period with your current lender (subject to approval).',
               'Refinance to a new lender with a fresh IO period or restructure your facility.']
           ).map((s, i) => `
-            <div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:8px">
-              <div style="width:20px;height:20px;border-radius:50%;background:#3D4F6B;color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">${i + 1}</div>
-              <div style="font-size:12px;color:#2A3545;line-height:1.5">${s}</div>
-            </div>`).join('')}
+            <table style="width:100%;border-collapse:collapse;margin-bottom:8px">
+              <tr>
+                <td style="width:26px;vertical-align:top;padding-top:2px">
+                  <table style="border-collapse:collapse"><tr><td style="width:22px;height:22px;background:#3D4F6B;color:#ffffff;font-size:11px;font-weight:700;text-align:center;vertical-align:middle;border-radius:11px">${i + 1}</td></tr></table>
+                </td>
+                <td style="font-size:12px;color:#2A3545;line-height:1.6;padding-left:10px">${s}</td>
+              </tr>
+            </table>`).join('')}
         </div>
 
         ${notes ? `<div style="margin-top:16px;padding:14px;background:#fff;border:0.5px solid #e2e8f0;border-radius:8px"><p style="font-size:12px;color:#2A3545;margin:0;line-height:1.7">${notes}</p></div>` : ''}
@@ -683,10 +693,14 @@ function MaturityEmail({ client, onBack }) {
             'Extend with your current lender — negotiate terms or restructure your facility.',
             `${loan.balloon > 0 ? 'Clear the balloon payment from savings, sale proceeds or refinancing into a new facility.' : 'Consider restructuring — P&I vs IO, term length, or offset and redraw features.'}`
           ].map((s, i) => `
-            <div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:8px">
-              <div style="width:20px;height:20px;border-radius:50%;background:#3D4F6B;color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">${i + 1}</div>
-              <div style="font-size:12px;color:#2A3545;line-height:1.5">${s}</div>
-            </div>`).join('')}
+            <table style="width:100%;border-collapse:collapse;margin-bottom:8px">
+              <tr>
+                <td style="width:26px;vertical-align:top;padding-top:2px">
+                  <table style="border-collapse:collapse"><tr><td style="width:22px;height:22px;background:#3D4F6B;color:#ffffff;font-size:11px;font-weight:700;text-align:center;vertical-align:middle;border-radius:11px">${i + 1}</td></tr></table>
+                </td>
+                <td style="font-size:12px;color:#2A3545;line-height:1.6;padding-left:10px">${s}</td>
+              </tr>
+            </table>`).join('')}
         </div>
         ${notes ? `<div style="margin-top:16px;padding:14px;background:#fff;border:0.5px solid #e2e8f0;border-radius:8px"><p style="font-size:12px;color:#2A3545;margin:0;line-height:1.7">${notes}</p></div>` : ''}
         <div style="margin-top:20px;padding:14px;background:#EB99C2;border-radius:8px;text-align:center">
