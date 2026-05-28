@@ -63,7 +63,7 @@ const LOGO_DATA_URI = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAA
 
 function emailHeader(greeting) {
   return `
-    <div style="background:#3D4F6B;padding:20px 32px;text-align:center">
+    <div style="background:#3D4F6B;padding:0;text-align:center;line-height:0;font-size:0">
       <img src="${LOGO_DATA_URI}" alt="Rion Capital" style="height:188px;max-width:600px;object-fit:contain;display:block;margin:0 auto" />
     </div>
     <div style="background:#fff;padding:32px;font-family:Helvetica,Arial,sans-serif;color:#2A3545">
@@ -73,7 +73,7 @@ function emailHeader(greeting) {
 function emailFooter(brokerName, brokerPhone) {
   return `
     </div>
-    <div style="background:#3D4F6B;padding:20px 32px;text-align:center">
+    <div style="background:#3D4F6B;padding:0;text-align:center;line-height:0;font-size:0">
       <p style="font-size:11px;color:rgba(255,255,255,0.5);margin:0">${brokerName || 'Your Rion Capital Broker'} · ${brokerPhone || ''}</p>
       <p style="font-size:11px;color:rgba(255,255,255,0.35);margin:4px 0 0">Rion Capital Investments Pty Ltd · All your finance. One Relationship.</p>
       <p style="font-size:10px;color:rgba(255,255,255,0.25);margin:4px 0 0">This email is confidential and intended for the named recipient(s) only.</p>
@@ -218,20 +218,20 @@ function AnnualReview({ client, onBack }) {
     const greeting = defaultGreeting
     const loanRows = loans.filter(l => l.acc || l.lname).map(l => `
       <tr style="border-bottom:0.5px solid #f1f5f9">
-        <td style="padding:7px 8px;font-size:11px">${l.lname || l.acc || '—'}</td>
-        <td style="padding:7px 8px;font-size:11px">${l.bank || '—'}</td>
-        <td style="padding:7px 8px;font-size:11px">${l.rpmt || '—'}</td>
-        <td style="padding:7px 8px;font-size:11px;text-align:right">${fmtDate(l.maturity)}</td>
-        <td style="padding:7px 8px;font-size:11px;text-align:right">${fmt(l.balance)}</td>
-        <td style="padding:7px 8px;font-size:11px;text-align:right">${l.rate ? l.rate.toFixed(2) + '%' : '—'}</td>
-        <td style="padding:7px 8px;font-size:11px;text-align:right">${calcRepayment(l) ? '$' + calcRepayment(l).toLocaleString() : '—'}</td>
+        <td style="padding:5px 4px;font-size:10px">${l.lname || l.acc || '—'}</td>
+        <td style="padding:5px 4px;font-size:10px">${l.bank || '—'}</td>
+        <td style="padding:5px 4px;font-size:10px">${l.rpmt || '—'}</td>
+        <td style="padding:5px 4px;font-size:10px;text-align:right">${fmtDate(l.maturity)}</td>
+        <td style="padding:5px 4px;font-size:10px;text-align:right">${fmt(l.balance)}</td>
+        <td style="padding:5px 4px;font-size:10px;text-align:right">${l.rate ? l.rate.toFixed(2) + '%' : '—'}</td>
+        <td style="padding:5px 4px;font-size:10px;text-align:right">${calcRepayment(l) ? '$' + calcRepayment(l).toLocaleString() : '—'}</td>
       </tr>`).join('')
 
     const secRows = secValues.map(s => `
       <tr style="border-bottom:0.5px solid #f1f5f9">
         <td style="padding:7px 8px;font-size:11px">#${s.num} — ${s.address || '—'}</td>
         <td style="padding:7px 8px;font-size:11px">${s.type || 'Residential'}</td>
-        <td style="padding:7px 8px;font-size:11px;text-align:right">${s.coreLogicVal ? fmt(s.coreLogicVal) : '—'}</td>
+        <td style="padding:5px 4px;font-size:10px;text-align:right">${s.coreLogicVal ? fmt(s.coreLogicVal) : '—'}</td>
         <td style="padding:7px 8px;font-size:11px;text-align:right;color:#64748b;font-style:italic">CoreLogic estimate — report attached</td>
       </tr>`).join('')
 
@@ -252,13 +252,13 @@ function AnnualReview({ client, onBack }) {
         <div style="background:#3D4F6B;padding:10px 14px;border-radius:6px 6px 0 0;margin-bottom:0">
           <span style="font-size:11px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:0.06em">Current Loan Facilities</span>
         </div>
-        <table style="width:100%;border-collapse:collapse;font-family:Helvetica,Arial,sans-serif;border:0.5px solid #e2e8f0">
+        <table style="width:100%;border-collapse:collapse;font-family:Helvetica,Arial,sans-serif;border:0.5px solid #e2e8f0;table-layout:fixed;word-break:break-word">
           <thead style="background:#f8fafc">
-            <tr>${['Facility','Lender','Type','Maturity','Balance','Rate','Est. Repayment'].map(h => `<th style="padding:7px 8px;font-size:10px;text-align:${['Balance','Rate','Est. Repayment','Maturity'].includes(h)?'right':'left'};color:#64748b;font-weight:600;text-transform:uppercase">${h}</th>`).join('')}</tr>
+            <tr>${['Facility','Lender','Type','Maturity','Balance','Rate','Repayment'].map(h => `<th style="padding:5px 4px;font-size:9px;text-align:${['Balance','Rate','Repayment','Maturity'].includes(h)?'right':'left'};color:#64748b;font-weight:600;text-transform:uppercase">${h}</th>`).join('')}</tr>
           </thead>
           <tbody>${loanRows}</tbody>
           <tfoot style="background:#f8fafc">
-            <tr><td colspan="4" style="padding:7px 8px;font-size:11px;font-weight:700">Total portfolio</td>
+            <tr><td colspan="4" style="padding:5px 4px;font-size:10px;font-weight:700">Total portfolio</td>
             <td style="padding:7px 8px;font-size:11px;font-weight:700;text-align:right">${fmt(totalBalance)}</td>
             <td colspan="2"></td></tr>
           </tfoot>
@@ -569,8 +569,8 @@ function ExpiryEmail({ client, onBack, expiryType }) {
           <tbody><tr>
             <td style="padding:7px 8px;font-size:11px">${loan.lname || loan.acc || '—'}</td>
             <td style="padding:7px 8px;font-size:11px">${loan.bank || '—'}</td>
-            <td style="padding:7px 8px;font-size:11px;text-align:right">${fmt(loan.balance)}</td>
-            <td style="padding:7px 8px;font-size:11px;text-align:right">${fmtPct(loan.rate)}</td>
+            <td style="padding:5px 4px;font-size:10px;text-align:right">${fmt(loan.balance)}</td>
+            <td style="padding:5px 4px;font-size:10px;text-align:right">${fmtPct(loan.rate)}</td>
             <td style="padding:7px 8px;font-size:11px;text-align:right;color:#d97706;font-weight:600">${fmtDate(expiryDate)}</td>
           </tr></tbody>
         </table>
@@ -681,8 +681,8 @@ function MaturityEmail({ client, onBack }) {
           <tbody><tr>
             <td style="padding:7px 8px;font-size:11px">${loan.lname || loan.acc || '—'}</td>
             <td style="padding:7px 8px;font-size:11px">${loan.bank || '—'}</td>
-            <td style="padding:7px 8px;font-size:11px;text-align:right">${fmt(loan.balance)}</td>
-            <td style="padding:7px 8px;font-size:11px;text-align:right">${fmtPct(loan.rate)}</td>
+            <td style="padding:5px 4px;font-size:10px;text-align:right">${fmt(loan.balance)}</td>
+            <td style="padding:5px 4px;font-size:10px;text-align:right">${fmtPct(loan.rate)}</td>
             <td style="padding:7px 8px;font-size:11px;text-align:right;color:#166534;font-weight:600">${fmtDate(loan.maturity)}</td>
             ${loan.balloon > 0 ? `<td style="padding:7px 8px;font-size:11px;text-align:right;color:#d97706;font-weight:600">${fmt(loan.balloon)}</td>` : ''}
           </tr></tbody>
