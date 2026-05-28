@@ -63,8 +63,8 @@ const LOGO_DATA_URI = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAA
 
 function emailHeader(greeting) {
   return `
-    <div style="background:#3D4F6B;padding:0;text-align:center;line-height:0;font-size:0">
-      <img src="${LOGO_DATA_URI}" alt="Rion Capital" style="height:188px;max-width:600px;object-fit:contain;display:block;margin:0 auto" />
+    <div style="background:#3D4F6B;padding:22px 40px;text-align:center">
+      <img src="${LOGO_DATA_URI}" alt="Rion Capital" style="width:300px;max-width:100%;height:auto;display:block;margin:0 auto" />
     </div>
     <div style="background:#fff;padding:32px;font-family:Helvetica,Arial,sans-serif;color:#2A3545">
       <p style="font-size:15px;font-weight:600;margin:0 0 8px">Dear ${greeting},</p>`
@@ -73,7 +73,7 @@ function emailHeader(greeting) {
 function emailFooter(brokerName, brokerPhone) {
   return `
     </div>
-    <div style="background:#3D4F6B;padding:0;text-align:center;line-height:0;font-size:0">
+    <div style="background:#3D4F6B;padding:22px 40px;text-align:center">
       <p style="font-size:11px;color:rgba(255,255,255,0.5);margin:0">${brokerName || 'Your Rion Capital Broker'} · ${brokerPhone || ''}</p>
       <p style="font-size:11px;color:rgba(255,255,255,0.35);margin:4px 0 0">Rion Capital Investments Pty Ltd · All your finance. One Relationship.</p>
       <p style="font-size:10px;color:rgba(255,255,255,0.25);margin:4px 0 0">This email is confidential and intended for the named recipient(s) only.</p>
