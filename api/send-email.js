@@ -1,3 +1,11 @@
+export const config = {
+  api: {
+    bodyParser: {
+      sizeLimit: '10mb',
+    },
+  },
+}
+
 // Vercel serverless function — sends HTML email via Resend
 // Docs: https://resend.com/docs
 
