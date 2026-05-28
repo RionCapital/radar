@@ -98,19 +98,14 @@ async function sendEmail(to, subject, html, brokerName, brokerEmail, attachments
 }
 
 // Fallback: download .eml file (opens in Outlook as draft)
-function downloadEml(to, subject, htmlBody) {
+function downloadEml(to, subject, htmlBody, attachments = []) {
   const boundary = 'rion_boundary_' + Date.now()
-  const eml = [
+  const lines = [
     'MIME-Version: 1.0',
     `To: ${to}`,
     `Subject: ${subject}`,
     'X-Unsent: 1',
-    `Content-Type: multipart/alternative; boundary="${boundary}"`,
-    '',
-    `--${boundary}`,
-    'Content-Type: text/plain; charset=UTF-8',
-    '',
-    'Please view this email in an HTML-capable email client.',
+    `Content-Type: multipart/mixed; boundary="${boundary}"`,
     '',
     `--${boundary}`,
     'Content-Type: text/html; charset=UTF-8',
@@ -118,8 +113,20 @@ function downloadEml(to, subject, htmlBody) {
     '',
     htmlBody,
     '',
-    `--${boundary}--`,
-  ].join('\r\n')
+  ]
+  // Add each attachment
+  attachments.forEach(a => {
+    lines.push(`--${boundary}`)
+    lines.push(`Content-Type: application/octet-stream; name="${a.filename}"`)
+    lines.push('Content-Transfer-Encoding: base64')
+    lines.push(`Content-Disposition: attachment; filename="${a.filename}"`)
+    lines.push('')
+    lines.push(a.content)
+    lines.push('')
+  })
+  lines.push(`--${boundary}--`)
+
+  const eml = lines.join('\r\n')
   const blob = new Blob([eml], { type: 'message/rfc822' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
@@ -352,9 +359,27 @@ function AnnualReview({ client, onBack }) {
     const to = recipients.map(r => r.email).join(', ')
     if (!to) { alert('Please add at least one recipient'); return }
     const subject = `Annual Portfolio Review — ${client.name} · ${fmtDate(reviewDate)}`
+    const html = buildHtml()
+
+    // Check total payload size — Vercel Hobby plan hard limit is 4.5MB
+    const attachList = attachments.map(a => ({ filename: a.filename, content: a.content }))
+    const payloadSize = new Blob([JSON.stringify({ to, subject, html, attachments: attachList })]).size
+    const LIMIT = 3.5 * 1024 * 1024 // 3.5MB to be safe
+
+    if (payloadSize > LIMIT) {
+      const sizeMB = (payloadSize / 1024 / 1024).toFixed(1)
+      const proceed = window.confirm(
+        `The total email size (${sizeMB}MB) is too large to send directly.\n\n` +
+        `Click OK to download as .eml instead — this opens in Outlook as a ready-to-send draft with all attachments included.\n\n` +
+        `Or click Cancel and compress your attachment at ilovepdf.com first.`
+      )
+      if (proceed) downloadEml(to, subject, html, attachments)
+      return
+    }
+
     setSending('sending'); setSendError('')
     try {
-      await sendEmail(to, subject, buildHtml(), brokerName, brokerEmail, attachments)
+      await sendEmail(to, subject, html, brokerName, brokerEmail, attachments)
       setSending('sent')
       setTimeout(() => setSending(null), 4000)
     } catch (err) {
