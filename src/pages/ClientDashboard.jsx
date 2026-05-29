@@ -420,7 +420,17 @@ export default function ClientDashboard({ clients, updateClient }) {
             })()}
           </div>
         </div>
-
+        {/* Action buttons row */}
+        <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}>
+          <button onClick={()=>navigate(`/radar/clients/${encodeURIComponent(client.name)}/commission`)}
+            style={{fontSize:11,padding:'5px 14px',borderRadius:7,border:'1px solid rgba(235,153,194,0.5)',background:'rgba(235,153,194,0.1)',color:'#EB99C2',cursor:'pointer',fontWeight:500}}>
+            💰 Commission
+          </button>
+          <button onClick={()=>navigate(`/radar/clients/${encodeURIComponent(client.name)}/email`)}
+            style={{fontSize:11,padding:'5px 14px',borderRadius:7,border:'1px solid rgba(235,153,194,0.5)',background:'rgba(235,153,194,0.1)',color:'#EB99C2',cursor:'pointer',fontWeight:500}}>
+            ✉ Email clients
+          </button>
+        </div>
       </div>
 
       {/* Contacts & Securities */}
@@ -504,7 +514,23 @@ export default function ClientDashboard({ clients, updateClient }) {
                   return <tr key={i} style={{background:'#fdf0f6'}}>
                     <td style={tdStyle({color:'var(--pk)',fontWeight:500})}>{i+1}</td>
                     <td style={tdStyle()}><input value={ld.acc||''} onChange={e=>{const d={...loanDraft,acc:e.target.value};setLoanDraft(d)}} style={{width:85,fontSize:10,padding:'2px 4px',borderRadius:4,border:'0.5px solid var(--border)',background:'var(--bg)'}}/></td>
-                    <td style={tdStyle()}><input value={ld.lname||''} onChange={e=>setLoanDraft({...loanDraft,lname:e.target.value})} style={{width:120,fontSize:10,padding:'2px 4px',borderRadius:4,border:'0.5px solid var(--border)',background:'var(--bg)'}}/></td>
+                    <td style={tdStyle()}>
+                      <div style={{display:'flex',gap:3,alignItems:'center'}}>
+                        <input value={ld.lname||''} onChange={e=>setLoanDraft({...loanDraft,lname:e.target.value})} style={{width:100,fontSize:10,padding:'2px 4px',borderRadius:4,border:'0.5px solid var(--border)',background:'var(--bg)'}}/>
+                        {(client.contacts||[]).length>0&&(
+                          <select onChange={e=>{if(e.target.value)setLoanDraft({...loanDraft,lname:e.target.value});e.target.value=''}}
+                            style={{fontSize:9,padding:'2px 2px',borderRadius:4,border:'0.5px solid var(--border)',background:'var(--bg)',color:'var(--pk)',cursor:'pointer',maxWidth:24}}
+                            title="Pick from contacts">
+                            <option value="">👤</option>
+                            {(client.contacts||[]).map((c,ci)=>{
+                              const n = c.type==='Ind'?`${c.first||''} ${c.last||''}`.trim():c.company||''
+                              return n?<option key={ci} value={n}>{n}</option>:null
+                            })}
+                            {client.name&&<option value={client.name}>{client.name}</option>}
+                          </select>
+                        )}
+                      </div>
+                    </td>
                     <td style={tdStyle()}><select value={ld.type||''} onChange={e=>setLoanDraft({...loanDraft,type:e.target.value})} style={{width:110,fontSize:10,padding:'2px 4px',borderRadius:4,border:'0.5px solid var(--border)',background:'var(--bg)'}}>
                       {['Home Loan (OO)','Home Loan (Inv)','SMSF','Commercial Property','Lease Doc','Term','Asset Finance','Trade Finance','Business Loan','Other'].map(t=><option key={t}>{t}</option>)}
                     </select></td>

@@ -54,6 +54,39 @@ const COMMISSION = [
   { month:'Mar 26', trail:5616.36, upfront:13322.25, total:18938.61, balance:47054962 },
 ]
 
+// Compute real commission from imported client data — supplements hardcoded COMMISSION array
+function computeImportedCommission(clients) {
+  const monthMap = {}
+  ;(clients || []).forEach(c => {
+    ;(c.loans || []).forEach(l => {
+      ;(l.commissionHistory || []).forEach(h => {
+        if (!monthMap[h.month]) monthMap[h.month] = { trail: 0, upfront: 0, total: 0 }
+        monthMap[h.month].trail   += h.trailComm   || 0
+        monthMap[h.month].upfront += h.upfrontComm || 0
+        monthMap[h.month].total   += h.totalPaid   || 0
+      })
+    })
+  })
+  return monthMap
+}
+
+// Merge hardcoded + real imported data — real data wins where available
+function mergeCommission(clients) {
+  const real = computeImportedCommission(clients)
+  const MO = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+
+  // Convert real map to COMMISSION format
+  const realMonths = Object.entries(real).map(([k, v]) => {
+    const [y, m] = k.split('-')
+    return { month: `${MO[parseInt(m)-1]} ${y.slice(2)}`, _key: k, trail: v.trail, upfront: v.upfront, total: v.total }
+  }).sort((a, b) => a._key.localeCompare(b._key))
+
+  // Start with hardcoded, then append any real months not already present
+  const existing = new Set(COMMISSION.map(c => c.month))
+  const extras = realMonths.filter(m => !existing.has(m.month))
+  return [...COMMISSION, ...extras]
+}
+
 // ─── Panel A: Annual Reviews ──────────────────────────────────────────────────
 // Uses c.days which is "Days Past Review" — clients sorted most overdue first
 // One row per client (their first active loan), threshold ≥ 365d, max 10
@@ -357,17 +390,18 @@ export default function Dashboard({ clients, onImport, onUpdateClients }) {
     try { return new Set(JSON.parse(localStorage.getItem('rion-radar-ticked') || '[]')) } catch { return new Set() }
   })
 
-  const latest = COMMISSION[COMMISSION.length - 1]
+  const COMM = mergeCommission(clients)
+  const latest = COMM[COMM.length - 1]
   const allLoans = clients.flatMap(c => c.loans)
   const pwTotal = clients.filter(c => c.stream === 'Private Wealth').flatMap(c => c.loans).reduce((s, l) => s + (l.balance || 0), 0)
   const commTotal = clients.filter(c => c.stream === 'Commercial').flatMap(c => c.loans).reduce((s, l) => s + (l.balance || 0), 0)
   const overdue = clients.filter(c => c.days >= 365).length
   const triggers = clients.filter(c => c.loans.some(l => l.io || l.fixed || l.balloon)).length
-  const rolling12 = rollingYTD(COMMISSION)
-  const quarters = quarterlyIncome(COMMISSION)
+  const rolling12 = rollingYTD(COMM)
+  const quarters = quarterlyIncome(COMM)
 
   const pwRatio = pwTotal / (pwTotal + commTotal || 1)
-  const last12 = COMMISSION.slice(-12)
+  const last12 = COMM.slice(-12)
   const balData = last12.map(d => ({
     month: d.month,
     private: Math.round(d.balance * pwRatio),
@@ -396,14 +430,17 @@ export default function Dashboard({ clients, onImport, onUpdateClients }) {
       const today = new Date()
       const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
       const dateStr = String(today.getDate()).padStart(2,'0') + '-' + MONTHS[today.getMonth()] + '-' + today.getFullYear()
+      const todayISO = today.toISOString().slice(0, 10)
       const noteText = '\u2713 ' + panelLabel + ' actioned \u2014 ' + dateStr
       const updated = clients.map(c => {
         if (c.name !== row.conn) return c
         // Match the specific loan: acc match preferred, then lname, then first active loan
         const hasAcc = row.acc && row.acc !== '\u2014'
         const accMatchExists = hasAcc && c.loans.some(l => l.acc === row.acc)
-        return {
+        const updatedClient = {
           ...c,
+          // If this is an Annual Review action, update the client's lastReviewDate to today
+          ...(panelKey === 'A' ? { lastReviewDate: todayISO, days: 0 } : {}),
           loans: c.loans.map((l, li) => {
             let isMatch = false
             if (accMatchExists) {
@@ -419,6 +456,7 @@ export default function Dashboard({ clients, onImport, onUpdateClients }) {
             return { ...l, actionNotes: [...(l.actionNotes || []), noteText] }
           })
         }
+        return updatedClient
       })
       onUpdateClients(updated)
     }
@@ -479,7 +517,7 @@ export default function Dashboard({ clients, onImport, onUpdateClients }) {
         <Panel>
           <div style={{ fontSize: 10, fontWeight: 500, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>Income — Last 3 Months</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
-            {COMMISSION.slice(-3).map((m, i) => {
+            {COMM.slice(-3).map((m, i) => {
               const isClawback = m.upfront < 0
               return (
                 <div key={i} style={{ background: 'var(--bg)', borderRadius: 8, padding: '10px 12px' }}>
@@ -497,7 +535,7 @@ export default function Dashboard({ clients, onImport, onUpdateClients }) {
           <div style={{ marginTop: 10, paddingTop: 10, borderTop: '0.5px solid var(--border-light)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>3-month total</span>
             <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-primary)' }}>
-              ${COMMISSION.slice(-3).reduce((s, m) => s + m.total, 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+              ${COMM.slice(-3).reduce((s, m) => s + m.total, 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
             </span>
           </div>
         </Panel>
@@ -511,14 +549,14 @@ export default function Dashboard({ clients, onImport, onUpdateClients }) {
 
             {/* Rolling 12m with prior year */}
             {(() => {
-              const prior12 = rollingYTD(COMMISSION.slice(0, -12))
+              const prior12 = rollingYTD(COMM.slice(0, -12))
               const pct = prior12 > 0 ? Math.round((rolling12 - prior12) / prior12 * 100) : null
               return (
                 <div style={{ background: 'var(--bg)', borderRadius: 8, padding: '10px 12px' }}>
                   <div style={{ fontSize: 10, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 3 }}>Rolling 12m</div>
                   <div style={{ fontSize: 12, fontWeight: 500, color: '#27ae60' }}>${Math.round(rolling12).toLocaleString()}</div>
                   <div style={{ fontSize: 9, color: 'var(--text-tertiary)', marginTop: 1 }}>
-                    T: ${Math.round(COMMISSION.slice(-12).reduce((s,m)=>s+m.trail,0)/1000)}k U: ${Math.round(COMMISSION.slice(-12).reduce((s,m)=>s+m.upfront,0)/1000)}k
+                    T: ${Math.round(COMM.slice(-12).reduce((s,m)=>s+m.trail,0)/1000)}k U: ${Math.round(COMM.slice(-12).reduce((s,m)=>s+m.upfront,0)/1000)}k
                   </div>
                   {pct !== null && (
                     <div style={{ marginTop: 4 }}>
@@ -531,7 +569,7 @@ export default function Dashboard({ clients, onImport, onUpdateClients }) {
                     <div style={{ fontSize: 9, color: 'var(--text-tertiary)', marginBottom: 2 }}>Prior 12m</div>
                     <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-secondary)' }}>${Math.round(prior12).toLocaleString()}</div>
                     <div style={{ fontSize: 9, color: 'var(--text-tertiary)', marginTop: 1 }}>
-                      T: ${Math.round(COMMISSION.slice(-24,-12).reduce((s,m)=>s+m.trail,0)/1000)}k U: ${Math.round(COMMISSION.slice(-24,-12).reduce((s,m)=>s+m.upfront,0)/1000)}k
+                      T: ${Math.round(COMM.slice(-24,-12).reduce((s,m)=>s+m.trail,0)/1000)}k U: ${Math.round(COMM.slice(-24,-12).reduce((s,m)=>s+m.upfront,0)/1000)}k
                     </div>
                   </div>
                 </div>

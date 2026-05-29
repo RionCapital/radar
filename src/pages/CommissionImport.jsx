@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react'
 import { Panel, PanelTitle, SaveBtn, CancelBtn } from '../components/UI'
+import { PIPELINE_DATA } from '../lib/pipelineData'
 
 function defaultStatementMonth() {
   const d = new Date()
@@ -29,27 +30,46 @@ export default function CommissionImport({ clients, onImport, onClose }) {
       const headerIdx = rows.findIndex(r => r.includes('Acc_number') || r.includes('Loan_Name'))
       if (headerIdx < 0) { setStatus('error'); return }
       const headers = rows[headerIdx]
-      const accIdx = headers.indexOf('Acc_number')
-      const balIdx = headers.indexOf('Loan_Balance')
-      const amtIdx = headers.indexOf('Loan_Amount')
-      const nameIdx = headers.indexOf('Loan_Name')
-      const lenderIdx = headers.indexOf('Lender')
-      const typeIdx = headers.indexOf('Comm_Type')
+      const accIdx      = headers.indexOf('Acc_number')
+      const balIdx      = headers.indexOf('Loan_Balance')
+      const amtIdx      = headers.indexOf('Loan_Amount')
+      const nameIdx     = headers.indexOf('Loan_Name')
+      const lenderIdx   = headers.indexOf('Lender')
+      const typeIdx     = headers.indexOf('Comm_Type')
+      const commIdx     = headers.indexOf('Total_Commission')  // Col G — excl GST
+      const gstIdx      = headers.indexOf('GST')               // Col H
+      const totalPaidIdx = headers.indexOf('Total_Paid')        // Col N
 
-      // Build balance map from statement (prefer TC rows)
+      // Build balance + commission map from statement
+      // For each account: use TC row for balance; SUM all rows for commission
       const stmtMap = {}
       for (let i = headerIdx + 1; i < rows.length; i++) {
         const r = rows[i]
-        const acc = String(r[accIdx] || '').trim()
-        const bal = parseFloat(r[balIdx]) || 0
-        const amt = parseFloat(r[amtIdx]) || 0
-        const name = String(r[nameIdx] || '').trim()
+        const acc   = String(r[accIdx]  || '').trim()
+        const bal   = parseFloat(r[balIdx])   || 0
+        const amt   = parseFloat(r[amtIdx])   || 0
+        const name  = String(r[nameIdx]  || '').trim()
         const lender = String(r[lenderIdx] || '').trim()
-        const ctype = String(r[typeIdx] || '').trim()
+        const ctype = String(r[typeIdx]  || '').trim()
+        const comm  = parseFloat(r[commIdx])  || 0
+        const gst   = parseFloat(r[gstIdx])   || 0
+        const paid  = parseFloat(r[totalPaidIdx]) || 0
         if (!acc || acc === 'undefined') continue
-        if (!stmtMap[acc] || ctype === 'TC') {
-          stmtMap[acc] = { acc, bal, amt, name, lender, ctype }
+
+        if (!stmtMap[acc]) {
+          stmtMap[acc] = { acc, bal, amt, name, lender, ctype, trailComm:0, upfrontComm:0, gst:0, totalPaid:0 }
         }
+        // Prefer TC row for balance details
+        if (ctype === 'TC') {
+          stmtMap[acc].bal    = bal
+          stmtMap[acc].lender = lender || stmtMap[acc].lender
+          stmtMap[acc].name   = name   || stmtMap[acc].name
+          stmtMap[acc].trailComm += comm
+        } else if (ctype === 'UC' || ctype === 'IC') {
+          stmtMap[acc].upfrontComm += comm
+        }
+        stmtMap[acc].gst      += gst
+        stmtMap[acc].totalPaid += paid
       }
 
       // Build existing acc map from clients
@@ -86,7 +106,14 @@ export default function CommissionImport({ clients, onImport, onClose }) {
         }
       })
 
-      setResults({ updates, newAccs, missing, stmtMap, total: Object.keys(stmtMap).length })
+      // Commission totals for this statement
+      const stmtTrail   = Object.values(stmtMap).reduce((s,a) => s + a.trailComm,   0)
+      const stmtUpfront = Object.values(stmtMap).reduce((s,a) => s + a.upfrontComm, 0)
+      const stmtGst     = Object.values(stmtMap).reduce((s,a) => s + a.gst,         0)
+      const stmtTotal   = Object.values(stmtMap).reduce((s,a) => s + a.totalPaid,   0)
+
+      setResults({ updates, newAccs, missing, stmtMap, total: Object.keys(stmtMap).length,
+        stmtTrail, stmtUpfront, stmtGst, stmtTotal })
       setStatus('review')
     } catch (err) {
       console.error(err)
@@ -153,7 +180,7 @@ export default function CommissionImport({ clients, onImport, onClose }) {
             </div>
 
             {/* Summary */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10, marginBottom: 18 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10, marginBottom: 12 }}>
               {[
                 { label: 'Accounts in statement', val: results.total, color: 'var(--bl)' },
                 { label: 'Balance updates found', val: results.updates.length, color: '#27ae60' },
@@ -164,6 +191,26 @@ export default function CommissionImport({ clients, onImport, onClose }) {
                   <div style={{ fontSize: 10, color: 'var(--text-secondary)', marginTop: 2 }}>{s.label}</div>
                 </div>
               ))}
+            </div>
+
+            {/* Commission totals for this statement */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8, marginBottom: 18, padding: '12px 14px', background: '#f0fdf4', borderRadius: 8, border: '0.5px solid #bbf7d0' }}>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 3 }}>Trail (excl. GST)</div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: '#22c55e' }}>${results.stmtTrail?.toFixed(2)}</div>
+              </div>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 3 }}>Upfront (excl. GST)</div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: '#3D4F6B' }}>${results.stmtUpfront?.toFixed(2)}</div>
+              </div>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 3 }}>GST</div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: '#64748b' }}>${results.stmtGst?.toFixed(2)}</div>
+              </div>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 3 }}>Total Paid</div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: '#EB99C2' }}>${results.stmtTotal?.toFixed(2)}</div>
+              </div>
             </div>
 
             {/* Balance updates */}
@@ -198,37 +245,59 @@ export default function CommissionImport({ clients, onImport, onClose }) {
             )}
 
             {/* New accounts — manual review needed */}
-            {results.newAccs.length > 0 && (
+            {results.newAccs.length > 0 && (() => {
+              // Try to find CRM matches for each new account
+              const recentSettled = PIPELINE_DATA.filter(d =>
+                d['Date Settled'] && new Date(d['Date Settled']) > new Date(Date.now() - 365*24*60*60*1000)
+              )
+              return (
               <div style={{ marginBottom: 18 }}>
                 <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
                   <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#e8a020' }} />
-                  New accounts — manual review required ({results.newAccs.length})
+                  New accounts in statement — not yet in Rradar ({results.newAccs.length})
                 </div>
                 <div style={{ background: '#fef9f0', border: '0.5px solid #f0d080', borderRadius: 8, padding: 12, marginBottom: 8 }}>
-                  <div style={{ fontSize: 11, color: '#854F0B', marginBottom: 8, lineHeight: 1.5 }}>
-                    ⚠️ These accounts appear in the statement but aren't in RION Radar. They may be new settlements or refinances replacing existing loans. Please review and add manually to the correct client.
+                  <div style={{ fontSize: 11, color: '#854F0B', marginBottom: 10, lineHeight: 1.5 }}>
+                    ⚠️ These accounts appear in the statement but aren't in Rradar. Possible CRM matches are shown where found — add them to the relevant client account.
                   </div>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
-                    <thead><tr>
-                      {['Acc. no.','Loan name','Lender','Balance','Action'].map(h => (
-                        <th key={h} style={{ padding: '5px 8px', textAlign: 'left', fontSize: 10, color: '#854F0B', fontWeight: 500, borderBottom: '0.5px solid #f0d080' }}>{h}</th>
-                      ))}
-                    </tr></thead>
-                    <tbody>
-                      {results.newAccs.map((a, i) => (
-                        <tr key={i}>
-                          <td style={{ padding: '6px 8px', fontFamily: 'DM Mono, monospace', fontSize: 10, borderBottom: '0.5px solid #faecc8' }}>{a.acc}</td>
-                          <td style={{ padding: '6px 8px', borderBottom: '0.5px solid #faecc8', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</td>
-                          <td style={{ padding: '6px 8px', borderBottom: '0.5px solid #faecc8' }}>{a.lender}</td>
-                          <td style={{ padding: '6px 8px', borderBottom: '0.5px solid #faecc8', fontWeight: 500 }}>{fmt(a.bal)}</td>
-                          <td style={{ padding: '6px 8px', borderBottom: '0.5px solid #faecc8', fontSize: 10, color: '#854F0B' }}>Add via client dashboard</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                  {results.newAccs.map((a, i) => {
+                    // Find CRM match by lender or name similarity
+                    const crmMatch = recentSettled.find(d => {
+                      const lender = (d['Lender'] || '').toLowerCase()
+                      const aLender = (a.lender || '').toLowerCase()
+                      const aName = (a.name || '').toLowerCase()
+                      const dName = (d['Full Name(s)'] || '').toLowerCase()
+                      return (lender && aLender && lender.includes(aLender.slice(0,4))) ||
+                             (aName && dName && (aName.split(' ').some(w => w.length > 3 && dName.includes(w))))
+                    })
+                    return (
+                      <div key={i} style={{ padding: '10px 12px', background: '#fff', borderRadius: 7, border: '0.5px solid #faecc8', marginBottom: 8 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: crmMatch ? 8 : 0 }}>
+                          <div>
+                            <div style={{ fontSize: 12, fontWeight: 600, color: '#2A3545' }}>{a.name || '—'}</div>
+                            <div style={{ fontSize: 10, color: '#64748b', marginTop: 2 }}>
+                              Acc: <span style={{ fontFamily: 'monospace' }}>{a.acc}</span> · {a.lender} · Balance: <strong>${Math.round(a.bal).toLocaleString()}</strong>
+                            </div>
+                            <div style={{ fontSize: 10, color: '#64748b' }}>
+                              Trail: ${(a.trailComm||0).toFixed(2)} · Upfront: ${(a.upfrontComm||0).toFixed(2)} · Total paid: ${(a.totalPaid||0).toFixed(2)}
+                            </div>
+                          </div>
+                          <div style={{ fontSize: 10, color: '#854F0B', padding: '3px 8px', background: '#fef9f0', borderRadius: 4, border: '0.5px solid #f0d080', whiteSpace: 'nowrap' }}>
+                            Add via client dashboard
+                          </div>
+                        </div>
+                        {crmMatch && (
+                          <div style={{ padding: '7px 10px', background: '#f0fdf4', borderRadius: 6, border: '0.5px solid #bbf7d0', fontSize: 11 }}>
+                            <span style={{ color: '#166534', fontWeight: 600 }}>🎯 Possible CRM match: </span>
+                            <span style={{ color: '#166534' }}>{crmMatch['Full Name(s)']} — {crmMatch['Lender']} — Settled {crmMatch['Date Settled']} — ${Number(crmMatch['Amount']||0).toLocaleString()}</span>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
-            )}
+            )})()}
 
             {/* Missing accounts */}
             {results.missing.length > 0 && (

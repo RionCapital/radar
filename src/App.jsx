@@ -18,6 +18,7 @@ import CRMTopbar from './components/CRMTopbar'
 import OpportunityScore from './pages/OpportunityScore'
 import ProjectStudio from './pages/ProjectStudio'
 import Toast from './components/Toast'
+import ClientCommission from './pages/ClientCommission'
 import EmailBuilder from './pages/EmailBuilder'
 
 function RequireAuth({ children }) {
@@ -77,20 +78,30 @@ export default function App() {
           const acc = String(l.acc || '').trim()
           if (!acc) return l
           const found = stmtMap[acc]
-          if (!found) return l  // Not in this statement — leave unchanged
+          if (!found) return l
           const newBal = found.bal ?? l.balance
-          // Always record this month in balanceHistory (deduped by month)
-          const existing = l.balanceHistory || []
-          const withoutThisMonth = existing.filter(h => h.month !== month)
-          const newHistory = [...withoutThisMonth, { month, balance: newBal }]
+          // Update loan name from statement if loan doesn't have one yet
+          const newLname = l.lname || found.name || l.lname
+          // Balance history
+          const newBalHistory = [...(l.balanceHistory||[]).filter(h=>h.month!==month), { month, balance: newBal }]
             .sort((a,b) => a.month.localeCompare(b.month))
-          return { ...l, balance: newBal, balanceHistory: newHistory }
+          // Commission history
+          const commEntry = {
+            month,
+            trailComm:   found.trailComm   || 0,
+            upfrontComm: found.upfrontComm || 0,
+            gst:         found.gst         || 0,
+            totalPaid:   found.totalPaid   || 0,
+          }
+          const newCommHistory = [...(l.commissionHistory||[]).filter(h=>h.month!==month), commEntry]
+            .sort((a,b) => a.month.localeCompare(b.month))
+          return { ...l, lname: newLname, balance: newBal, balanceHistory: newBalHistory, commissionHistory: newCommHistory }
         })
       }))
       saveClients(next)
       return next
     })
-    showToast(`Balances updated — ${month} recorded in history`)
+    showToast(`Balances & commissions updated — ${month} recorded`)
   }
 
   return (
