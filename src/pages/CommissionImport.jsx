@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Panel, PanelTitle, SaveBtn, CancelBtn } from '../components/UI'
 import { PIPELINE_DATA } from '../lib/pipelineData'
 
@@ -9,6 +10,7 @@ function defaultStatementMonth() {
 }
 
 export default function CommissionImport({ clients, onImport, onClose }) {
+  const navigate = useNavigate()
   const [status, setStatus] = useState('idle')
   const [results, setResults] = useState(null)
   const [statementMonth, setStatementMonth] = useState(defaultStatementMonth)
@@ -270,6 +272,24 @@ export default function CommissionImport({ clients, onImport, onClose }) {
                       return (lender && aLender && lender.includes(aLender.slice(0,4))) ||
                              (aName && dName && (aName.split(' ').some(w => w.length > 3 && dName.includes(w))))
                     })
+
+                    // Check if CRM-matched client already exists in Rradar
+                    const matchedClient = crmMatch
+                      ? clients.find(c => {
+                          const crmName = (crmMatch['Full Name(s)'] || '').toLowerCase()
+                          return crmName.split(' ').some(w => w.length > 2 && c.name.toLowerCase().includes(w))
+                        })
+                      : null
+
+                    function handleAdd() {
+                      onClose()
+                      if (matchedClient) {
+                        navigate(`/radar/clients/${encodeURIComponent(matchedClient.name)}`)
+                      } else {
+                        navigate('/radar/clients/add')
+                      }
+                    }
+
                     return (
                       <div key={i} style={{ padding: '10px 12px', background: '#fff', borderRadius: 7, border: '0.5px solid #faecc8', marginBottom: 8 }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: crmMatch ? 8 : 0 }}>
@@ -282,9 +302,10 @@ export default function CommissionImport({ clients, onImport, onClose }) {
                               Trail: ${(a.trailComm||0).toFixed(2)} · Upfront: ${(a.upfrontComm||0).toFixed(2)} · Total paid: ${(a.totalPaid||0).toFixed(2)}
                             </div>
                           </div>
-                          <div style={{ fontSize: 10, color: '#854F0B', padding: '3px 8px', background: '#fef9f0', borderRadius: 4, border: '0.5px solid #f0d080', whiteSpace: 'nowrap' }}>
-                            Add via client dashboard
-                          </div>
+                          <button onClick={handleAdd}
+                            style={{ fontSize: 10, color: matchedClient ? '#166534' : '#854F0B', padding: '5px 10px', background: matchedClient ? '#f0fdf4' : '#fef9f0', borderRadius: 6, border: `0.5px solid ${matchedClient ? '#bbf7d0' : '#f0d080'}`, cursor: 'pointer', whiteSpace: 'nowrap', fontWeight: 600 }}>
+                            {matchedClient ? `→ Go to ${matchedClient.name}` : '+ Add new client'}
+                          </button>
                         </div>
                         {crmMatch && (
                           <div style={{ padding: '7px 10px', background: '#f0fdf4', borderRadius: 6, border: '0.5px solid #bbf7d0', fontSize: 11 }}>
