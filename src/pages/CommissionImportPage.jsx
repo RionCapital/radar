@@ -57,7 +57,7 @@ function clearPending() {
 }
 
 // ── Unmatched row component ───────────────────────────────────────────────────
-function UnmatchedRow({ a, idx, clients, onAllocate, onDelete }) {
+function UnmatchedRow({ a, idx, clients, onAllocate, onDelete, navigate }) {
   const [expanded, setExpanded] = useState(false)
   const [searchText, setSearchText] = useState('')
   const [pickedClient, setPickedClient] = useState(null)
@@ -183,7 +183,13 @@ function UnmatchedRow({ a, idx, clients, onAllocate, onDelete }) {
               )}
             </div>
           )}
-          <button onClick={() => setExpanded(false)} style={{ marginTop: 8, fontSize: 11, color: '#94a3b8', background: 'none', border: 'none', cursor: 'pointer' }}>Cancel</button>
+          <div style={{ marginTop: 8, display: 'flex', gap: 6 }}>
+            <button onClick={() => navigate('/radar/clients/add')}
+              style={{ flex: 1, padding: '7px', borderRadius: 7, border: `1px solid ${NAVY}`, color: NAVY, background: '#fff', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}>
+              + Create new client
+            </button>
+            <button onClick={() => setExpanded(false)} style={{ padding: '7px 14px', borderRadius: 7, border: '0.5px solid #e2e8f0', color: '#64748b', background: '#fff', fontSize: 11, cursor: 'pointer' }}>Cancel</button>
+          </div>
         </div>
       )}
     </div>
@@ -526,7 +532,8 @@ function CommissionImportPageInner({ clients, onImport }) {
               {pending.unmatched.map((a, i) => (
                 <UnmatchedRow key={i} a={a} idx={i} clients={clients}
                   onAllocate={markAllocated}
-                  onDelete={deleteAccount} />
+                  onDelete={deleteAccount}
+                  navigate={navigate} />
               ))}
             </div>
           )}
