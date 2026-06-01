@@ -196,7 +196,7 @@ function BarChart({ data, keys, colors, title, formatY }) {
           const x = 40 + i * (barW + 3); let yOff = h
           return <g key={i}>
             {keys.map((k, ki) => {
-              const val = d[k] || 0, bh = (val / maxVal) * h; yOff -= bh
+              const val = Math.max(0, d[k] || 0), bh = maxVal > 0 ? (val / maxVal) * h : 0; yOff -= bh
               return <rect key={ki} x={x} y={yOff} width={barW} height={bh} fill={colors[ki]} rx={1.5}><title>{`${d.month}: $${val.toLocaleString()}`}</title></rect>
             })}
             <text x={x + barW / 2} y={h + 14} textAnchor="middle" fontSize={8} fill="var(--text-secondary)">{d.month}</text>
