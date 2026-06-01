@@ -1,12 +1,148 @@
 import React, { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Panel, PanelTitle, SaveBtn, CancelBtn } from '../components/UI'
-import { PIPELINE_DATA } from '../lib/pipelineData'
 
 function defaultStatementMonth() {
   const d = new Date()
   d.setMonth(d.getMonth() - 1) // default to previous month
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`
+}
+
+// ── Unmatched Accounts Component ─────────────────────────────────────────────
+function UnmatchedAccounts({ accounts, clients, onClose, navigate, onImport, stmtMap, statementMonth }) {
+  const [expanded, setExpanded] = useState({})   // { idx: 'new' | 'existing' }
+  const [search, setSearch] = useState({})        // { idx: searchText }
+  const [picked, setPicked] = useState({})        // { idx: clientName }
+  const [replaceMode, setReplaceMode] = useState({}) // { idx: 'new' | loanIndex }
+
+  const fmt = n => n != null ? '$' + Math.round(Math.abs(n)).toLocaleString() : '—'
+  const inp = { fontSize: 11, padding: '5px 8px', border: '0.5px solid #e2e8f0', borderRadius: 5, width: '100%', boxSizing: 'border-box', fontFamily: 'inherit' }
+
+  function handleGoToClient(clientName, loanIdxToDischarge, acc) {
+    // If replacing a loan, mark it discharged before navigating
+    if (loanIdxToDischarge !== undefined && loanIdxToDischarge !== 'new') {
+      const client = clients.find(c => c.name === clientName)
+      if (client) {
+        const updatedLoans = client.loans.map((l, i) =>
+          i === loanIdxToDischarge ? { ...l, closed: true, closedDate: new Date().toISOString().slice(0, 10) } : l
+        )
+        onImport([], stmtMap, statementMonth) // commit any pending imports first
+        // Navigate with a hint to add the loan
+      }
+    }
+    onClose()
+    navigate(`/radar/clients/${encodeURIComponent(clientName)}`)
+  }
+
+  return (
+    <div style={{ marginBottom: 18 }}>
+      <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+        <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#e8a020' }} />
+        Unallocated accounts — manual action required ({accounts.length})
+      </div>
+      <div style={{ background: '#fef9f0', border: '0.5px solid #f0d080', borderRadius: 8, padding: 12, marginBottom: 8 }}>
+        <div style={{ fontSize: 11, color: '#854F0B', marginBottom: 10, lineHeight: 1.5 }}>
+          These accounts appear in the statement but aren't in Rradar. No automatic allocation has been attempted — allocate each manually below.
+        </div>
+        {accounts.map((a, i) => {
+          const mode = expanded[i]
+          const clientName = picked[i]
+          const client = clients.find(c => c.name === clientName)
+          const searchText = search[i] || ''
+          const filteredClients = searchText.length > 1
+            ? clients.filter(c => c.name.toLowerCase().includes(searchText.toLowerCase())).slice(0, 8)
+            : []
+
+          return (
+            <div key={i} style={{ background: '#fff', borderRadius: 7, border: '0.5px solid #faecc8', marginBottom: 8, overflow: 'hidden' }}>
+              {/* Account summary row */}
+              <div style={{ padding: '10px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: '#2A3545' }}>{a.name || '—'}</div>
+                  <div style={{ fontSize: 10, color: '#64748b', marginTop: 2 }}>
+                    Acc: <span style={{ fontFamily: 'monospace' }}>{a.acc}</span> · {a.lender} · Balance: <strong>{fmt(a.bal)}</strong>
+                  </div>
+                  <div style={{ fontSize: 10, color: '#64748b' }}>
+                    Trail: ${(a.trailComm||0).toFixed(2)} · Upfront: ${(a.upfrontComm||0).toFixed(2)} · Total paid: ${(a.totalPaid||0).toFixed(2)}
+                  </div>
+                </div>
+                {!mode && (
+                  <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                    <button onClick={() => setExpanded(p => ({ ...p, [i]: 'existing' }))}
+                      style={{ fontSize: 10, padding: '5px 10px', borderRadius: 6, border: '1px solid #3D4F6B', color: '#3D4F6B', background: '#fff', cursor: 'pointer', fontWeight: 600 }}>
+                      Add to existing client
+                    </button>
+                    <button onClick={() => { onClose(); navigate('/radar/clients/add') }}
+                      style={{ fontSize: 10, padding: '5px 10px', borderRadius: 6, border: 'none', background: '#3D4F6B', color: '#fff', cursor: 'pointer', fontWeight: 600 }}>
+                      + New client
+                    </button>
+                  </div>
+                )}
+                {mode && (
+                  <button onClick={() => { setExpanded(p => ({ ...p, [i]: null })); setPicked(p => ({ ...p, [i]: null })); setReplaceMode(p => ({ ...p, [i]: null })) }}
+                    style={{ fontSize: 11, color: '#94a3b8', background: 'none', border: 'none', cursor: 'pointer' }}>✕</button>
+                )}
+              </div>
+
+              {/* Add to existing client flow */}
+              {mode === 'existing' && (
+                <div style={{ padding: '0 12px 12px', borderTop: '0.5px solid #faecc8' }}>
+                  <div style={{ fontSize: 10, color: '#64748b', margin: '10px 0 5px', fontWeight: 600 }}>Search for client:</div>
+                  <input style={inp} placeholder="Type client name..." value={searchText}
+                    onChange={e => { setSearch(p => ({ ...p, [i]: e.target.value })); setPicked(p => ({ ...p, [i]: null })); setReplaceMode(p => ({ ...p, [i]: null })) }} />
+                  {filteredClients.length > 0 && !clientName && (
+                    <div style={{ border: '0.5px solid #e2e8f0', borderRadius: 5, marginTop: 2, overflow: 'hidden' }}>
+                      {filteredClients.map((c, ci) => (
+                        <div key={ci} onClick={() => { setPicked(p => ({ ...p, [i]: c.name })); setSearch(p => ({ ...p, [i]: c.name })) }}
+                          style={{ padding: '6px 10px', fontSize: 11, cursor: 'pointer', borderBottom: ci < filteredClients.length-1 ? '0.5px solid #f1f5f9' : 'none', background: '#fff' }}
+                          onMouseOver={e => e.currentTarget.style.background = '#f8fafc'}
+                          onMouseOut={e => e.currentTarget.style.background = '#fff'}>
+                          {c.name} <span style={{ color: '#94a3b8', fontSize: 10 }}>· {c.loans?.length || 0} loans</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Client picked — show loan options */}
+                  {clientName && client && (
+                    <div style={{ marginTop: 10 }}>
+                      <div style={{ fontSize: 10, color: '#64748b', marginBottom: 6, fontWeight: 600 }}>
+                        How to add to <strong>{clientName}</strong>?
+                      </div>
+                      {/* Option 1: New loan */}
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderRadius: 6, border: `1.5px solid ${replaceMode[i] === 'new' ? '#3D4F6B' : '#e2e8f0'}`, background: replaceMode[i] === 'new' ? '#f0f4f8' : '#fff', cursor: 'pointer', marginBottom: 6 }}>
+                        <input type="radio" name={`replace-${i}`} checked={replaceMode[i] === 'new'} onChange={() => setReplaceMode(p => ({ ...p, [i]: 'new' }))} />
+                        <div>
+                          <div style={{ fontSize: 11, fontWeight: 600, color: '#2A3545' }}>Add as new loan</div>
+                          <div style={{ fontSize: 10, color: '#64748b' }}>Adds {a.acc} as an additional loan to this client's portfolio</div>
+                        </div>
+                      </label>
+                      {/* Option 2: Replace existing loan */}
+                      {client.loans?.filter(l => !l.closed).map((l, li) => (
+                        <label key={li} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderRadius: 6, border: `1.5px solid ${replaceMode[i] === li ? '#e8a020' : '#e2e8f0'}`, background: replaceMode[i] === li ? '#fffbeb' : '#fff', cursor: 'pointer', marginBottom: 6 }}>
+                          <input type="radio" name={`replace-${i}`} checked={replaceMode[i] === li} onChange={() => setReplaceMode(p => ({ ...p, [i]: li }))} />
+                          <div>
+                            <div style={{ fontSize: 11, fontWeight: 600, color: '#2A3545' }}>Replace: {l.lname || l.acc || `Loan ${li+1}`}</div>
+                            <div style={{ fontSize: 10, color: '#64748b' }}>{l.bank} · {l.rpmt} · Balance ${Math.round(l.balance||0).toLocaleString()} — will be marked discharged</div>
+                          </div>
+                        </label>
+                      ))}
+                      {replaceMode[i] !== undefined && replaceMode[i] !== null && (
+                        <button onClick={() => handleGoToClient(clientName, replaceMode[i], a.acc)}
+                          style={{ marginTop: 8, width: '100%', padding: '8px', borderRadius: 7, border: 'none', background: replaceMode[i] === 'new' ? '#3D4F6B' : '#e8a020', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                          {replaceMode[i] === 'new' ? `→ Go to ${clientName} — add new loan` : `→ Go to ${clientName} — replace loan`}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
 }
 
 export default function CommissionImport({ clients, onImport, onClose }) {
@@ -246,79 +382,18 @@ export default function CommissionImport({ clients, onImport, onClose }) {
               </div>
             )}
 
-            {/* New accounts — manual review needed */}
-            {results.newAccs.length > 0 && (() => {
-              // Try to find CRM matches for each new account
-              const recentSettled = PIPELINE_DATA.filter(d =>
-                d['Date Settled'] && new Date(d['Date Settled']) > new Date(Date.now() - 365*24*60*60*1000)
-              )
-              return (
-              <div style={{ marginBottom: 18 }}>
-                <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#e8a020' }} />
-                  New accounts in statement — not yet in Rradar ({results.newAccs.length})
-                </div>
-                <div style={{ background: '#fef9f0', border: '0.5px solid #f0d080', borderRadius: 8, padding: 12, marginBottom: 8 }}>
-                  <div style={{ fontSize: 11, color: '#854F0B', marginBottom: 10, lineHeight: 1.5 }}>
-                    ⚠️ These accounts appear in the statement but aren't in Rradar. Possible CRM matches are shown where found — add them to the relevant client account.
-                  </div>
-                  {results.newAccs.map((a, i) => {
-                    // Find CRM match by lender or name similarity
-                    const crmMatch = recentSettled.find(d => {
-                      const lender = (d['Lender'] || '').toLowerCase()
-                      const aLender = (a.lender || '').toLowerCase()
-                      const aName = (a.name || '').toLowerCase()
-                      const dName = (d['Full Name(s)'] || '').toLowerCase()
-                      return (lender && aLender && lender.includes(aLender.slice(0,4))) ||
-                             (aName && dName && (aName.split(' ').some(w => w.length > 3 && dName.includes(w))))
-                    })
-
-                    // Check if CRM-matched client already exists in Rradar
-                    const matchedClient = crmMatch
-                      ? clients.find(c => {
-                          const crmName = (crmMatch['Full Name(s)'] || '').toLowerCase()
-                          return crmName.split(' ').some(w => w.length > 2 && c.name.toLowerCase().includes(w))
-                        })
-                      : null
-
-                    function handleAdd() {
-                      onClose()
-                      if (matchedClient) {
-                        navigate(`/radar/clients/${encodeURIComponent(matchedClient.name)}`)
-                      } else {
-                        navigate('/radar/clients/add')
-                      }
-                    }
-
-                    return (
-                      <div key={i} style={{ padding: '10px 12px', background: '#fff', borderRadius: 7, border: '0.5px solid #faecc8', marginBottom: 8 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: crmMatch ? 8 : 0 }}>
-                          <div>
-                            <div style={{ fontSize: 12, fontWeight: 600, color: '#2A3545' }}>{a.name || '—'}</div>
-                            <div style={{ fontSize: 10, color: '#64748b', marginTop: 2 }}>
-                              Acc: <span style={{ fontFamily: 'monospace' }}>{a.acc}</span> · {a.lender} · Balance: <strong>${Math.round(a.bal).toLocaleString()}</strong>
-                            </div>
-                            <div style={{ fontSize: 10, color: '#64748b' }}>
-                              Trail: ${(a.trailComm||0).toFixed(2)} · Upfront: ${(a.upfrontComm||0).toFixed(2)} · Total paid: ${(a.totalPaid||0).toFixed(2)}
-                            </div>
-                          </div>
-                          <button onClick={handleAdd}
-                            style={{ fontSize: 10, color: matchedClient ? '#166534' : '#854F0B', padding: '5px 10px', background: matchedClient ? '#f0fdf4' : '#fef9f0', borderRadius: 6, border: `0.5px solid ${matchedClient ? '#bbf7d0' : '#f0d080'}`, cursor: 'pointer', whiteSpace: 'nowrap', fontWeight: 600 }}>
-                            {matchedClient ? `→ Go to ${matchedClient.name}` : '+ Add new client'}
-                          </button>
-                        </div>
-                        {crmMatch && (
-                          <div style={{ padding: '7px 10px', background: '#f0fdf4', borderRadius: 6, border: '0.5px solid #bbf7d0', fontSize: 11 }}>
-                            <span style={{ color: '#166534', fontWeight: 600 }}>🎯 Possible CRM match: </span>
-                            <span style={{ color: '#166534' }}>{crmMatch['Full Name(s)']} — {crmMatch['Lender']} — Settled {crmMatch['Date Settled']} — ${Number(crmMatch['Amount']||0).toLocaleString()}</span>
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            )})()}
+            {/* New accounts — manual allocation */}
+            {results.newAccs.length > 0 && (
+              <UnmatchedAccounts
+                accounts={results.newAccs}
+                clients={clients}
+                onClose={onClose}
+                navigate={navigate}
+                onImport={onImport}
+                stmtMap={results.stmtMap}
+                statementMonth={statementMonth}
+              />
+            )}
 
             {/* Missing accounts */}
             {results.missing.length > 0 && (
