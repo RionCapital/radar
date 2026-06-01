@@ -89,13 +89,13 @@ export default function App() {
     saveClients(updated)
   }
 
-  function handleImport(updates, stmtMap, statementMonth) {
+  function handleImport(updates, stmtMap, statementMonth, allocations = []) {
     const month = statementMonth || (() => {
       const d = new Date(); d.setMonth(d.getMonth()-1)
       return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`
     })()
     setClients(prev => {
-      const next = prev.map(c => ({
+      let next = prev.map(c => ({
         ...c,
         loans: c.loans.map(l => {
           const acc = String(l.acc || '').trim()
@@ -103,12 +103,9 @@ export default function App() {
           const found = stmtMap[acc]
           if (!found) return l
           const newBal = found.bal ?? l.balance
-          // Update loan name from statement if loan doesn't have one yet
           const newLname = l.lname || found.name || l.lname
-          // Balance history
           const newBalHistory = [...(l.balanceHistory||[]).filter(h=>h.month!==month), { month, balance: newBal }]
             .sort((a,b) => a.month.localeCompare(b.month))
-          // Commission history
           const commEntry = {
             month,
             trailComm:   found.trailComm   || 0,
@@ -121,10 +118,31 @@ export default function App() {
           return { ...l, lname: newLname, balance: newBal, balanceHistory: newBalHistory, commissionHistory: newCommHistory }
         })
       }))
+
+      // Process new loan allocations from unmatched accounts
+      allocations.forEach(({ clientName, mode, newLoan }) => {
+        next = next.map(c => {
+          if (c.name !== clientName) return c
+          let loans = [...c.loans]
+          if (mode === 'new') {
+            loans = [...loans, newLoan]
+          } else if (typeof mode === 'number') {
+            // Discharge the replaced loan, add new one
+            loans = loans.map((l, i) => i === mode
+              ? { ...l, closed: true, closedDate: new Date().toISOString().slice(0, 10) }
+              : l
+            )
+            loans = [...loans, newLoan]
+          }
+          return { ...c, loans }
+        })
+      })
+
       saveClients(next)
       return next
     })
-    showToast(`Balances & commissions updated — ${month} recorded`)
+    const totalUpdated = updates.length + allocations.length
+    showToast(`Import applied — ${totalUpdated} accounts updated for ${month}`)
   }
 
   return (

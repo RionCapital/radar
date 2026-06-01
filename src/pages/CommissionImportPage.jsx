@@ -57,33 +57,27 @@ function clearPending() {
 }
 
 // ── Unmatched row component ───────────────────────────────────────────────────
-function UnmatchedRow({ a, idx, clients, onAllocate, onDelete, navigate, onClose }) {
+function UnmatchedRow({ a, idx, clients, onAllocate, onDelete }) {
   const [expanded, setExpanded] = useState(false)
   const [searchText, setSearchText] = useState('')
   const [pickedClient, setPickedClient] = useState(null)
   const [replaceMode, setReplaceMode] = useState(null)
 
   const inp = { fontSize: 11, padding: '5px 8px', border: '0.5px solid #e2e8f0', borderRadius: 5, width: '100%', boxSizing: 'border-box', fontFamily: 'inherit', background: '#fff' }
-
   const filtered = searchText.length > 1
     ? clients.filter(c => c.name.toLowerCase().includes(searchText.toLowerCase())).slice(0, 8)
     : []
-
   const client = clients.find(c => c.name === pickedClient)
 
-  function handleGo() {
-    onAllocate(idx)  // mark as in-progress / pending allocation
-    onClose()
-    navigate(`/radar/clients/${encodeURIComponent(pickedClient)}`)
+  function confirmAllocation() {
+    onAllocate(idx, { clientName: pickedClient, mode: replaceMode })
+    setExpanded(false)
   }
 
   if (a.status === 'deleted') {
     return (
       <div style={{ padding: '8px 12px', background: '#f8fafc', borderRadius: 7, border: '0.5px solid #e2e8f0', marginBottom: 6, opacity: 0.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div>
-          <span style={{ fontSize: 11, color: '#94a3b8', textDecoration: 'line-through' }}>{a.name} — {a.acc}</span>
-          <span style={{ fontSize: 10, color: '#94a3b8', marginLeft: 8 }}>Removed</span>
-        </div>
+        <span style={{ fontSize: 11, color: '#94a3b8', textDecoration: 'line-through' }}>{a.name} — {a.acc} — Removed</span>
         <button onClick={() => onDelete(idx, false)} style={{ fontSize: 10, color: '#64748b', background: 'none', border: 'none', cursor: 'pointer' }}>Undo</button>
       </div>
     )
@@ -94,16 +88,15 @@ function UnmatchedRow({ a, idx, clients, onAllocate, onDelete, navigate, onClose
       <div style={{ padding: '8px 12px', background: '#f0fdf4', borderRadius: 7, border: '0.5px solid #bbf7d0', marginBottom: 6, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
           <span style={{ fontSize: 11, fontWeight: 600, color: '#166534' }}>✓ {a.name}</span>
-          <span style={{ fontSize: 10, color: '#166534', marginLeft: 8 }}>Acc: {a.acc} · {a.lender} · {fmt(a.bal)} — allocated</span>
+          <span style={{ fontSize: 10, color: '#166534', marginLeft: 8 }}>{a.acc} · {fmt(a.bal)} → {a.allocation?.clientName} · {a.allocation?.mode === 'new' ? 'new loan' : 'replaces existing loan'}</span>
         </div>
-        <span style={{ fontSize: 10, color: '#22c55e', fontWeight: 600 }}>Ready</span>
+        <button onClick={() => onAllocate(idx, null)} style={{ fontSize: 10, color: '#64748b', background: 'none', border: 'none', cursor: 'pointer' }}>Edit</button>
       </div>
     )
   }
 
   return (
-    <div style={{ background: '#fff', borderRadius: 7, border: `1.5px solid ${expanded ? '#3D4F6B' : '#faecc8'}`, marginBottom: 6, overflow: 'hidden' }}>
-      {/* Summary row */}
+    <div style={{ background: '#fff', borderRadius: 7, border: `1.5px solid ${expanded ? NAVY : '#faecc8'}`, marginBottom: 6, overflow: 'hidden' }}>
       <div style={{ padding: '10px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 12, fontWeight: 600, color: '#2A3545' }}>{a.name || '—'}</div>
@@ -128,26 +121,21 @@ function UnmatchedRow({ a, idx, clients, onAllocate, onDelete, navigate, onClose
         </div>
       </div>
 
-      {/* Allocation flow */}
       {expanded && (
         <div style={{ padding: '0 12px 12px', borderTop: '0.5px solid #e2e8f0' }}>
-          <div style={{ fontSize: 10, color: '#64748b', margin: '10px 0 5px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-            Add to existing client:
-          </div>
-          <input style={inp} placeholder="Type client name to search..."
+          <div style={{ fontSize: 10, color: '#64748b', margin: '10px 0 5px', fontWeight: 600 }}>Search for client:</div>
+          <input style={inp} placeholder="Type client name..."
             value={searchText}
             onChange={e => { setSearchText(e.target.value); setPickedClient(null); setReplaceMode(null) }} />
 
           {filtered.length > 0 && !pickedClient && (
             <div style={{ border: '0.5px solid #e2e8f0', borderRadius: 5, marginTop: 2, background: '#fff' }}>
               {filtered.map((c, ci) => (
-                <div key={ci}
-                  onClick={() => { setPickedClient(c.name); setSearchText(c.name) }}
+                <div key={ci} onClick={() => { setPickedClient(c.name); setSearchText(c.name) }}
                   style={{ padding: '7px 10px', fontSize: 11, cursor: 'pointer', borderBottom: ci < filtered.length-1 ? '0.5px solid #f1f5f9' : 'none' }}
                   onMouseOver={e => e.currentTarget.style.background = '#f8fafc'}
                   onMouseOut={e => e.currentTarget.style.background = 'transparent'}>
-                  {c.name}
-                  <span style={{ color: '#94a3b8', fontSize: 10 }}> · {c.loans?.filter(l=>!l.closed).length || 0} active loans</span>
+                  {c.name}<span style={{ color: '#94a3b8', fontSize: 10 }}> · {c.loans?.filter(l=>!l.closed).length || 0} active loans</span>
                 </div>
               ))}
             </div>
@@ -158,64 +146,50 @@ function UnmatchedRow({ a, idx, clients, onAllocate, onDelete, navigate, onClose
               <div style={{ fontSize: 10, color: '#64748b', marginBottom: 8, fontWeight: 600 }}>
                 How to add to <strong style={{ color: NAVY }}>{pickedClient}</strong>?
               </div>
-              {/* Add as new loan */}
               <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '8px 10px', borderRadius: 6, border: `1.5px solid ${replaceMode === 'new' ? NAVY : '#e2e8f0'}`, background: replaceMode === 'new' ? '#f0f4f8' : '#fff', cursor: 'pointer', marginBottom: 6 }}>
                 <input type="radio" name={`mode-${idx}`} style={{ marginTop: 2 }} checked={replaceMode === 'new'} onChange={() => setReplaceMode('new')} />
                 <div>
                   <div style={{ fontSize: 11, fontWeight: 600, color: '#2A3545' }}>Add as new loan</div>
-                  <div style={{ fontSize: 10, color: '#64748b' }}>Account {a.acc} will be added as an additional loan in this client's portfolio</div>
+                  <div style={{ fontSize: 10, color: '#64748b' }}>Account {a.acc} added as an additional loan</div>
                 </div>
               </label>
 
-              {/* Replace existing loan options */}
               {client.loans?.filter(l => !l.closed).length > 0 && (
                 <>
-                  <div style={{ fontSize: 10, color: '#94a3b8', margin: '8px 0 5px', fontStyle: 'italic' }}>
-                    — or replace an existing loan (marks it as discharged) —
-                  </div>
-                  {client.loans.filter(l => !l.closed).map((l, li) => (
-                    <label key={li} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '8px 10px', borderRadius: 6, border: `1.5px solid ${replaceMode === li ? '#e8a020' : '#e2e8f0'}`, background: replaceMode === li ? '#fffbeb' : '#fff', cursor: 'pointer', marginBottom: 6 }}>
-                      <input type="radio" name={`mode-${idx}`} style={{ marginTop: 2 }} checked={replaceMode === li} onChange={() => setReplaceMode(li)} />
-                      <div>
-                        <div style={{ fontSize: 11, fontWeight: 600, color: '#2A3545' }}>
-                          Replace: {l.lname || l.acc || `Loan ${li+1}`}
-                          <span style={{ fontSize: 10, color: '#e8a020', fontWeight: 400, marginLeft: 6 }}>→ marked discharged</span>
+                  <div style={{ fontSize: 10, color: '#94a3b8', margin: '8px 0 5px', fontStyle: 'italic' }}>— or replace an existing loan (marks it discharged) —</div>
+                  {client.loans.filter(l => !l.closed).map((l, li) => {
+                    const realIdx = client.loans.indexOf(l)
+                    return (
+                      <label key={li} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '8px 10px', borderRadius: 6, border: `1.5px solid ${replaceMode === realIdx ? '#e8a020' : '#e2e8f0'}`, background: replaceMode === realIdx ? '#fffbeb' : '#fff', cursor: 'pointer', marginBottom: 6 }}>
+                        <input type="radio" name={`mode-${idx}`} style={{ marginTop: 2 }} checked={replaceMode === realIdx} onChange={() => setReplaceMode(realIdx)} />
+                        <div>
+                          <div style={{ fontSize: 11, fontWeight: 600, color: '#2A3545' }}>
+                            Replace: {l.lname || l.acc || `Loan ${li+1}`}
+                            <span style={{ fontSize: 10, color: '#e8a020', fontWeight: 400, marginLeft: 6 }}>→ marked discharged</span>
+                          </div>
+                          <div style={{ fontSize: 10, color: '#64748b' }}>{l.bank} · {l.rpmt} · {fmt(l.balance)}</div>
                         </div>
-                        <div style={{ fontSize: 10, color: '#64748b' }}>
-                          {l.bank} · {l.rpmt} · Balance {fmt(l.balance)} · Acc: {l.acc}
-                        </div>
-                      </div>
-                    </label>
-                  ))}
+                      </label>
+                    )
+                  })}
                 </>
               )}
 
               {replaceMode !== null && (
-                <button onClick={handleGo}
+                <button onClick={confirmAllocation}
                   style={{ marginTop: 8, width: '100%', padding: '9px', borderRadius: 7, border: 'none', background: replaceMode === 'new' ? NAVY : '#e8a020', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
-                  {replaceMode === 'new'
-                    ? `→ Go to ${pickedClient} — add new loan`
-                    : `→ Go to ${pickedClient} — replace & discharge loan`}
+                  ✓ Confirm — {replaceMode === 'new' ? `add new loan to ${pickedClient}` : `replace & discharge in ${pickedClient}`}
                 </button>
               )}
             </div>
           )}
-
-          <div style={{ marginTop: 10, display: 'flex', gap: 6 }}>
-            <button onClick={() => { onClose(); navigate('/radar/clients/add') }}
-              style={{ flex: 1, padding: '8px', borderRadius: 7, border: `1px solid ${NAVY}`, color: NAVY, background: '#fff', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}>
-              + Create new client
-            </button>
-            <button onClick={() => setExpanded(false)}
-              style={{ padding: '8px 14px', borderRadius: 7, border: '0.5px solid #e2e8f0', color: '#64748b', background: '#fff', fontSize: 11, cursor: 'pointer' }}>
-              Cancel
-            </button>
-          </div>
+          <button onClick={() => setExpanded(false)} style={{ marginTop: 8, fontSize: 11, color: '#94a3b8', background: 'none', border: 'none', cursor: 'pointer' }}>Cancel</button>
         </div>
       )}
     </div>
   )
 }
+
 
 // ── Main Page (wrapped in error boundary) ────────────────────────────────────
 function CommissionImportPageInner({ clients, onImport }) {
@@ -352,8 +326,14 @@ function CommissionImportPageInner({ clients, onImport }) {
     }
   }
 
-  function markAllocated(idx) {
-    const updated = { ...pending, unmatched: pending.unmatched.map((a, i) => i === idx ? { ...a, status: 'in-progress' } : a) }
+  function markAllocated(idx, allocation) {
+    const updated = {
+      ...pending,
+      unmatched: pending.unmatched.map((a, i) => i === idx
+        ? { ...a, status: allocation ? 'allocated' : 'pending', allocation: allocation || null }
+        : a
+      )
+    }
     setPending(updated)
     savePending(updated)
   }
@@ -367,7 +347,34 @@ function CommissionImportPageInner({ clients, onImport }) {
   function applyImport() {
     if (!pending) return
     setApplying(true)
-    onImport(pending.matched, pending.stmtMap, pending.statementMonth || statementMonth)
+    const month = pending.statementMonth || statementMonth
+
+    // Build list of new loan allocations from unmatched accounts
+    const allocations = pending.unmatched
+      .filter(a => a.status === 'allocated' && a.allocation)
+      .map(a => ({
+        clientName: a.allocation.clientName,
+        mode: a.allocation.mode,  // 'new' or loan index to discharge
+        newLoan: {
+          acc: a.acc,
+          lname: a.name || '',
+          bank: a.lender || '',
+          balance: a.bal || 0,
+          amount: a.bal || 0,
+          rate: 0,
+          rpmt: 'P&I',
+          rateType: 'Var',
+          type: 'Home Loan (OO)',
+          term: 30,
+          settled: new Date().toISOString().slice(0, 10),
+          closed: false,
+          commissionHistory: [{ month, trailComm: a.trailComm||0, upfrontComm: a.upfrontComm||0, gst: a.gst||0, totalPaid: a.totalPaid||0 }],
+          balanceHistory: [{ month, balance: a.bal||0 }]
+        }
+      }))
+
+    // Pass allocations alongside matched updates
+    onImport(pending.matched, pending.stmtMap, month, allocations)
     clearPending()
     setPending(null)
     setStatus('done')
@@ -519,9 +526,7 @@ function CommissionImportPageInner({ clients, onImport }) {
               {pending.unmatched.map((a, i) => (
                 <UnmatchedRow key={i} a={a} idx={i} clients={clients}
                   onAllocate={markAllocated}
-                  onDelete={deleteAccount}
-                  navigate={navigate}
-                  onClose={() => {}} />
+                  onDelete={deleteAccount} />
               ))}
             </div>
           )}
