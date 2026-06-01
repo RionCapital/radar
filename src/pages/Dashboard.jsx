@@ -502,10 +502,10 @@ export default function Dashboard({ clients, onImport, onUpdateClients }) {
           {stat('Accounts', allLoans.length)}
           {stat('Needs Attention', overdue, '#e8a020')}
           {stat('Active Triggers', triggers, 'var(--pk)')}
-          <button onClick={() => setShowImport(true)} style={{ width: '100%', marginTop: 12, padding: '7px', borderRadius: 7, border: '1.5px solid var(--pk)', background: 'transparent', color: 'var(--pk)', fontWeight: 500, fontSize: 11, cursor: 'pointer' }}
+          <button onClick={() => navigate('/radar/import')} style={{ width: '100%', marginTop: 12, padding: '7px', borderRadius: 7, border: '1.5px solid var(--pk)', background: 'transparent', color: 'var(--pk)', fontWeight: 500, fontSize: 11, cursor: 'pointer' }}
             onMouseOver={e => { e.currentTarget.style.background = 'var(--pk)'; e.currentTarget.style.color = '#fff' }}
             onMouseOut={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--pk)' }}>
-            ↑ Import statement
+            {hasPendingImport ? '⚠ Resume import' : '↑ Import statement'}
           </button>
         </Panel>
       </div>
