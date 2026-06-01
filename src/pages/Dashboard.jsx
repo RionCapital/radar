@@ -1,9 +1,8 @@
 import React, { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { totalBal, fmt } from '../lib/data'
 import { fmtDate, rollingYTD, quarterlyIncome, expiryBadge, daysUntil } from '../lib/dateUtils'
 import { Panel, PanelTitle, DayBadge } from '../components/UI'
-import CommissionImport from './CommissionImport'
+import { useNavigate } from 'react-router-dom'
 
 const COMMISSION = [
   { month:'Jun 22', trail:98.52, upfront:4018.98, total:4117.5, balance:1629518 },
@@ -385,6 +384,7 @@ function RadarTable({ title, panelKey, rows, navigate, onTick, showExpiry, showL
 export default function Dashboard({ clients, onImport, onUpdateClients }) {
   const navigate = useNavigate()
   const [showImport, setShowImport] = useState(false)
+  const hasPendingImport = !!localStorage.getItem('rion-pending-import')
   // Ticked rows stored as Set of unique keys: `${panelKey}-${conn}-${acc}`
   const [tickedKeys, setTickedKeys] = useState(() => {
     try { return new Set(JSON.parse(localStorage.getItem('rion-radar-ticked') || '[]')) } catch { return new Set() }
@@ -663,7 +663,7 @@ export default function Dashboard({ clients, onImport, onUpdateClients }) {
         />
       </div>
 
-      {showImport && <CommissionImport clients={clients} onImport={(u, m) => { onImport && onImport(u, m); setShowImport(false) }} onClose={() => setShowImport(false)} />}
+
     </div>
   )
 }
