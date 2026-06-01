@@ -5,6 +5,29 @@ const STORAGE_KEY = 'rion-pending-import'
 const NAVY = '#3D4F6B'
 const PINK = '#EB99C2'
 
+// Error boundary so crashes show a message instead of blank page
+class ErrorBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { error: null } }
+  static getDerivedStateFromError(e) { return { error: e } }
+  render() {
+    if (this.state.error) {
+      localStorage.removeItem(STORAGE_KEY) // clear any bad state
+      return (
+        <div style={{ padding: 32, maxWidth: 600, margin: '40px auto', background: '#fff', borderRadius: 10, border: '1px solid #fecaca' }}>
+          <div style={{ fontSize: 16, fontWeight: 700, color: '#dc2626', marginBottom: 8 }}>Something went wrong loading the import page</div>
+          <div style={{ fontSize: 12, color: '#64748b', marginBottom: 16 }}>Any cached import data has been cleared. Please try again.</div>
+          <pre style={{ fontSize: 10, color: '#94a3b8', background: '#f8fafc', padding: 10, borderRadius: 6, overflow: 'auto' }}>{this.state.error?.message}</pre>
+          <button onClick={() => { this.setState({ error: null }); window.location.reload() }}
+            style={{ marginTop: 12, padding: '8px 16px', borderRadius: 7, border: 'none', background: NAVY, color: '#fff', cursor: 'pointer', fontSize: 12 }}>
+            Reload
+          </button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
+
 const fmt  = n => n != null ? '$' + Math.round(Math.abs(n)).toLocaleString() : '—'
 const fmtD = n => n != null ? '$' + Math.abs(n).toFixed(2) : '—'
 const diffColor = n => n < 0 ? '#22c55e' : n > 0 ? '#c0392b' : '#94a3b8'
@@ -12,7 +35,19 @@ const diffLabel = n => n < 0 ? `▼ ${fmt(n)}` : n > 0 ? `▲ ${fmt(n)}` : '—'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function loadPending() {
-  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null') } catch { return null }
+  try {
+    const data = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null')
+    // Validate expected structure — clear if stale/incompatible
+    if (!data) return null
+    if (!data.stmtMap || !Array.isArray(data.matched) || !Array.isArray(data.unmatched) || !Array.isArray(data.missing)) {
+      localStorage.removeItem(STORAGE_KEY)
+      return null
+    }
+    return data
+  } catch {
+    localStorage.removeItem(STORAGE_KEY)
+    return null
+  }
 }
 function savePending(data) {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)) } catch {}
@@ -182,8 +217,8 @@ function UnmatchedRow({ a, idx, clients, onAllocate, onDelete, navigate, onClose
   )
 }
 
-// ── Main Page ─────────────────────────────────────────────────────────────────
-export default function CommissionImportPage({ clients, onImport }) {
+// ── Main Page (wrapped in error boundary) ────────────────────────────────────
+function CommissionImportPageInner({ clients, onImport }) {
   const navigate = useNavigate()
   const fileRef = useRef()
   const [pending, setPending] = useState(() => loadPending())
@@ -569,4 +604,8 @@ export default function CommissionImportPage({ clients, onImport }) {
       )}
     </div>
   )
+}
+
+export default function CommissionImportPage(props) {
+  return <ErrorBoundary><CommissionImportPageInner {...props} /></ErrorBoundary>
 }
