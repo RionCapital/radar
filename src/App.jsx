@@ -157,7 +157,7 @@ export default function App() {
           <Route path="/" element={<RequireAuth><Home /></RequireAuth>} />
           <Route path="/radar/dashboard" element={<RequireAuth><Dashboard clients={clients} onImport={handleImport} onUpdateClients={updateAllClients} /></RequireAuth>} />
           <Route path="/radar/clients" element={<RequireAuth><ClientList clients={clients} onAddClient={addClient} /></RequireAuth>} />
-          <Route path="/radar/clients/add" element={<RequireAuth><AddClient onAddClient={addClient} /></RequireAuth>} />
+          <Route path="/radar/clients/add" element={<RequireAuth><AddClient clients={clients} onSave={addClient} onClose={() => window.history.back()} /></RequireAuth>} />
           <Route path="/radar/clients/:name" element={<RequireAuth><ClientDashboard clients={clients} updateClient={updateClient} /></RequireAuth>} />
           <Route path="/radar/clients/:name/loan/:loanIdx" element={<RequireAuth><LoanAccount clients={clients} updateClient={updateClient} /></RequireAuth>} />
           <Route path="/crm/settings" element={<RequireAuth><AdminSettings /></RequireAuth>} />
