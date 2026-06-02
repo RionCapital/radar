@@ -51,7 +51,23 @@ function RequireAuth({ children }) {
 }
 
 export default function App() {
-  const [clients, setClients] = useState(() => loadClients())
+  const [clients, setClients] = useState(() => {
+    const loaded = loadClients()
+    // One-time migration: fix bad month key '2026-30' → '2026-04' from filename parsing bug
+    let needsSave = false
+    const fixed = loaded.map(c => ({
+      ...c,
+      loans: c.loans.map(l => {
+        const fixHistory = (arr) => (arr || []).map(h => {
+          if (h.month === '2026-30') { needsSave = true; return { ...h, month: '2026-04' } }
+          return h
+        })
+        return { ...l, balanceHistory: fixHistory(l.balanceHistory), commissionHistory: fixHistory(l.commissionHistory) }
+      })
+    }))
+    if (needsSave) { saveClients(fixed); return fixed }
+    return loaded
+  })
   const [showBirthdays, setShowBirthdays] = useState(true)
   const [crmDeals, setCrmDeals] = useState(() => {
     try { const s = localStorage.getItem('rion-crm-deals'); if (s) return JSON.parse(s) } catch {}
@@ -91,7 +107,12 @@ export default function App() {
   }
 
   function handleImport(updates, stmtMap, statementMonth, allocations = []) {
-    const month = statementMonth || (() => {
+    // Sanitise month — catch bad keys like '2026-30' from the old filename bug
+    const month = (() => {
+      const raw = statementMonth || ''
+      const [y, m] = raw.split('-')
+      if (y && m && parseInt(m) >= 1 && parseInt(m) <= 12) return raw
+      // Fallback: one month before today
       const d = new Date(); d.setMonth(d.getMonth()-1)
       return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`
     })()

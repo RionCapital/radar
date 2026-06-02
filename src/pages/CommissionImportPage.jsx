@@ -204,9 +204,10 @@ function monthFromFilename(filename) {
   // Try Connective CSV format: DD-MM-YYYY-DD-MM-YYYY anywhere in filename
   const connMatch = filename.match(/(\d{2})-(\d{2})-(\d{4})-(\d{2})-(\d{2})-(\d{4})/)
   if (connMatch) {
-    // Use END date: groups 4,5,6
-    const [,,,, endMM, , endYYYY] = connMatch
-    return `${endYYYY}-${endMM}`
+    // Groups: [full, startDD, startMM, startYYYY, endDD, endMM, endYYYY]
+    const endMM   = connMatch[5]
+    const endYYYY = connMatch[6]
+    if (parseInt(endMM) >= 1 && parseInt(endMM) <= 12) return `${endYYYY}-${endMM}`
   }
   // Try Rion XLS format: 16 digits DDMMYYYYDDMMYYYY
   const rionMatch = filename.match(/(\d{16})/)
