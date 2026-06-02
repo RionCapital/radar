@@ -197,7 +197,26 @@ function UnmatchedRow({ a, idx, clients, onAllocate, onDelete, navigate }) {
 }
 
 
-// ── Main Page (wrapped in error boundary) ────────────────────────────────────
+// Parse statement month from filename — supports both formats:
+// Rion XLS:  01042026-30042026  (DDMMYYYY)
+// Connective: 01-04-2026-30-04-2026  (DD-MM-YYYY)
+function monthFromFilename(filename) {
+  // Try Connective CSV format: DD-MM-YYYY-DD-MM-YYYY anywhere in filename
+  const connMatch = filename.match(/(\d{2})-(\d{2})-(\d{4})-(\d{2})-(\d{2})-(\d{4})/)
+  if (connMatch) {
+    // Use END date: groups 4,5,6
+    const [,,,, endMM, , endYYYY] = connMatch
+    return `${endYYYY}-${endMM}`
+  }
+  // Try Rion XLS format: 16 digits DDMMYYYYDDMMYYYY
+  const rionMatch = filename.match(/(\d{16})/)
+  if (rionMatch) {
+    const s = rionMatch[1]
+    const mm = s.slice(10, 12), yyyy = s.slice(12, 16)
+    return `${yyyy}-${mm}`
+  }
+  return null
+}
 function CommissionImportPageInner({ clients, onImport }) {
   const navigate = useNavigate()
   const fileRef = useRef()
@@ -238,6 +257,10 @@ function CommissionImportPageInner({ clients, onImport }) {
     const file = e.target.files[0]
     if (!file) return
     setStatus('parsing')
+
+    // Auto-detect month from filename
+    const detectedMonth = monthFromFilename(file.name)
+    if (detectedMonth) setStatementMonth(detectedMonth)
     try {
       const XLSX = await import('https://cdn.sheetjs.com/xlsx-0.20.0/package/xlsx.mjs')
       const buf = await file.arrayBuffer()
@@ -322,7 +345,8 @@ function CommissionImportPageInner({ clients, onImport }) {
         total:   Object.values(stmtMap).reduce((s,a) => s + a.totalPaid,   0),
       }
 
-      const data = { fileName: file.name, uploadedAt: new Date().toISOString(), statementMonth, stmtMap, matched, unmatched, missing, totals }
+      const finalMonth = detectedMonth || statementMonth
+      const data = { fileName: file.name, uploadedAt: new Date().toISOString(), statementMonth: finalMonth, stmtMap, matched, unmatched, missing, totals }
       savePending(data)
       setPending(data)
       setStatus('review')
