@@ -26,9 +26,9 @@ function ContactCard({ contact, idx, onSave, onDelete }) {
   function set(k, v) { setDraft(d => ({...d, [k]: v})) }
 
   const c = editing ? draft : contact
-  const fullName = c.type === 'Ind'
+  const fullName = c.first
     ? [c.first, c.middle, c.last].filter(Boolean).join(' ')
-    : c.first || '—'
+    : (c.name || (c.type !== 'Ind' ? c.company : null) || '—')
   const isInd = c.type === 'Ind'
 
   const inp = { border: '1px solid var(--border)', borderRadius: 5, padding: '4px 8px', fontSize: 11, width: '100%', background: '#fff', boxSizing: 'border-box' }
@@ -45,7 +45,7 @@ function ContactCard({ contact, idx, onSave, onDelete }) {
       <div style={{ background: '#f8fafc', padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '0.5px solid var(--border-light)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{ width: 32, height: 32, borderRadius: '50%', background: isInd ? 'var(--pk)' : '#3D5570', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600, color: '#fff', flexShrink: 0 }}>
-            {(c.first || '?')[0].toUpperCase()}
+            {(c.first || c.name || '?')[0].toUpperCase()}
           </div>
           <div>
             <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{fullName}</div>

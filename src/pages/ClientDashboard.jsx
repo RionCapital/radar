@@ -518,12 +518,17 @@ export default function ClientDashboard({ clients, updateClient }) {
                       <div style={{display:'flex',gap:3,alignItems:'center'}}>
                         <input value={ld.lname||''} onChange={e=>setLoanDraft({...loanDraft,lname:e.target.value})} style={{width:100,fontSize:10,padding:'2px 4px',borderRadius:4,border:'0.5px solid var(--border)',background:'var(--bg)'}}/>
                         {(client.contacts||[]).length>0&&(
-                          <select onChange={e=>{if(e.target.value)setLoanDraft({...loanDraft,lname:e.target.value});e.target.value=''}}
+                          <select onChange={e=>{
+                            if(!e.target.value) return
+                            const curr = loanDraft.lname||''
+                            setLoanDraft({...loanDraft, lname: curr ? `${curr} & ${e.target.value}` : e.target.value})
+                            e.target.value=''
+                          }}
                             style={{fontSize:9,padding:'2px 2px',borderRadius:4,border:'0.5px solid var(--border)',background:'var(--bg)',color:'var(--pk)',cursor:'pointer',maxWidth:24}}
-                            title="Pick from contacts">
+                            title="Add contact to loan name (select multiple)">
                             <option value="">👤</option>
                             {(client.contacts||[]).map((c,ci)=>{
-                              const n = c.type==='Ind'?`${c.first||''} ${c.last||''}`.trim():c.company||''
+                              const n = c.first ? `${c.first||''} ${c.last||''}`.trim() : (c.name||c.company||'')
                               return n?<option key={ci} value={n}>{n}</option>:null
                             })}
                             {client.name&&<option value={client.name}>{client.name}</option>}
