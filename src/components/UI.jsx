@@ -173,3 +173,36 @@ export function ClientRow({ client, onClick }) {
     </div>
   )
 }
+
+// DD/MM/YYYY date input — stores/returns YYYY-MM-DD internally
+export function DateInput({ value, onChange, style, placeholder }) {
+  const [text, setText] = React.useState(() => value ? value.split('-').reverse().join('/') : '')
+
+  React.useEffect(() => {
+    setText(value ? value.split('-').reverse().join('/') : '')
+  }, [value])
+
+  function handleChange(e) {
+    let v = e.target.value.replace(/[^\d/]/g, '')
+    // Auto-insert slashes at positions 2 and 5
+    if (v.replace(/\//g,'').length <= 8) {
+      const digits = v.replace(/\//g,'')
+      if (digits.length <= 2) v = digits
+      else if (digits.length <= 4) v = digits.slice(0,2) + '/' + digits.slice(2)
+      else v = digits.slice(0,2) + '/' + digits.slice(2,4) + '/' + digits.slice(4,8)
+    }
+    setText(v)
+    if (v === '') { onChange(''); return }
+    const parts = v.split('/')
+    if (parts.length === 3 && parts[0].length === 2 && parts[1].length === 2 && parts[2].length === 4) {
+      const iso = `${parts[2]}-${parts[1]}-${parts[0]}`
+      if (!isNaN(new Date(iso).getTime())) onChange(iso)
+    }
+  }
+
+  return (
+    <input type="text" value={text} onChange={handleChange}
+      placeholder={placeholder || 'DD/MM/YYYY'} maxLength={10}
+      style={{ ...style, fontFamily: 'inherit' }} />
+  )
+}

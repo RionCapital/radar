@@ -69,15 +69,30 @@ function computeImportedCommission(clients) {
   return monthMap
 }
 
+// Compute portfolio balance per month from client balance history
+function computeBalanceByMonth(clients) {
+  const balMap = {}
+  ;(clients || []).forEach(c => {
+    ;(c.loans || []).forEach(l => {
+      ;(l.balanceHistory || []).forEach(h => {
+        if (!balMap[h.month]) balMap[h.month] = 0
+        balMap[h.month] += (h.balance || 0)
+      })
+    })
+  })
+  return balMap
+}
+
 // Merge hardcoded + real imported data — real data wins where available
 function mergeCommission(clients) {
   const real = computeImportedCommission(clients)
+  const balByMonth = computeBalanceByMonth(clients)
   const MO = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 
   // Convert real map to COMMISSION format
   const realMonths = Object.entries(real).map(([k, v]) => {
     const [y, m] = k.split('-')
-    return { month: `${MO[parseInt(m)-1]} ${y.slice(2)}`, _key: k, trail: v.trail, upfront: v.upfront, total: v.total }
+    return { month: `${MO[parseInt(m)-1]} ${y.slice(2)}`, _key: k, trail: v.trail, upfront: v.upfront, total: v.total, balance: Math.round(balByMonth[k] || 0) }
   }).sort((a, b) => a._key.localeCompare(b._key))
 
   // Start with hardcoded, then append any real months not already present

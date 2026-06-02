@@ -2,7 +2,7 @@ import React, { useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { totalBal, totalAmt, pwBal, commBal, fmt, calcOpp, ini, LOAN_TYPES, BANKS } from '../lib/data'
 import { fmtDate, dateCellStyle, loanFlag, effectiveRpmt, calcRepayment } from '../lib/dateUtils'
-import { Panel, PanelTitle, EditBtn, SaveBtn, CancelBtn, ActionBtn, FieldGroup, Pill } from '../components/UI'
+import { Panel, PanelTitle, EditBtn, SaveBtn, CancelBtn, ActionBtn, FieldGroup, Pill, DateInput } from '../components/UI'
 
 const CONTACT_TYPES = ['Individual','Company','Trust','Partnership','Sole Trader']
 const CONTACT_TYPE_CODES = { Individual:'Ind', Company:'Co', Trust:'Tru', Partnership:'Par', 'Sole Trader':'Sol' }
@@ -593,7 +593,7 @@ export default function ClientDashboard({ clients, updateClient }) {
                     <td style={tdStyle()}><select value={ld.rateType||'Var'} onChange={e=>setLoanDraft({...loanDraft,rateType:e.target.value})} style={{width:55,fontSize:10,padding:'2px 4px',borderRadius:4,border:'0.5px solid var(--border)',background:'var(--bg)'}}><option value="Var">Var</option><option value="Fix">Fix</option></select></td>
                     <td style={tdStyle()}><select value={ld.rpmt||'P&I'} onChange={e=>setLoanDraft({...loanDraft,rpmt:e.target.value})} style={{width:50,fontSize:10,padding:'2px 4px',borderRadius:4,border:'0.5px solid var(--border)',background:'var(--bg)'}}><option>P&I</option><option>IO</option></select></td>
                     <td style={tdStyle({textAlign:'right',color:'var(--text-tertiary)',fontSize:10})}>—</td>
-                    <td style={tdStyle()}><input value={ld.settled||''} onChange={e=>setLoanDraft({...loanDraft,settled:e.target.value})} style={{width:82,fontSize:10,padding:'2px 4px',borderRadius:4,border:'0.5px solid var(--border)',background:'var(--bg)'}}/></td>
+                    <td style={tdStyle()}><DateInput value={ld.settled||''} onChange={v=>setLoanDraft({...loanDraft,settled:v})} style={{width:82,fontSize:10,padding:'2px 4px',borderRadius:4,border:'0.5px solid var(--border)',background:'var(--bg)'}}/></td>
                     <td style={tdStyle({textAlign:'center'})}>
                       <label style={{fontSize:10,color:'var(--text-secondary)',display:'flex',alignItems:'center',gap:4,cursor:'pointer'}}>
                         <input type="checkbox" checked={!!ld.closed} onChange={e=>setLoanDraft({...loanDraft,closed:e.target.checked})} style={{accentColor:'var(--pk)'}}/>Discharged

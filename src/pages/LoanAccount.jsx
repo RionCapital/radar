@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { fmt } from '../lib/data'
 import { fmtDate, dateCellStyle, expiryBadge, calcRepayment, effectiveRpmt, buildBalanceHistory } from '../lib/dateUtils'
-import { Panel, PanelTitle, EditBtn, SaveBtn, CancelBtn, FieldGroup, Pill } from '../components/UI'
+import { Panel, PanelTitle, EditBtn, SaveBtn, CancelBtn, FieldGroup, Pill, DateInput } from '../components/UI'
 
 export default function LoanAccount({ clients, updateClient }) {
   const { name, loanIdx } = useParams()
@@ -381,10 +381,10 @@ export default function LoanAccount({ clients, updateClient }) {
                 </FieldGroup>
                 <FieldGroup label="Term (years)"><input style={inp} type="number" step="0.5" value={l.term||''} onChange={e=>set('term',+e.target.value)}/></FieldGroup>
                 <FieldGroup label="IO period (years)"><input style={inp} type="number" step="0.5" value={l.ioTerm||''} onChange={e=>set('ioTerm',+e.target.value)}/></FieldGroup>
-                <FieldGroup label="Settlement date"><input style={inp} value={l.settled||''} onChange={e=>set('settled',e.target.value)}/></FieldGroup>
-                <FieldGroup label="Maturity date"><input style={inp} value={l.maturity||''} placeholder="YYYY-MM-DD" onChange={e=>set('maturity',e.target.value)}/></FieldGroup>
-                <FieldGroup label="Fixed rate expiry"><input style={inp} value={l.fixed||''} placeholder="YYYY-MM-DD" onChange={e=>set('fixed',e.target.value)}/></FieldGroup>
-                <FieldGroup label="IO expiry"><input style={inp} value={l.io||''} placeholder="YYYY-MM-DD" onChange={e=>set('io',e.target.value)}/></FieldGroup>
+                <FieldGroup label="Settlement date"><DateInput style={inp} value={l.settled||''} onChange={v=>set('settled',v)}/></FieldGroup>
+                <FieldGroup label="Maturity date"><DateInput style={inp} value={l.maturity||''} onChange={v=>set('maturity',v)}/></FieldGroup>
+                <FieldGroup label="Fixed rate expiry"><DateInput style={inp} value={l.fixed||''} onChange={v=>set('fixed',v)}/></FieldGroup>
+                <FieldGroup label="IO expiry"><DateInput style={inp} value={l.io||''} onChange={v=>set('io',v)}/></FieldGroup>
                 <FieldGroup label="Balloon / residual ($)">
                   <input style={inp} type="number" value={l.balloon||''} placeholder="0" onChange={e=>set('balloon',e.target.value?+e.target.value:'')}/>
                   {l.balloon>0&&<div style={{fontSize:10,color:'var(--text-secondary)',marginTop:3}}>Est. repayment adjusts for balloon</div>}

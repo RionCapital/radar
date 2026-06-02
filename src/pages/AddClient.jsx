@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { LOAN_TYPES, BANKS } from '../lib/data'
-import { FieldGroup, SaveBtn, CancelBtn } from '../components/UI'
+import { FieldGroup, SaveBtn, CancelBtn, DateInput } from '../components/UI'
 
 const blank = () => ({
   name: '', connNo: '', stream: 'Private Wealth',
@@ -118,7 +118,7 @@ export default function AddClient({ clients, onSave, onClose }) {
               <FieldGroup label="Loan limit ($)"><input style={inp} type="number" value={l.amount||''} onChange={e => { const ls=[...client.loans]; ls[i]={...ls[i],amount:+e.target.value}; set('loans',ls) }} /></FieldGroup>
               <FieldGroup label="Current balance ($)"><input style={inp} type="number" value={l.balance||''} onChange={e => { const ls=[...client.loans]; ls[i]={...ls[i],balance:+e.target.value}; set('loans',ls) }} /></FieldGroup>
               <FieldGroup label="Term (years)"><input style={inp} type="number" step="0.5" value={l.term||''} onChange={e => { const ls=[...client.loans]; ls[i]={...ls[i],term:+e.target.value}; set('loans',ls) }} /></FieldGroup>
-              <FieldGroup label="Settlement date"><input style={inp} type="date" value={l.settled} onChange={e => { const ls=[...client.loans]; ls[i]={...ls[i],settled:e.target.value}; set('loans',ls) }} /></FieldGroup>
+              <FieldGroup label="Settlement date"><DateInput style={inp} value={l.settled} onChange={v => { const ls=[...client.loans]; ls[i]={...ls[i],settled:v}; set('loans',ls) }} /></FieldGroup>
             </div>
           </div>
         ))}
