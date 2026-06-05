@@ -59,8 +59,8 @@ function ContactsEdit({ draft, setDraft }) {
 const TYPE_LABELS = { Ind: 'Individual', Co: 'Company', Tru: 'Trust', SMSF: 'SMSF', Part: 'Partnership' }
 
 function ContactsView({ contacts, clientName, navigate }) {
-  const indContacts = (contacts||[]).filter(c => c.type === 'Ind')
-  const otherContacts = (contacts||[]).filter(c => c.type !== 'Ind')
+  const indContacts = (contacts||[]).filter(c => c.type === 'Ind' || (!c.type && c.name))
+  const otherContacts = (contacts||[]).filter(c => c.type && c.type !== 'Ind')
   const allContacts = [...indContacts, ...otherContacts]
   if (!allContacts.length) return (
     <div style={{textAlign:'center',color:'var(--text-tertiary)',padding:16,fontSize:11}}>No contacts on file — <span style={{color:'var(--pk)',cursor:'pointer'}} onClick={()=>navigate('/radar/clients/'+encodeURIComponent(clientName)+'/contacts')}>Add contacts</span></div>
@@ -75,7 +75,9 @@ function ContactsView({ contacts, clientName, navigate }) {
       </tr></thead>
       <tbody>
         {allContacts.map((ct,i) => {
-          const fullName = ct.type === 'Ind' ? [ct.first, ct.last].filter(Boolean).join(' ') : ct.first || '—'
+          const fullName = ct.first
+            ? [ct.first, ct.last].filter(Boolean).join(' ')
+            : (ct.name || ct.company || '—')
           return (
             <tr key={i}>
               <td style={tdStyle({fontWeight:500})}>{fullName||'—'}</td>

@@ -12,7 +12,8 @@ const blankContact = () => ({ name: '', email: '', phone: '' })
 const blankLoan = () => ({ acc: '', lname: '', type: 'Home Loan (OO)', bank: 'CBA', security: '1', amount: 0, balance: 0, rate: 0, rpmt: 'P&I', term: 30, ioTerm: 0, fixed: '', io: '', balloon: '', settled: new Date().toISOString().slice(0,10) })
 
 export default function AddClient({ clients, onSave, onClose }) {
-  const [client, setClient] = useState(blank())
+  const nextConnNo = Math.max(...(clients||[]).map(c => c.connNo || 0), 1099) + 1
+  const [client, setClient] = useState(() => ({ ...blank(), connNo: nextConnNo }))
   const [errors, setErrors] = useState({})
 
   const set = (field, val) => setClient(c => ({ ...c, [field]: val }))

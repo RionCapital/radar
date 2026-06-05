@@ -405,6 +405,7 @@ export default function LoanAccount({ clients, updateClient }) {
                   ['Borrowing entity',loan.borrowingEntity||'—'],
                   ['Original limit',fmt(loan.amount)],
                   ['Current balance',fmt(loan.balance)],
+                  ['_offset_note',''],
                   ['Interest rate',loan.rate>0?loan.rate.toFixed(2)+'%':'—'],
                   ['Rate type',loan.rateType||'Variable'],
                   ['Term',loan.term?loan.term+'y':'—'],
@@ -416,7 +417,11 @@ export default function LoanAccount({ clients, updateClient }) {
                   ['Est. monthly repayment',estRepayment?'$'+estRepayment.toLocaleString():loan.rate?'—':'Rate not set'],
                   ...(loan.balloon>0?[['Balloon / residual','$'+Number(loan.balloon).toLocaleString()]]:[]),
                 ].map(([label,val])=>(
-                  <div key={label} style={{display:'flex',justifyContent:'space-between',padding:'5px 0',borderBottom:'0.5px solid var(--border-light)',gap:8}}>
+                  label === '_offset_note'
+                  ? <div key="offset-note" style={{fontSize:10,color:'#94a3b8',fontStyle:'italic',padding:'3px 0 5px',borderBottom:'0.5px solid var(--border-light)'}}>
+                      Balance may reflect the benefit of any offset account held against this facility.
+                    </div>
+                  : <div key={label} style={{display:'flex',justifyContent:'space-between',padding:'5px 0',borderBottom:'0.5px solid var(--border-light)',gap:8}}>
                     <span style={{fontSize:11,color:'var(--text-secondary)',flexShrink:0}}>{label}</span>
                     <span style={{fontSize:11,fontWeight:500,color:'var(--text-primary)',textAlign:'right'}}>
                       {String(val||'').includes('|||') ? String(val).split('|||').map((line,i)=><div key={i}>{line}</div>) : val}

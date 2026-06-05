@@ -59,7 +59,7 @@ export default function App() {
       ...c,
       loans: c.loans.map(l => {
         const fixHistory = (arr) => (arr || []).map(h => {
-          if (h.month === '2026-30') { needsSave = true; return { ...h, month: '2026-04' } }
+          if (h.month === '2026-30' || h.month === '2026-05') { needsSave = true; return { ...h, month: '2026-04' } }
           return h
         })
         return { ...l, balanceHistory: fixHistory(l.balanceHistory), commissionHistory: fixHistory(l.commissionHistory) }
