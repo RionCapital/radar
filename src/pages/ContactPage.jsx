@@ -20,7 +20,25 @@ function ContactCard({ contact, idx, onSave, onDelete }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(null)
 
-  function startEdit() { setDraft({...contact}); setEditing(true) }
+  function startEdit() {
+    // Normalise new-format contacts (from AddClient) to standard first/last/type format
+    const normalised = { ...contact }
+    if (!normalised.type && normalised.contactType) {
+      normalised.type = normalised.contactType === 'Individual' ? 'Ind'
+        : normalised.contactType === 'Company' ? 'Co'
+        : normalised.contactType === 'Trust' ? 'Tru' : 'Ind'
+    }
+    if (!normalised.type) normalised.type = 'Ind'
+    if (!normalised.first && normalised.name) {
+      // Split name into first/last — last word becomes last name
+      const parts = normalised.name.trim().split(' ')
+      normalised.last = parts.length > 1 ? parts.pop() : ''
+      normalised.first = parts.join(' ')
+    }
+    if (!normalised.mobile && normalised.phone) normalised.mobile = normalised.phone
+    setDraft(normalised)
+    setEditing(true)
+  }
   function cancel() { setEditing(false); setDraft(null) }
   function save() { onSave(idx, draft); setEditing(false); setDraft(null) }
   function set(k, v) { setDraft(d => ({...d, [k]: v})) }
