@@ -78,13 +78,18 @@ function ContactsView({ contacts, clientName, navigate }) {
           const fullName = ct.first
             ? [ct.first, ct.last].filter(Boolean).join(' ')
             : (ct.name || ct.company || '—')
+          // Handle both formats: type:'Ind' (old) and contactType:'Individual' (new)
+          const typeKey = ct.type || (ct.contactType === 'Individual' ? 'Ind' : ct.contactType === 'Company' ? 'Co' : ct.contactType === 'Trust' ? 'Tru' : null)
+          const isInd = typeKey === 'Ind'
+          // Handle both mobile (old) and phone (new) fields
+          const mobileNum = ct.mobile || ct.phone || null
           return (
             <tr key={i}>
               <td style={tdStyle({fontWeight:500})}>{fullName||'—'}</td>
               <td style={tdStyle()}>
-                <span style={{background:ct.type==='Ind'?'#fdf0f6':'#eef1f5',color:ct.type==='Ind'?'var(--pk)':'#2A3D54',padding:'1px 6px',borderRadius:20,fontSize:9,fontWeight:500}}>
-                  {TYPE_LABELS[ct.type]||ct.type}
-                </span>
+                {typeKey ? <span style={{background:isInd?'#fdf0f6':'#eef1f5',color:isInd?'var(--pk)':'#2A3D54',padding:'1px 6px',borderRadius:20,fontSize:9,fontWeight:500}}>
+                  {TYPE_LABELS[typeKey]||typeKey}
+                </span> : '—'}
               </td>
               <td style={tdStyle()}>
                 {ct.email
@@ -92,10 +97,10 @@ function ContactsView({ contacts, clientName, navigate }) {
                   : '—'}
               </td>
               <td style={tdStyle()}>
-                {ct.mobile
+                {mobileNum
                   ? <span style={{display:'flex',alignItems:'center',gap:6}}>
-                      <a href={'tel:'+ct.mobile.replace(/\s/g,'')} style={{color:'var(--pk)',textDecoration:'none'}} title="Call via Phone Link">{ct.mobile}</a>
-                      <a href={'sms:'+ct.mobile.replace(/\s/g,'')} style={{background:'#eef1f5',borderRadius:12,padding:'1px 7px',fontSize:9,color:'#2A3D54',textDecoration:'none'}} title="Send SMS via Phone Link">💬</a>
+                      <a href={'tel:'+mobileNum.replace(/\s/g,'')} style={{color:'var(--pk)',textDecoration:'none'}} title="Call via Phone Link">{mobileNum}</a>
+                      <a href={'sms:'+mobileNum.replace(/\s/g,'')} style={{background:'#eef1f5',borderRadius:12,padding:'1px 7px',fontSize:9,color:'#2A3D54',textDecoration:'none'}} title="Send SMS via Phone Link">💬</a>
                     </span>
                   : '—'}
               </td>
