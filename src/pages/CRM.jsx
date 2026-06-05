@@ -483,6 +483,11 @@ export default function CRM({ clients, onUpdateClients }) {
         {/* List view */}
         {viewMode==='list' && (
           <div style={{ background:'#fff', borderRadius:8, border:'0.5px solid #e8eaed', overflow:'hidden' }}>
+            {/* Filter bar */}
+            <div style={{ padding:'8px 12px', borderBottom:'0.5px solid #e8eaed', display:'flex', alignItems:'center', gap:8, background:'#f9fafb' }}>
+              <span style={{ fontSize:11, color:'#64748b' }}>Filter by settlement month:</span>
+              <MonthFilterDropdown allMonths={allMonths} visibleMonths={visibleMonths} onChange={setVisibleMonths} />
+            </div>
             <table style={{ width:'100%', borderCollapse:'collapse', tableLayout:'fixed' }}>
               <colgroup>
                 <col style={{width:14}}/><col style={{width:'11%'}}/><col style={{width:'16%'}}/>
@@ -500,10 +505,7 @@ export default function CRM({ clients, onUpdateClients }) {
                   <th style={thStyle}>Lender</th>
                   <th style={thStyle}>Referral</th>
                   <th style={{ ...thStyle }}>
-                    <div style={{ display:'flex', alignItems:'center', gap:4 }}>
-                      <span>Sett. Month</span>
-                      <MonthFilterDropdown allMonths={allMonths} visibleMonths={visibleMonths} onChange={setVisibleMonths} />
-                    </div>
+                    <span>Sett. Month</span>
                   </th>
                   <th style={thStyle}>Sett. Date</th>
                   <th style={{ ...thStyle, textAlign:'center' }}>Days</th>

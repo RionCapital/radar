@@ -390,7 +390,11 @@ export default function DealPage({ onUpdateDeals, clients = [] }) {
               {editing ? (
                 <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
                   <Field label="Settlement date"><input style={inp} type="date" value={d['Date Settled']?.slice(0,10)||''} onChange={e=>set('Date Settled',e.target.value)}/></Field>
-                  <Field label="Finance due date"><input style={inp} type="date" value={d['Finance Due Date']?.slice(0,10)||''} onChange={e=>set('Finance Due Date',e.target.value)}/></Field>
+                  <Field label="Finance due date"><input style={inp} type="date" value={d['Finance Due Date']?.slice(0,10)||''} onChange={e=>{
+                    set('Finance Due Date', e.target.value)
+                    // Auto-update settlement month from finance date
+                    if (e.target.value) set('Month of Settlement', e.target.value.slice(0,7))
+                  }}/></Field>
                   <Field label="Deposit due date"><input style={inp} type="date" value={d['Deposit Due Date']?.slice(0,10)||''} onChange={e=>set('Deposit Due Date',e.target.value)}/></Field>
                   <Field label="Fixed rate expiry"><input style={inp} type="date" value={d['Fixed Rate Expiry']?.slice(0,10)||''} onChange={e=>set('Fixed Rate Expiry',e.target.value)}/></Field>
                   <Field label="IO expiry"><input style={inp} type="date" value={d['Interest Only Expiry']?.slice(0,10)||''} onChange={e=>set('Interest Only Expiry',e.target.value)}/></Field>
