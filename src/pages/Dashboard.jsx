@@ -534,6 +534,11 @@ export default function Dashboard({ clients, onImport, onUpdateClients }) {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
             {COMM.slice(-3).map((m, i) => {
               const isClawback = m.upfront < 0
+              // Find same month prior year (12 positions back from this month's position in COMM)
+              const thisIdx = COMM.length - 3 + i
+              const priorIdx = thisIdx - 12
+              const prior = priorIdx >= 0 ? COMM[priorIdx] : null
+              const pct = prior && prior.total > 0 ? Math.round((m.total - prior.total) / prior.total * 100) : null
               return (
                 <div key={i} style={{ background: 'var(--bg)', borderRadius: 8, padding: '10px 12px' }}>
                   <div style={{ fontSize: 10, color: 'var(--text-secondary)', marginBottom: 3, fontWeight: 500 }}>{m.month}</div>
@@ -543,12 +548,38 @@ export default function Dashboard({ clients, onImport, onUpdateClients }) {
                   <div style={{ fontSize: 9, color: 'var(--text-tertiary)', marginTop: 2 }}>T: ${Math.round(m.trail).toLocaleString()}</div>
                   <div style={{ fontSize: 9, color: isClawback ? 'var(--pk)' : 'var(--text-tertiary)', marginTop: 1 }}>U: ${Math.round(m.upfront).toLocaleString()}</div>
                   {isClawback && <div style={{ fontSize: 9, color: 'var(--pk)', marginTop: 3, fontWeight: 500 }}>Clawback</div>}
+                  {prior && (
+                    <div style={{ marginTop: 5, paddingTop: 5, borderTop: '0.5px solid var(--border-light)' }}>
+                      <div style={{ fontSize: 9, color: 'var(--text-tertiary)' }}>{prior.month}: ${Math.round(prior.total).toLocaleString()}</div>
+                      {pct !== null && (
+                        <div style={{ fontSize: 9, fontWeight: 600, color: pct >= 0 ? '#27ae60' : '#c0392b', marginTop: 1 }}>
+                          {pct >= 0 ? '▲' : '▼'} {Math.abs(pct)}% vs prior yr
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )
             })}
           </div>
           <div style={{ marginTop: 10, paddingTop: 10, borderTop: '0.5px solid var(--border-light)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>3-month total</span>
+            <div>
+              <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>3-month total</span>
+              {(() => {
+                const prior3 = COMM.slice(-15, -12)
+                if (prior3.length === 3) {
+                  const priorTotal = prior3.reduce((s, m) => s + m.total, 0)
+                  const currTotal = COMM.slice(-3).reduce((s, m) => s + m.total, 0)
+                  const pct = priorTotal > 0 ? Math.round((currTotal - priorTotal) / priorTotal * 100) : null
+                  return pct !== null ? (
+                    <span style={{ fontSize: 9, fontWeight: 600, color: pct >= 0 ? '#27ae60' : '#c0392b', marginLeft: 8 }}>
+                      {pct >= 0 ? '▲' : '▼'} {Math.abs(pct)}% vs prior yr
+                    </span>
+                  ) : null
+                }
+                return null
+              })()}
+            </div>
             <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-primary)' }}>
               ${COMM.slice(-3).reduce((s, m) => s + m.total, 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
             </span>
