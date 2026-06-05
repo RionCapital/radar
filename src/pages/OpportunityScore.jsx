@@ -42,7 +42,11 @@ export default function OpportunityScore({ clients, updateClient }) {
   }
 
   function handleSave() {
-    updateClient(client.name, c => ({ ...c, manualOpp: draft || manualOpp, oppNotes: notes || c.oppNotes }))
+    const savedOpp = draft || manualOpp
+    const savedScore = criteria.map(c => ({
+      score: savedOpp[c.label] !== undefined ? savedOpp[c.label] : (c.met ? c.score : 0)
+    })).reduce((s, o) => s + o.score, 0)
+    updateClient(client.name, c => ({ ...c, manualOpp: savedOpp, oppNotes: notes || c.oppNotes, score: savedScore }))
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
   }
