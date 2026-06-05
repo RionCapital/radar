@@ -316,7 +316,12 @@ export default function DealPage({ onUpdateDeals, clients = [] }) {
   function cancelEdit() { setEditing(false); setDraft(null) }
   function set(k, v) { setDraft(d => ({...d, [k]:v})) }
   function saveEdit() {
-    const updated = deals.map(d => d['Transaction Name'] === decodedName ? {...draft} : d)
+    const finalDraft = {...draft}
+    // Always sync Month of Settlement from Finance Due Date on save
+    if (finalDraft['Finance Due Date']) {
+      finalDraft['Month of Settlement'] = finalDraft['Finance Due Date']
+    }
+    const updated = deals.map(d => d['Transaction Name'] === decodedName ? finalDraft : d)
     setDeals(updated)
     saveDeals(updated)
     if (onUpdateDeals) onUpdateDeals(updated)
@@ -391,9 +396,12 @@ export default function DealPage({ onUpdateDeals, clients = [] }) {
                 <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
                   <Field label="Settlement date"><input style={inp} type="date" value={d['Date Settled']?.slice(0,10)||''} onChange={e=>set('Date Settled',e.target.value)}/></Field>
                   <Field label="Finance due date"><input style={inp} type="date" value={d['Finance Due Date']?.slice(0,10)||''} onChange={e=>{
-                    set('Finance Due Date', e.target.value)
-                    // Auto-update settlement month from finance date
-                    if (e.target.value) set('Month of Settlement', e.target.value.slice(0,7))
+                    const val = e.target.value
+                    setDraft(prev => ({
+                      ...prev,
+                      'Finance Due Date': val,
+                      'Month of Settlement': val ? val.slice(0,7) : prev['Month of Settlement']
+                    }))
                   }}/></Field>
                   <Field label="Deposit due date"><input style={inp} type="date" value={d['Deposit Due Date']?.slice(0,10)||''} onChange={e=>set('Deposit Due Date',e.target.value)}/></Field>
                   <Field label="Fixed rate expiry"><input style={inp} type="date" value={d['Fixed Rate Expiry']?.slice(0,10)||''} onChange={e=>set('Fixed Rate Expiry',e.target.value)}/></Field>
