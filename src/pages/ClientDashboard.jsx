@@ -173,7 +173,7 @@ function SecuritiesEdit({ draft, setDraft }) {
   )
 }
 
-function SecuritiesView({ securities, loans, bal }) {
+function SecuritiesView({ securities, loans, bal, clientName, navigate }) {
   if (!(securities||[]).length) return (
     <div style={{textAlign:'center',color:'var(--text-tertiary)',padding:16,fontSize:11}}>No securities yet — click Edit to add</div>
   )
@@ -192,17 +192,18 @@ function SecuritiesView({ securities, loans, bal }) {
       <table style={{width:'100%',borderCollapse:'collapse',fontSize:11,tableLayout:'fixed'}}>
         <colgroup>
           <col style={{width:'4%'}}/>
-          <col style={{width:'32%'}}/>
+          <col style={{width:'28%'}}/>
+          <col style={{width:'12%'}}/>
+          <col style={{width:'12%'}}/>
           <col style={{width:'13%'}}/>
+          <col style={{width:'7%'}}/>
           <col style={{width:'13%'}}/>
-          <col style={{width:'14%'}}/>
-          <col style={{width:'8%'}}/>
-          <col style={{width:'16%'}}/>
+          <col style={{width:'11%'}}/>
         </colgroup>
         <thead>
           <tr>
-            {['#','Address','Est. value','Debt balance','Lending equity','LVR',crossLoans.length?'Actual LVR *':'Actual LVR'].map((h,i)=>(
-              <th key={i} style={thStyle({textAlign:i>1?'right':'left'})}>{h}</th>
+            {['#','Address','Est. value','Debt balance','Lending equity','LVR',crossLoans.length?'Actual LVR *':'Actual LVR',''].map((h,i)=>(
+              <th key={i} style={thStyle({textAlign:i>1&&i<7?'right':'left'})}>{h}</th>
             ))}
           </tr>
         </thead>
@@ -226,6 +227,14 @@ function SecuritiesView({ securities, loans, bal }) {
                 <td style={tdStyle({textAlign:'right'})}>{lvr}%</td>
                 <td style={tdStyle({textAlign:'right'})}>
                   {actualLVR>0?actualLVR+'%':'—'}{isCrossed && <span style={{color:'#e8a020',fontSize:10,marginLeft:3,fontWeight:700}}>*</span>}
+                </td>
+                <td style={tdStyle({textAlign:'center'})}>
+                  <button
+                    onClick={e=>{e.stopPropagation();navigate(`/radar/clients/${encodeURIComponent(clientName)}/security-review/${i}`)}}
+                    style={{fontSize:9,padding:'3px 7px',borderRadius:5,border:'0.5px solid var(--pk)',background:'transparent',color:'var(--pk)',cursor:'pointer',fontWeight:600,whiteSpace:'nowrap'}}
+                    title="Send property review follow-up email">
+                    📧 Review
+                  </button>
                 </td>
               </tr>
             )
@@ -460,7 +469,7 @@ export default function ClientDashboard({ clients, updateClient }) {
           <PanelTitle action={editBtns('securities')}>Securities & property values</PanelTitle>
           {editSection==='securities'
             ? <SecuritiesEdit draft={draft} setDraft={stableSetDraft}/>
-            : <SecuritiesView securities={client.securities} loans={client.loans} bal={bal}/>}
+            : <SecuritiesView securities={client.securities} loans={client.loans} bal={bal} clientName={client.name} navigate={navigate}/>}
         </Panel>
       </div>
 
