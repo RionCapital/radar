@@ -234,22 +234,22 @@ function AnnualReview({ client, onBack, logNote }) {
         ${totalSecValue > 0 ? `
         <div style="margin-top:20px">
           <table style="width:100%;border-collapse:collapse"><tr>
-            <td style="width:33%;padding:14px;background:#f0fdf4;border-radius:8px;text-align:center;vertical-align:top">
-              <div style="font-size:10px;color:#64748b;font-weight:600;text-transform:uppercase;margin-bottom:4px">Portfolio LVR</div>
-              <div style="font-size:22px;font-weight:700;color:#3D4F6B">${portfolioLVR !== null ? portfolioLVR + '%' : '—'}</div>
-              <div style="font-size:10px;color:#64748b;margin-top:2px">Current</div>
+            <td style="width:33%;padding:10px 6px;background:#f0fdf4;border-radius:8px;text-align:center;vertical-align:top">
+              <div style="font-size:9px;color:#64748b;font-weight:600;text-transform:uppercase;margin-bottom:3px">Portfolio LVR</div>
+              <div style="font-size:12px;font-weight:700;color:#3D4F6B">${portfolioLVR !== null ? portfolioLVR + '%' : '—'}</div>
+              <div style="font-size:9px;color:#64748b;margin-top:2px">Current</div>
             </td>
             <td style="width:6px"></td>
-            <td style="width:33%;padding:14px;background:#fef9c3;border-radius:8px;text-align:center;vertical-align:top">
-              <div style="font-size:10px;color:#64748b;font-weight:600;text-transform:uppercase;margin-bottom:4px">Est. Borrowing Equity</div>
-              <div style="font-size:22px;font-weight:700;color:#3D4F6B">${fmtWhole(borrowingEquity)}</div>
-              <div style="font-size:10px;color:#64748b;margin-top:2px">Resi @80% / Comm @70%</div>
+            <td style="width:33%;padding:10px 6px;background:#fef9c3;border-radius:8px;text-align:center;vertical-align:top">
+              <div style="font-size:9px;color:#64748b;font-weight:600;text-transform:uppercase;margin-bottom:3px">Est. Borrowing Equity</div>
+              <div style="font-size:12px;font-weight:700;color:#3D4F6B">${fmtWhole(borrowingEquity)}</div>
+              <div style="font-size:9px;color:#64748b;margin-top:2px">Resi @80% / Comm @70%</div>
             </td>
             <td style="width:6px"></td>
-            <td style="width:33%;padding:14px;background:#eff6ff;border-radius:8px;text-align:center;vertical-align:top">
-              <div style="font-size:10px;color:#64748b;font-weight:600;text-transform:uppercase;margin-bottom:4px">Total Sec. Value</div>
-              <div style="font-size:22px;font-weight:700;color:#3D4F6B">${fmtWhole(totalSecValue)}</div>
-              <div style="font-size:10px;color:#64748b;margin-top:2px">CoreLogic estimates</div>
+            <td style="width:33%;padding:10px 6px;background:#eff6ff;border-radius:8px;text-align:center;vertical-align:top">
+              <div style="font-size:9px;color:#64748b;font-weight:600;text-transform:uppercase;margin-bottom:3px">Total Sec. Value</div>
+              <div style="font-size:12px;font-weight:700;color:#3D4F6B">${fmtWhole(totalSecValue)}</div>
+              <div style="font-size:9px;color:#64748b;margin-top:2px">CoreLogic estimates</div>
             </td>
           </tr></table>
         </div>` : ''}
