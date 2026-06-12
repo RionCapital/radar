@@ -24,9 +24,9 @@ const INCUMBENT_STATUS = [
 ]
 
 const blankComparisons = () => [
-  { lender: '', rate: '', compRate: '', repayment: '', features: '' },
-  { lender: '', rate: '', compRate: '', repayment: '', features: '' },
-  { lender: '', rate: '', compRate: '', repayment: '', features: '' },
+  { lender: '', rate: '', repayment: '', features: '' },
+  { lender: '', rate: '', repayment: '', features: '' },
+  { lender: '', rate: '', repayment: '', features: '' },
 ]
 
 export default function SecurityReviewEmail({ clients, updateClient }) {
@@ -134,7 +134,6 @@ export default function SecurityReviewEmail({ clients, updateClient }) {
             ${c.lender}${ci===0?' <span style="background:#DA408D;color:#fff;font-size:9px;padding:1px 5px;border-radius:10px;margin-left:4px">Best rate</span>':''}
           </td>
           <td style="padding:8px 10px;font-size:11px;text-align:right;font-weight:${ci===0?'700':'400'};color:${ci===0?'#DA408D':'#2A3545'}">${c.rate ? c.rate + '% p.a.' : '—'}</td>
-          <td style="padding:8px 10px;font-size:10px;text-align:right;color:#64748b">${c.compRate ? c.compRate + '%' : '—'}</td>
           <td style="padding:8px 10px;font-size:11px;text-align:right">${c.repayment ? '$' + Number(c.repayment).toLocaleString() + '/mo' : '—'}</td>
           <td style="padding:8px 10px;font-size:10px;color:#64748b">${c.features || '—'}</td>
         </tr>`).join('')
@@ -168,12 +167,12 @@ export default function SecurityReviewEmail({ clients, updateClient }) {
             </div>
             <table style="width:100%;border-collapse:collapse">
               <thead><tr style="background:#f8fafc">
-                ${['Lender','Rate','Comp. rate','Est. repayment','Key feature'].map(h => `<th style="padding:6px 10px;font-size:9px;color:#64748b;font-weight:600;text-transform:uppercase;text-align:${['Rate','Comp. rate','Est. repayment'].includes(h)?'right':'left'}">${h}</th>`).join('')}
+                ${['Lender','Rate','Est. repayment','Key feature'].map(h => `<th style="padding:6px 10px;font-size:9px;color:#64748b;font-weight:600;text-transform:uppercase;text-align:${['Rate','Est. repayment'].includes(h)?'right':'left'}">${h}</th>`).join('')}
               </tr></thead>
               <tbody>${compRows}</tbody>
             </table>
             <div style="padding:6px 10px;font-size:9px;color:#94a3b8;font-style:italic;border-top:0.5px solid #f1f5f9">
-              Estimated repayments are indicative only, calculated on a 30-year P&I term. Comparison rates are calculated on a $150,000 loan over 25 years. These figures do not constitute financial advice.
+              Estimated repayments are indicative only, calculated on a 30-year P&I term. These figures do not constitute financial advice.
             </div>
           </div>` : ''}
         </div>`
@@ -192,21 +191,21 @@ export default function SecurityReviewEmail({ clients, updateClient }) {
         </div>
         <table style="width:100%;border-collapse:collapse;border:0.5px solid #e2e8f0">
           <tbody><tr>
-            <td style="padding:14px;text-align:center;background:#f0fdf4">
+            <td style="padding:10px 6px;text-align:center;background:#f0fdf4">
               <div style="font-size:9px;color:#64748b;font-weight:600;text-transform:uppercase;margin-bottom:3px">Est. value</div>
-              <div style="font-size:20px;font-weight:700;color:#3D4F6B">${fmtWhole(ev)}</div>
+              <div style="font-size:12px;font-weight:700;color:#3D4F6B">${fmtWhole(ev)}</div>
             </td>
-            <td style="padding:14px;text-align:center;background:#fef9c3">
+            <td style="padding:10px 6px;text-align:center;background:#fef9c3">
               <div style="font-size:9px;color:#64748b;font-weight:600;text-transform:uppercase;margin-bottom:3px">Total debt</div>
-              <div style="font-size:20px;font-weight:700;color:#3D4F6B">${fmtWhole(totalLinkedDebt)}</div>
+              <div style="font-size:12px;font-weight:700;color:#3D4F6B">${fmtWhole(totalLinkedDebt)}</div>
             </td>
-            <td style="padding:14px;text-align:center;background:#eff6ff">
+            <td style="padding:10px 6px;text-align:center;background:#eff6ff">
               <div style="font-size:9px;color:#64748b;font-weight:600;text-transform:uppercase;margin-bottom:3px">Lending equity @${lvr}%</div>
-              <div style="font-size:20px;font-weight:700;color:${lendingEquity>0?'#166534':'#c0392b'}">${lendingEquity !== null ? fmtWhole(lendingEquity) : '—'}</div>
+              <div style="font-size:12px;font-weight:700;color:${lendingEquity>0?'#166534':'#c0392b'}">${lendingEquity !== null ? fmtWhole(lendingEquity) : '—'}</div>
             </td>
-            <td style="padding:14px;text-align:center;background:#f0f4f8">
+            <td style="padding:10px 6px;text-align:center;background:#f0f4f8">
               <div style="font-size:9px;color:#64748b;font-weight:600;text-transform:uppercase;margin-bottom:3px">Actual LVR</div>
-              <div style="font-size:20px;font-weight:700;color:#3D4F6B">${actualLVR !== null ? actualLVR + '%' : '—'}</div>
+              <div style="font-size:12px;font-weight:700;color:#3D4F6B">${actualLVR !== null ? actualLVR + '%' : '—'}</div>
             </td>
           </tr></tbody>
         </table>
@@ -365,11 +364,9 @@ export default function SecurityReviewEmail({ clients, updateClient }) {
                     </div>
                     <input style={{ ...inp, marginBottom: 4 }} value={c.lender} placeholder="Lender name"
                       onChange={e => updateComparison(li, ci, 'lender', e.target.value)} />
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 4, marginBottom: 4 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4, marginBottom: 4 }}>
                       <input style={inp} type="number" step="0.01" value={c.rate} placeholder="Rate %"
                         onChange={e => updateComparison(li, ci, 'rate', e.target.value)} />
-                      <input style={inp} type="number" step="0.01" value={c.compRate} placeholder="Comp. %"
-                        onChange={e => updateComparison(li, ci, 'compRate', e.target.value)} />
                       <input style={inp} type="number" step="1" value={c.repayment} placeholder="Rpmt $/mo"
                         onChange={e => updateComparison(li, ci, 'repayment', e.target.value)} />
                     </div>

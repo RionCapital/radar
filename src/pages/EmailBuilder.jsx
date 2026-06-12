@@ -133,9 +133,9 @@ function AnnualReview({ client, onBack, logNote }) {
   function removeAttachment(i) { setAttachments(a => a.filter((_, j) => j !== i)) }
 
   const [comparisons, setComparisons] = useState([
-    { lender: '', rate: '', compRate: '', repayment: '', features: '' },
-    { lender: '', rate: '', compRate: '', repayment: '', features: '' },
-    { lender: '', rate: '', compRate: '', repayment: '', features: '' },
+    { lender: '', rate: '', repayment: '', features: '' },
+    { lender: '', rate: '', repayment: '', features: '' },
+    { lender: '', rate: '', repayment: '', features: '' },
   ])
   const [secValues, setSecValues] = useState(securities.map(s => ({ ...s, coreLogicVal: s.estVal || '' })))
 
@@ -173,7 +173,6 @@ function AnnualReview({ client, onBack, logNote }) {
       <td style="padding:12px;text-align:center;vertical-align:top;width:33%">
         <div style="font-weight:700;color:#3D4F6B;font-size:13px;margin-bottom:8px">${c.lender}</div>
         ${c.rate ? `<div style="font-size:11px;margin-bottom:4px">Rate: <strong>${c.rate}%</strong></div>` : ''}
-        ${c.compRate ? `<div style="font-size:11px;margin-bottom:4px">Comparison rate: <strong>${c.compRate}%</strong></div>` : ''}
         ${c.repayment ? `<div style="font-size:12px;margin-bottom:4px;color:#3D4F6B;font-weight:700">Est. monthly: <strong>$${Number(c.repayment).toLocaleString()}</strong></div>` : ''}
         ${c.features ? `<div style="font-size:10px;color:#64748b;margin-top:6px">${c.features}</div>` : ''}
       </td>`).join('')
