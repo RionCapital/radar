@@ -180,8 +180,9 @@ export default function SecurityReviewEmail({ clients, updateClient }) {
               </tr></thead>
               <tbody>${compRows}</tbody>
             </table>
-            <div style="padding:6px 10px;font-size:9px;color:#94a3b8;font-style:italic;border-top:0.5px solid #f1f5f9">
-              Estimated repayments are indicative only, calculated on a 30-year P&I term. These figures do not constitute financial advice.
+            <div style="padding:6px 10px;font-size:9px;color:#94a3b8;font-style:italic;border-top:0.5px solid #f1f5f9;line-height:1.6">
+              Estimated repayments are indicative only, calculated on a 30-year P&I term. These figures do not constitute financial advice.<br/>
+              All comparison options are subject to lender credit assessment, individual serviceability and each client's financial circumstances at time of application. Rates and products shown do not constitute a credit offer or guarantee of approval.
             </div>
           </div>` : ''}
         </div>`
