@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { totalBal, totalAmt, pwBal, commBal, fmt, calcOpp, ini, LOAN_TYPES, BANKS } from '../lib/data'
 import { fmtDate, dateCellStyle, loanFlag, effectiveRpmt, calcRepayment } from '../lib/dateUtils'
 import { Panel, PanelTitle, EditBtn, SaveBtn, CancelBtn, ActionBtn, FieldGroup, Pill, DateInput } from '../components/UI'
+import NewOpportunityModal from '../components/NewOpportunityModal'
 
 const CONTACT_TYPES = ['Individual','Company','Trust','Partnership','Sole Trader']
 const CONTACT_TYPE_CODES = { Individual:'Ind', Company:'Co', Trust:'Tru', Partnership:'Par', 'Sole Trader':'Sol' }
@@ -281,6 +282,7 @@ export default function ClientDashboard({ clients, updateClient }) {
   const [draft, setDraft] = useState(null)
   const [noteText, setNoteText] = useState('')
   const [editReview, setEditReview] = useState(false)
+  const [showNewOpp, setShowNewOpp] = useState(false)
   const [reviewDate, setReviewDate] = useState('')
   const [loanTab, setLoanTab] = useState('current')
   const [loanSort, setLoanSort] = useState({col: null, dir: 'asc'})
@@ -438,6 +440,10 @@ export default function ClientDashboard({ clients, updateClient }) {
         </div>
         {/* Action buttons row */}
         <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}>
+          <button onClick={()=>setShowNewOpp(true)}
+            style={{fontSize:11,padding:'5px 14px',borderRadius:7,border:'1px solid rgba(235,153,194,0.5)',background:'rgba(235,153,194,0.1)',color:'#EB99C2',cursor:'pointer',fontWeight:500}}>
+            ＋ New opportunity
+          </button>
           <button onClick={()=>navigate(`/radar/clients/${encodeURIComponent(client.name)}/commission`)}
             style={{fontSize:11,padding:'5px 14px',borderRadius:7,border:'1px solid rgba(235,153,194,0.5)',background:'rgba(235,153,194,0.1)',color:'#EB99C2',cursor:'pointer',fontWeight:500}}>
             💰 Commission
@@ -726,6 +732,13 @@ export default function ClientDashboard({ clients, updateClient }) {
           </div>
         </Panel>
       </div>
+      {showNewOpp && (
+        <NewOpportunityModal
+          prefillClientName={client.name}
+          onClose={() => setShowNewOpp(false)}
+          onCreated={(newDeal) => navigate(`/crm/deal/${encodeURIComponent(newDeal['Transaction Name'])}`)}
+        />
+      )}
     </div>
   )
 }

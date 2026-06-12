@@ -4,6 +4,7 @@ import { PIPELINE_DATA } from '../lib/pipelineData'
 import { loadSettings, calcUpfront } from '../lib/settings'
 import { fmt } from '../lib/data'
 import CRMTopbar, { getBusinessDaysLeft, MONTH_NAMES } from '../components/CRMTopbar'
+import NewOpportunityModal from '../components/NewOpportunityModal'
 
 const STAGES = ['1. Lead','2. Strategy','3. Pre-Lodged','4. Lodged','5. Conditional','6. Unconditional','7. Settled','8. Withdrawn']
 const FORECAST_STAGES = STAGES
@@ -380,6 +381,7 @@ export default function CRM({ clients, onUpdateClients }) {
   })
   const [viewMode, setViewMode] = useState('list')
   const [showForecast, setShowForecast] = useState(true)
+  const [showNewOpp, setShowNewOpp] = useState(false)
   const [settleModal, setSettleModal] = useState(null)
   const [showPastMonths, setShowPastMonths] = useState(false)
 
@@ -491,6 +493,9 @@ export default function CRM({ clients, onUpdateClients }) {
               <button onClick={()=>setViewMode('list')} style={{ padding:'6px 12px', fontSize:11, border:'none', background:viewMode==='list'?'#3D4F6B':'#fff', color:viewMode==='list'?'#fff':'#5a6370', cursor:'pointer' }}>≡ List</button>
               <button onClick={()=>setViewMode('kanban')} style={{ padding:'6px 12px', fontSize:11, border:'none', background:viewMode==='kanban'?'#3D4F6B':'#fff', color:viewMode==='kanban'?'#fff':'#5a6370', cursor:'pointer' }}>⬜ Kanban</button>
             </div>
+            <button onClick={() => setShowNewOpp(true)} style={{ padding:'6px 14px', borderRadius:7, border:'none', background:'#3D4F6B', color:'#fff', fontSize:11, fontWeight:600, cursor:'pointer' }}>
+              + New opportunity
+            </button>
             <button style={{ padding:'6px 14px', borderRadius:7, border:'none', background:'#EB99C2', color:'#fff', fontSize:11, fontWeight:600, cursor:'pointer' }}>
               ↑ Import Mercury
             </button>
@@ -689,6 +694,19 @@ export default function CRM({ clients, onUpdateClients }) {
 
       {settleModal && (
         <SettleModal deal={settleModal} clients={clients||[]} onConfirm={handleSettleConfirm} onCancel={()=>setSettleModal(null)} />
+      )}
+      {showNewOpp && (
+        <NewOpportunityModal
+          onClose={() => setShowNewOpp(false)}
+          onCreated={(newDeal) => {
+            setDeals(prev => {
+              const updated = [...prev, newDeal]
+              try { localStorage.setItem('rion-crm-deals', JSON.stringify(updated)) } catch {}
+              return updated
+            })
+            navigate(`/crm/deal/${encodeURIComponent(newDeal['Transaction Name'])}`)
+          }}
+        />
       )}
     </div>
   )
