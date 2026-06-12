@@ -340,6 +340,37 @@ function SettleModal({ deal, clients, onConfirm, onCancel }) {
   )
 }
 
+// Inline-editable Finance/Settlement date cell
+function InlineDateCell({ deal, onSave }) {
+  const [editing, setEditing] = React.useState(false)
+  const [val, setVal] = React.useState(deal['Finance Due Date']?.slice(0,10) || '')
+  const display = deal['Date Settled'] || deal['Finance Due Date'] || null
+
+  if (editing) {
+    return (
+      <td style={{ padding:'4px 8px' }}>
+        <input type="date" value={val} autoFocus
+          onChange={e => setVal(e.target.value)}
+          onBlur={() => { onSave(deal, val); setEditing(false) }}
+          onKeyDown={e => {
+            if (e.key === 'Enter') { onSave(deal, val); setEditing(false) }
+            if (e.key === 'Escape') setEditing(false)
+          }}
+          style={{ fontSize:10, border:'1.5px solid #EB99C2', borderRadius:5, padding:'3px 6px', fontFamily:'inherit', outline:'none' }} />
+      </td>
+    )
+  }
+  return (
+    <td onClick={e=>{e.stopPropagation();setEditing(true)}}
+      style={{ padding:'6px 10px', fontSize:10, color:'#2A3545', cursor:'pointer' }}
+      title="Click to edit date"
+      onMouseOver={e=>e.currentTarget.style.background='#fdf0f6'}
+      onMouseOut={e=>e.currentTarget.style.background='transparent'}>
+      {fmtDateShort(display) || <span style={{color:'#EB99C2',fontWeight:500}}>+ Set date</span>}
+    </td>
+  )
+}
+
 export default function CRM({ clients, onUpdateClients }) {
   const navigate = useNavigate()
   const settings = useMemo(() => loadSettings(), [])
@@ -353,6 +384,13 @@ export default function CRM({ clients, onUpdateClients }) {
   const [showPastMonths, setShowPastMonths] = useState(false)
 
   function saveDeals(d) { setDeals(d); try { localStorage.setItem('rion-crm-deals',JSON.stringify(d)) } catch {} }
+
+  function updateFinanceDate(deal, newDate) {
+    saveDeals(deals.map(d => d['Transaction Name'] === deal['Transaction Name']
+      ? { ...d, 'Finance Due Date': newDate, 'Month of Settlement': newDate || d['Month of Settlement'] }
+      : d
+    ))
+  }
 
   const allMonths = useMemo(() => {
     const ms = new Set()
@@ -566,7 +604,7 @@ export default function CRM({ clients, onUpdateClients }) {
                             <td style={{ padding:'6px 10px', fontSize:10, color:'#2A3545' }}>{deal.Lender||'—'}</td>
                             <td style={{ padding:'6px 10px', fontSize:10, color:'#2A3545' }}>{deal['Lead Source']||'—'}</td>
                             <td style={{ padding:'6px 10px', fontSize:10, color:'#2A3545', fontWeight:500 }}>{fmtMonth(deal['Month of Settlement']?.slice(0,7))}</td>
-                            <td style={{ padding:'6px 10px', fontSize:10, color:'#2A3545' }}>{fmtDateShort(settleDateStr)}</td>
+                            <InlineDateCell deal={deal} onSave={updateFinanceDate} />
                             <td style={{ padding:'6px 10px', fontSize:10, fontWeight:600, color:daysColor, textAlign:'center', whiteSpace:'nowrap' }}>
                               {days === null ? '—' : days < 0 ? `${Math.abs(days)}d ago` : `${days}d`}
                             </td>
@@ -598,15 +636,37 @@ export default function CRM({ clients, onUpdateClients }) {
               const sc = STAGE_COLORS[stage]
               const isSettled = stage === '7. Settled'
               return (
-                <div key={stage} style={{ minWidth:220, background:'#f8f9fa', borderRadius:8, border:`0.5px solid ${isSettled?'#bbf7d0':'#e8eaed'}`, overflow:'hidden', flexShrink:0 }}>
+                <div key={stage}
+                  style={{ minWidth:220, background:'#f8f9fa', borderRadius:8, border:`0.5px solid ${isSettled?'#bbf7d0':'#e8eaed'}`, overflow:'hidden', flexShrink:0 }}
+                  onDragOver={e => { e.preventDefault(); e.currentTarget.style.outline='2px solid #EB99C2' }}
+                  onDragLeave={e => { e.currentTarget.style.outline='none' }}
+                  onDrop={e => {
+                    e.preventDefault()
+                    e.currentTarget.style.outline='none'
+                    const txName = e.dataTransfer.getData('text/plain')
+                    if (txName) {
+                      const droppedDeal = deals.find(d => d['Transaction Name'] === txName)
+                      if (droppedDeal && droppedDeal.Status !== stage) {
+                        if (stage === '7. Settled') {
+                          handleSettle(droppedDeal)
+                        } else {
+                          changeStage(droppedDeal, stage)
+                        }
+                      }
+                    }
+                  }}>
                   <div style={{ background:sc.bg, padding:'8px 12px', borderBottom:'0.5px solid #e8eaed' }}>
                     <div style={{ fontSize:10, fontWeight:600, color:sc.color }}>{stage}</div>
                     <div style={{ fontSize:11, fontWeight:500, color:sc.color, marginTop:1 }}>{fmt(stageDeals.reduce((s,d)=>s+(d.Amount||0),0))} · {stageDeals.length}</div>
                   </div>
                   <div style={{ padding:8, maxHeight:500, overflowY:'auto' }}>
                     {stageDeals.map((d,i) => (
-                      <div key={i} onClick={()=>navigate(`/crm/deal/${encodeURIComponent(d['Transaction Name'])}`)}
-                        style={{ background:'#fff', borderRadius:6, padding:'8px 10px', marginBottom:6, border:'0.5px solid #e8eaed', cursor:'pointer' }}
+                      <div key={i}
+                        draggable
+                        onDragStart={e => { e.dataTransfer.setData('text/plain', d['Transaction Name']); e.currentTarget.style.opacity='0.5' }}
+                        onDragEnd={e => { e.currentTarget.style.opacity='1' }}
+                        onClick={()=>navigate(`/crm/deal/${encodeURIComponent(d['Transaction Name'])}`)}
+                        style={{ background:'#fff', borderRadius:6, padding:'8px 10px', marginBottom:6, border:'0.5px solid #e8eaed', cursor:'grab', userSelect:'none' }}
                         onMouseOver={e=>e.currentTarget.style.borderColor='#EB99C2'}
                         onMouseOut={e=>e.currentTarget.style.borderColor='#e8eaed'}>
                         <div style={{ fontSize:11, fontWeight:500, color:'#1a2535', marginBottom:2 }}>{d['Transaction Name']}</div>
@@ -614,7 +674,11 @@ export default function CRM({ clients, onUpdateClients }) {
                         <div style={{ fontSize:9, color:'#9ca3af', marginTop:2 }}>{fmtMonth(d['Month of Settlement']?.slice(0,7))} · {d.Lender||'—'}</div>
                       </div>
                     ))}
-                    {stageDeals.length===0 && <div style={{ fontSize:10, color:'#9ca3af', textAlign:'center', padding:12 }}>Empty</div>}
+                    {stageDeals.length===0 && (
+                      <div style={{ fontSize:10, color:'#9ca3af', textAlign:'center', padding:12, border:'2px dashed #e8eaed', borderRadius:6 }}>
+                        Drop here
+                      </div>
+                    )}
                   </div>
                 </div>
               )
