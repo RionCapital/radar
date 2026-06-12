@@ -133,9 +133,9 @@ function AnnualReview({ client, onBack, logNote }) {
   function removeAttachment(i) { setAttachments(a => a.filter((_, j) => j !== i)) }
 
   const [comparisons, setComparisons] = useState([
-    { lender: '', rate: '', repayment: '', features: '' },
-    { lender: '', rate: '', repayment: '', features: '' },
-    { lender: '', rate: '', repayment: '', features: '' },
+    { lender: '', type: '', rate: '', repayment: '' },
+    { lender: '', type: '', rate: '', repayment: '' },
+    { lender: '', type: '', rate: '', repayment: '' },
   ])
   const [secValues, setSecValues] = useState(securities.map(s => ({ ...s, coreLogicVal: s.estVal || '' })))
 
@@ -172,9 +172,9 @@ function AnnualReview({ client, onBack, logNote }) {
     const compCols = comparisons.filter(c => c.lender).map(c => `
       <td style="padding:12px;text-align:center;vertical-align:top;width:33%">
         <div style="font-weight:700;color:#3D4F6B;font-size:13px;margin-bottom:8px">${c.lender}</div>
+        ${c.type ? `<div style="font-size:11px;margin-bottom:4px;color:#64748b">${c.type}</div>` : ''}
         ${c.rate ? `<div style="font-size:11px;margin-bottom:4px">Rate: <strong>${c.rate}%</strong></div>` : ''}
         ${c.repayment ? `<div style="font-size:12px;margin-bottom:4px;color:#3D4F6B;font-weight:700">Est. monthly: <strong>$${Number(c.repayment).toLocaleString()}</strong></div>` : ''}
-        ${c.features ? `<div style="font-size:10px;color:#64748b;margin-top:6px">${c.features}</div>` : ''}
       </td>`).join('')
 
     // Build combined disclaimer block for bottom of email
@@ -215,6 +215,7 @@ function AnnualReview({ client, onBack, logNote }) {
             <td colspan="2"></td></tr>
           </tfoot>
         </table>
+        <p style="font-size:9px;color:#94a3b8;margin:4px 0 0;font-style:italic;line-height:1.5">* Balances shown are the outstanding loan balance and may reflect the net balance inclusive of any offset facilities held against the relevant loan.</p>
 
         ${secValues.length > 0 ? `
         <div style="margin-top:20px">
@@ -270,6 +271,7 @@ function AnnualReview({ client, onBack, logNote }) {
               <td style="font-size:12px;color:#2A3545;line-height:1.6;padding-left:10px">${s}</td>
             </tr>
           </table>`).join('')}
+          <p style="font-size:12px;color:#64748b;margin:12px 0 0;line-height:1.6;font-style:italic">Or, if you would like to discuss this now, please simply reply to this email or call <strong style="color:#3D4F6B">${brokerName || 'your broker'}</strong> directly to schedule an appointment.</p>
         </div>
 
         ${notes ? `<div style="margin-top:16px;padding:14px;background:#fff;border:0.5px solid #e2e8f0;border-radius:8px"><p style="font-size:12px;color:#2A3545;margin:0;line-height:1.7">${notes}</p></div>` : ''}
