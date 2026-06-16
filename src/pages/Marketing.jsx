@@ -491,9 +491,46 @@ function EditContactModal({ contact, section, onChange, onSave, onClose }) {
 }
 
 // ─── Contact List ─────────────────────────────────────────────────────────────
-function ContactList({ contacts, section, onSelect, onOutreach, onAdd }) {
+// ─── CSV Export ──────────────────────────────────────────────────────────────
+function exportToCSV(contacts, section, label) {
+  const cols = section === 'clients'
+    ? ['Name','Email','Mobile','Connection','Connection #','Stream','Profession','Industry','Preferred Contact','Referred By','Spouse/Partner','LinkedIn','Unsubscribed']
+    : section === 'referrers'
+    ? ['Name','Email','Mobile','Company','Type','Tier','LinkedIn','Preferred Contact','Referral Count','Unsubscribed']
+    : section === 'lenders'
+    ? ['Name','Email','Mobile','Company','Type','BDM Name','BDM Email','BDM Mobile']
+    : ['Name','Email','Mobile','Company','Type']
+
+  const rows = contacts.map(c => {
+    if (section === 'clients') return [
+      c.name, c.email, c.mobile, c._clientName, c._connNo, c.stream,
+      c.profession, c.industry, c.preferredContact, c.referredBy,
+      c.spouseName, c.linkedIn, c.unsubscribed ? 'Yes' : 'No'
+    ]
+    if (section === 'referrers') return [
+      c.name, c.email, c.mobile, c.company, c.type,
+      REFERRER_TIERS.find(t => t.id === c.tier)?.label || c.tier,
+      c.linkedIn, c.preferredContact, c.referralCount, c.unsubscribed ? 'Yes' : 'No'
+    ]
+    if (section === 'lenders') return [c.name, c.email, c.mobile, c.company, c.type, c.bdmName, c.bdmEmail, c.bdmMobile]
+    return [c.name, c.email, c.mobile, c.company, c.type]
+  })
+
+  const esc = v => `"${String(v ?? '').replace(/"/g, '""')}"`
+  const csv = [cols.map(esc).join(','), ...rows.map(r => r.map(esc).join(','))].join('\n')
+  const blob = new Blob([csv], { type: 'text/csv' })
+  const url  = URL.createObjectURL(blob)
+  const a    = document.createElement('a')
+  a.href = url
+  a.download = `${label.replace(/\s+/g, '_')}_${new Date().toLocaleDateString('en-AU').replace(/\//g,'-')}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+function ContactList({ contacts, section, onSelect, onOutreach, onAdd, onDeleteMultiple }) {
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState('')
+  const [selected, setSelected] = useState(new Set())
 
   const filtered = useMemo(() => {
     let list = contacts
@@ -513,6 +550,9 @@ function ContactList({ contacts, section, onSelect, onOutreach, onAdd }) {
     return list
   }, [contacts, search, filter])
 
+  // Clear selection when filtered list changes
+  useMemo(() => setSelected(new Set()), [search, filter])
+
   const filterOptions = section === 'referrers'
     ? [{ group: 'Tier', opts: REFERRER_TIERS.map(t => ({ value: t.id, label: t.label })) },
        { group: 'Type', opts: REFERRER_TYPES.map(t => ({ value: t, label: t })) }]
@@ -521,9 +561,35 @@ function ContactList({ contacts, section, onSelect, onOutreach, onAdd }) {
        { group: 'Profession', opts: PROFESSIONS.map(p => ({ value: p, label: p })) }]
     : []
 
+  const allSelected = filtered.length > 0 && filtered.every(c => selected.has(c.id || c._id))
+
+  function toggleAll() {
+    if (allSelected) {
+      setSelected(new Set())
+    } else {
+      setSelected(new Set(filtered.map(c => c.id || c._id)))
+    }
+  }
+
+  function toggleOne(id) {
+    const next = new Set(selected)
+    next.has(id) ? next.delete(id) : next.add(id)
+    setSelected(next)
+  }
+
+  function handleDeleteSelected() {
+    if (selected.size === 0) return
+    if (!window.confirm(`Delete ${selected.size} contact${selected.size !== 1 ? 's' : ''}? This cannot be undone.`)) return
+    onDeleteMultiple([...selected])
+    setSelected(new Set())
+  }
+
+  const sectionLabel = { clients: 'Clients', referrers: 'Referral Partners', lenders: 'Lenders', others: 'Others' }
+
   return (
     <div style={{ flex: 1, overflowY: 'auto', padding: '28px 32px' }}>
-      <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 20, flexWrap: 'wrap' }}>
+      {/* toolbar row 1 — search + filter + add */}
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap' }}>
         <input value={search} onChange={e => setSearch(e.target.value)}
           placeholder={`Search ${section}…`}
           style={{ ...inputStyle, flex: 1, minWidth: 180 }} />
@@ -545,15 +611,34 @@ function ContactList({ contacts, section, onSelect, onOutreach, onAdd }) {
             + Add
           </button>
         )}
-        <button onClick={() => onOutreach(filtered)} style={{ padding: '9px 16px', borderRadius: 8,
-          border: `1px solid ${C.border}`, background: '#fff', fontWeight: 600, fontSize: 13,
-          cursor: 'pointer', fontFamily: 'Montserrat,sans-serif', color: C.text, whiteSpace: 'nowrap' }}>
-          ✉ Mass Outreach
-        </button>
       </div>
 
-      <div style={{ fontSize: 12, color: C.muted, fontFamily: 'Montserrat,sans-serif', marginBottom: 12 }}>
-        {filtered.length} of {contacts.length} · {contacts.filter(c => c.unsubscribed).length} unsubscribed
+      {/* toolbar row 2 — actions */}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' }}>
+        <button onClick={() => onOutreach(filtered)}
+          style={{ padding: '7px 14px', borderRadius: 8, border: `1px solid ${C.border}`,
+            background: '#fff', fontWeight: 600, fontSize: 12, cursor: 'pointer',
+            fontFamily: 'Montserrat,sans-serif', color: C.text, whiteSpace: 'nowrap' }}>
+          ✉ Mass Outreach ({filtered.length})
+        </button>
+        <button onClick={() => exportToCSV(filtered, section, `${sectionLabel[section]}${filter ? '_' + filter : ''}`)}
+          style={{ padding: '7px 14px', borderRadius: 8, border: `1px solid ${C.border}`,
+            background: '#fff', fontWeight: 600, fontSize: 12, cursor: 'pointer',
+            fontFamily: 'Montserrat,sans-serif', color: C.text, whiteSpace: 'nowrap' }}>
+          ⬇ Export CSV ({filtered.length})
+        </button>
+        {selected.size > 0 && section !== 'clients' && (
+          <button onClick={handleDeleteSelected}
+            style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid #fecaca',
+              background: '#fff', fontWeight: 600, fontSize: 12, cursor: 'pointer',
+              fontFamily: 'Montserrat,sans-serif', color: '#dc2626', whiteSpace: 'nowrap' }}>
+            🗑 Delete Selected ({selected.size})
+          </button>
+        )}
+        <span style={{ fontSize: 12, color: C.muted, fontFamily: 'Montserrat,sans-serif', marginLeft: 4 }}>
+          {filtered.length} of {contacts.length} · {contacts.filter(c => c.unsubscribed).length} unsubscribed
+          {selected.size > 0 && ` · ${selected.size} selected`}
+        </span>
       </div>
 
       {/* tier groups for referrers */}
@@ -567,59 +652,87 @@ function ContactList({ contacts, section, onSelect, onOutreach, onAdd }) {
                   <Pill label={`${tier.label} · ${tc.length}`} colour={tier.colour} />
                   <span style={{ fontSize: 12, color: C.muted, fontFamily: 'Montserrat,sans-serif' }}>{tier.desc}</span>
                 </div>
-                <ContactTable contacts={tc} section={section} onSelect={onSelect} />
+                <ContactTable contacts={tc} section={section} onSelect={onSelect}
+                  selected={selected} onToggle={toggleOne} onToggleAll={() => {
+                    const ids = new Set(tc.map(c => c.id || c._id))
+                    const allOn = tc.every(c => selected.has(c.id || c._id))
+                    const next = new Set(selected)
+                    ids.forEach(id => allOn ? next.delete(id) : next.add(id))
+                    setSelected(next)
+                  }} />
               </div>
             )
           })
-        : <ContactTable contacts={filtered} section={section} onSelect={onSelect} />
+        : <ContactTable contacts={filtered} section={section} onSelect={onSelect}
+            selected={selected} onToggle={toggleOne} onToggleAll={toggleAll} />
       }
     </div>
   )
 }
 
-function ContactTable({ contacts, section, onSelect }) {
+function ContactTable({ contacts, section, onSelect, selected, onToggle, onToggleAll }) {
   if (contacts.length === 0) {
     return <div style={{ fontSize: 13, color: C.muted, fontFamily: 'Montserrat,sans-serif', padding: '20px 0' }}>No contacts found.</div>
   }
+  const allOn = contacts.length > 0 && contacts.every(c => selected.has(c.id || c._id))
   return (
     <div style={{ border: `1px solid ${C.border}`, borderRadius: 10, overflow: 'hidden', background: '#fff' }}>
+      {/* select-all header */}
+      {section !== 'clients' && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 16px',
+          borderBottom: `1px solid ${C.border}`, background: '#FAFBFD' }}>
+          <input type="checkbox" checked={allOn} onChange={onToggleAll}
+            style={{ width: 15, height: 15, cursor: 'pointer', accentColor: C.navy }} />
+          <span style={{ fontSize: 11, color: C.muted, fontFamily: 'Montserrat,sans-serif' }}>
+            Select all {contacts.length}
+          </span>
+        </div>
+      )}
       {contacts.map((c, i) => {
         const tierCfg = REFERRER_TIERS.find(t => t.id === c.tier)
         const bdayIn  = upcomingBirthday(c.dob)
+        const cid     = c.id || c._id
+        const isChecked = selected.has(cid)
         return (
-          <div key={c.id || c._id || i}
-            onClick={() => onSelect(c)}
-            style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '12px 16px',
+          <div key={cid || i}
+            style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px',
               borderBottom: i < contacts.length - 1 ? `1px solid ${C.border}` : 'none',
-              cursor: 'pointer', background: '#fff' }}
-            onMouseEnter={e => e.currentTarget.style.background = '#F4F6FA'}
-            onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
-            <Avatar name={c.name} size={36} />
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 14, fontWeight: 700, color: c.unsubscribed ? C.muted : C.text,
-                fontFamily: 'Montserrat,sans-serif', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                textDecoration: c.unsubscribed ? 'line-through' : 'none' }}>
-                {c.name}
-                {bdayIn !== null && <span style={{ marginLeft: 6, fontSize: 11 }}>🎂</span>}
-              </div>
-              <div style={{ fontSize: 12, color: C.muted, fontFamily: 'Montserrat,sans-serif', marginTop: 1 }}>
-                {section === 'clients'
-                  ? `${c._clientName} · #${c._connNo}`
-                  : c.company || c.type || ''}
-              </div>
-            </div>
-            <div style={{ fontSize: 12, color: C.muted, fontFamily: 'Montserrat,sans-serif', textAlign: 'right', flexShrink: 0 }}>
-              {c.email && <div style={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.email}</div>}
-              {c.mobile && <div>{c.mobile}</div>}
-            </div>
-            {tierCfg && <Pill label={tierCfg.label} colour={tierCfg.colour} />}
-            {section === 'clients' && c.stream && <Pill label={c.stream === 'Private Wealth' ? 'PW' : 'Comm'} colour={c.stream === 'Commercial' ? C.pinkBtn : C.navy} />}
-            {(c.notes || []).length > 0 && (
-              <span style={{ fontSize: 11, color: C.slate, fontFamily: 'Montserrat,sans-serif' }}>
-                {c.notes.length}n
-              </span>
+              background: isChecked ? '#EFF6FF' : '#fff', transition: 'background 0.1s' }}
+            onMouseEnter={e => { if (!isChecked) e.currentTarget.style.background = '#F4F6FA' }}
+            onMouseLeave={e => { if (!isChecked) e.currentTarget.style.background = '#fff' }}>
+            {section !== 'clients' && (
+              <input type="checkbox" checked={isChecked}
+                onChange={e => { e.stopPropagation(); onToggle(cid) }}
+                style={{ width: 15, height: 15, cursor: 'pointer', accentColor: C.navy, flexShrink: 0 }} />
             )}
-            <span style={{ color: C.slate, fontSize: 16 }}>›</span>
+            <div onClick={() => onSelect(c)} style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, cursor: 'pointer', minWidth: 0 }}>
+              <Avatar name={c.name} size={36} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: c.unsubscribed ? C.muted : C.text,
+                  fontFamily: 'Montserrat,sans-serif', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  textDecoration: c.unsubscribed ? 'line-through' : 'none' }}>
+                  {c.name}
+                  {bdayIn !== null && <span style={{ marginLeft: 6, fontSize: 11 }}>🎂</span>}
+                </div>
+                <div style={{ fontSize: 12, color: C.muted, fontFamily: 'Montserrat,sans-serif', marginTop: 1 }}>
+                  {section === 'clients'
+                    ? `${c._clientName} · #${c._connNo}`
+                    : c.company || c.type || ''}
+                </div>
+              </div>
+              <div style={{ fontSize: 12, color: C.muted, fontFamily: 'Montserrat,sans-serif', textAlign: 'right', flexShrink: 0 }}>
+                {c.email && <div style={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.email}</div>}
+                {c.mobile && <div>{c.mobile}</div>}
+              </div>
+              {tierCfg && <Pill label={tierCfg.label} colour={tierCfg.colour} />}
+              {section === 'clients' && c.stream && <Pill label={c.stream === 'Private Wealth' ? 'PW' : 'Comm'} colour={c.stream === 'Commercial' ? C.pinkBtn : C.navy} />}
+              {(c.notes || []).length > 0 && (
+                <span style={{ fontSize: 11, color: C.slate, fontFamily: 'Montserrat,sans-serif' }}>
+                  {c.notes.length}n
+                </span>
+              )}
+              <span style={{ color: C.slate, fontSize: 16 }}>›</span>
+            </div>
           </div>
         )
       })}
@@ -828,7 +941,12 @@ export default function Marketing() {
               onDelete={() => handleDeleteContact(selected)} />
           : <ContactList contacts={sectionContacts} section={section}
               onSelect={setSelected} onOutreach={setOutreach}
-              onAdd={() => { setAddForm({}); setAdding(true) }} />
+              onAdd={() => { setAddForm({}); setAdding(true) }}
+              onDeleteMultiple={ids => {
+                if (section !== 'clients') {
+                  saveList(section, list => list.filter(c => !ids.includes(c.id)))
+                }
+              }} />
         }
       </div>
 
