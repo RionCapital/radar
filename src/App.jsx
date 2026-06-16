@@ -187,9 +187,10 @@ export default function App() {
           <Route path="/crm/deal/:dealName" element={<RequireAuth><DealPage onUpdateDeals={updateCrmDeals} clients={clients} /></RequireAuth>} />
           <Route path="/crm/dashboard" element={<RequireAuth><CRMDashboard /></RequireAuth>} />
           <Route path="/crm" element={<RequireAuth><CRM clients={clients} onUpdateClients={updateAllClients} /></RequireAuth>} />
-          <Route path="/radar/clients/:name/contacts" element={<RequireAuth><ContactPage clients={clients} updateClient={updateClient} /></RequireAuth>} />
           <Route path="/radar/clients/:name/opportunity" element={<RequireAuth><OpportunityScore clients={clients} updateClient={updateClient} /></RequireAuth>} />
           <Route path="/radar/import" element={<RequireAuth><CommissionImportPage clients={clients} onImport={handleImport} /></RequireAuth>} />
+          <Route path="/radar/clients/:name/contacts" element={<RequireAuth><ContactPage clients={clients} updateClient={updateClient} /></RequireAuth>} />
+          <Route path="/radar/clients/:name/commission" element={<RequireAuth><ClientCommission clients={clients} updateClient={updateClient} /></RequireAuth>} />
           <Route path="/radar/clients/:name/security-review/:secIdx" element={<RequireAuth><SecurityReviewEmail clients={clients} updateClient={updateClient} /></RequireAuth>} />
           <Route path="/radar/clients/:name/email" element={<RequireAuth><EmailBuilder clients={clients} updateClient={updateClient} /></RequireAuth>} />
           <Route path="/radar/studio" element={<RequireAuth><ProjectStudio /></RequireAuth>} />
