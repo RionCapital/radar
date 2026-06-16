@@ -260,7 +260,7 @@ function InfoTile({ label, value, highlight }) {
 }
 
 // ─── Contact Detail ───────────────────────────────────────────────────────────
-function ContactDetail({ contact, section, onBack, onSave, onDelete, rradarClients }) {
+function ContactDetail({ contact, section, onBack, onSave, onDelete, onMove, rradarClients }) {
   const [editing, setEditing]   = useState(false)
   const [form, setForm]         = useState({ ...contact })
   const [noteText, setNoteText] = useState('')
@@ -345,6 +345,17 @@ function ContactDetail({ contact, section, onBack, onSave, onDelete, rradarClien
             cursor: 'pointer', fontFamily: 'Montserrat,sans-serif', color: C.text }}>
             Edit
           </button>
+          {onMove && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <select defaultValue="" onChange={e => { if(e.target.value) onMove(contact, e.target.value) }}
+                style={{ ...inputStyle, width: 'auto', fontSize: 12, padding: '6px 10px', cursor: 'pointer' }}>
+                <option value="">Move to…</option>
+                {['clients','referrers','lenders','others']
+                  .filter(s => s !== section && s !== 'clients')
+                  .map(s => <option key={s} value={s}>{{ clients:'Clients', referrers:'Referral Partners', lenders:'Lenders', others:'Others' }[s]}</option>)}
+              </select>
+            </div>
+          )}
           <button onClick={onDelete} style={{ padding: '7px 14px', borderRadius: 8,
             border: `1px solid #fecaca`, background: '#fff', fontWeight: 600, fontSize: 12,
             cursor: 'pointer', fontFamily: 'Montserrat,sans-serif', color: '#dc2626' }}>
@@ -527,10 +538,25 @@ function exportToCSV(contacts, section, label) {
   URL.revokeObjectURL(url)
 }
 
-function ContactList({ contacts, section, onSelect, onOutreach, onAdd, onDeleteMultiple }) {
-  const [search, setSearch] = useState('')
-  const [filter, setFilter] = useState('')
+function ContactList({ contacts, section, onSelect, onOutreach, onAdd, onDeleteMultiple, onMoveContacts }) {
+  const [search,   setSearch]   = useState('')
+  const [filters,  setFilters]  = useState({}) // { tier:'gold', stream:'Commercial', type:'Accountant', ... }
   const [selected, setSelected] = useState(new Set())
+  const [moveTarget, setMoveTarget] = useState(null) // section to move selected to
+
+  // Build active filter chips based on section
+  const FILTER_GROUPS = useMemo(() => {
+    if (section === 'referrers') return [
+      { key: 'tier',   label: 'Tier',   opts: REFERRER_TIERS.map(t => ({ value: t.id, label: t.label, colour: t.colour })) },
+      { key: 'type',   label: 'Type',   opts: REFERRER_TYPES.map(t => ({ value: t, label: t })) },
+    ]
+    if (section === 'clients') return [
+      { key: 'stream',     label: 'Stream',     opts: ['Private Wealth','Commercial'].map(s => ({ value: s, label: s })) },
+      { key: 'profession', label: 'Profession', opts: PROFESSIONS.map(p => ({ value: p, label: p })) },
+      { key: 'industry',   label: 'Industry',   opts: INDUSTRIES.map(i => ({ value: i, label: i })) },
+    ]
+    return []
+  }, [section])
 
   const filtered = useMemo(() => {
     let list = contacts
@@ -544,120 +570,164 @@ function ContactList({ contacts, section, onSelect, onOutreach, onAdd, onDeleteM
         (c.type || '').toLowerCase().includes(q)
       )
     }
-    if (filter) {
-      list = list.filter(c => c.tier === filter || c.type === filter || c.stream === filter || c.profession === filter)
-    }
+    Object.entries(filters).forEach(([key, val]) => {
+      if (!val) return
+      list = list.filter(c => (c[key] || '').toLowerCase() === val.toLowerCase())
+    })
     return list
-  }, [contacts, search, filter])
+  }, [contacts, search, filters])
 
-  // Clear selection when filtered list changes
-  useMemo(() => setSelected(new Set()), [search, filter])
+  useMemo(() => setSelected(new Set()), [search, filters])
 
-  const filterOptions = section === 'referrers'
-    ? [{ group: 'Tier', opts: REFERRER_TIERS.map(t => ({ value: t.id, label: t.label })) },
-       { group: 'Type', opts: REFERRER_TYPES.map(t => ({ value: t, label: t })) }]
-    : section === 'clients'
-    ? [{ group: 'Stream', opts: ['Private Wealth','Commercial'].map(s => ({ value: s, label: s })) },
-       { group: 'Profession', opts: PROFESSIONS.map(p => ({ value: p, label: p })) }]
-    : []
+  const activeFilters = Object.entries(filters).filter(([,v]) => v)
+  const hasFilters    = search || activeFilters.length > 0
+
+  function clearAllFilters() { setSearch(''); setFilters({}) }
+  function setFilter(key, val) { setFilters(f => ({ ...f, [key]: f[key] === val ? '' : val })) }
 
   const allSelected = filtered.length > 0 && filtered.every(c => selected.has(c.id || c._id))
-
   function toggleAll() {
-    if (allSelected) {
-      setSelected(new Set())
-    } else {
-      setSelected(new Set(filtered.map(c => c.id || c._id)))
-    }
+    allSelected ? setSelected(new Set()) : setSelected(new Set(filtered.map(c => c.id || c._id)))
   }
-
   function toggleOne(id) {
-    const next = new Set(selected)
-    next.has(id) ? next.delete(id) : next.add(id)
-    setSelected(next)
+    const next = new Set(selected); next.has(id) ? next.delete(id) : next.add(id); setSelected(next)
   }
-
   function handleDeleteSelected() {
     if (selected.size === 0) return
     if (!window.confirm(`Delete ${selected.size} contact${selected.size !== 1 ? 's' : ''}? This cannot be undone.`)) return
-    onDeleteMultiple([...selected])
+    onDeleteMultiple([...selected]); setSelected(new Set())
+  }
+  function handleMove() {
+    if (!moveTarget || selected.size === 0) return
+    if (!window.confirm(`Move ${selected.size} contact${selected.size !== 1 ? 's' : ''} to ${moveTarget}?`)) return
+    const toMove = filtered.filter(c => selected.has(c.id || c._id))
+    onMoveContacts(toMove, moveTarget)
     setSelected(new Set())
+    setMoveTarget(null)
   }
 
   const sectionLabel = { clients: 'Clients', referrers: 'Referral Partners', lenders: 'Lenders', others: 'Others' }
+  const moveTargets   = Object.keys(sectionLabel).filter(s => s !== section && s !== 'clients')
 
   return (
-    <div style={{ flex: 1, overflowY: 'auto', padding: '28px 32px' }}>
-      {/* toolbar row 1 — search + filter + add */}
-      <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap' }}>
+    <div style={{ flex: 1, overflowY: 'auto', padding: '24px 32px' }}>
+
+      {/* ── Row 1: search + add ── */}
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 12 }}>
         <input value={search} onChange={e => setSearch(e.target.value)}
-          placeholder={`Search ${section}…`}
-          style={{ ...inputStyle, flex: 1, minWidth: 180 }} />
-        {filterOptions.length > 0 && (
-          <select value={filter} onChange={e => setFilter(e.target.value)}
-            style={{ ...inputStyle, width: 'auto', cursor: 'pointer' }}>
-            <option value="">All</option>
-            {filterOptions.map(fg => (
-              <optgroup key={fg.group} label={fg.group}>
-                {fg.opts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </optgroup>
-            ))}
-          </select>
+          placeholder={`Search ${sectionLabel[section]}…`}
+          style={{ ...inputStyle, flex: 1 }} />
+        {hasFilters && (
+          <button onClick={clearAllFilters}
+            style={{ padding: '9px 12px', borderRadius: 8, border: `1px solid ${C.border}`,
+              background: '#fff', fontSize: 12, cursor: 'pointer', color: C.muted,
+              fontFamily: 'Montserrat,sans-serif', whiteSpace: 'nowrap' }}>
+            ✕ Clear
+          </button>
         )}
         {section !== 'clients' && (
-          <button onClick={onAdd} style={{ padding: '9px 16px', borderRadius: 8, border: 'none',
-            background: C.navy, color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer',
-            fontFamily: 'Montserrat,sans-serif', whiteSpace: 'nowrap' }}>
+          <button onClick={onAdd}
+            style={{ padding: '9px 16px', borderRadius: 8, border: 'none',
+              background: C.navy, color: '#fff', fontWeight: 700, fontSize: 13,
+              cursor: 'pointer', fontFamily: 'Montserrat,sans-serif', whiteSpace: 'nowrap' }}>
             + Add
           </button>
         )}
       </div>
 
-      {/* toolbar row 2 — actions */}
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' }}>
+      {/* ── Filter pill rows ── */}
+      {FILTER_GROUPS.map(group => (
+        <div key={group.key} style={{ marginBottom: 10 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: C.slate, textTransform: 'uppercase',
+            letterSpacing: '0.06em', fontFamily: 'Montserrat,sans-serif', marginBottom: 5 }}>
+            {group.label}
+          </div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {group.opts.map(opt => {
+              const active = filters[group.key] === opt.value
+              const colour = opt.colour || C.navy
+              return (
+                <button key={opt.value} onClick={() => setFilter(group.key, opt.value)}
+                  style={{ padding: '4px 12px', borderRadius: 20, border: `1px solid ${active ? colour : C.border}`,
+                    background: active ? colour : '#fff', color: active ? '#fff' : C.text,
+                    fontSize: 12, fontWeight: active ? 700 : 500, cursor: 'pointer',
+                    fontFamily: 'Montserrat,sans-serif', transition: 'all 0.15s', whiteSpace: 'nowrap' }}>
+                  {opt.label}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      ))}
+
+      {/* ── Action bar ── */}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', margin: '12px 0 14px', flexWrap: 'wrap' }}>
         <button onClick={() => onOutreach(filtered)}
-          style={{ padding: '7px 14px', borderRadius: 8, border: `1px solid ${C.border}`,
+          style={{ padding: '7px 13px', borderRadius: 8, border: `1px solid ${C.border}`,
             background: '#fff', fontWeight: 600, fontSize: 12, cursor: 'pointer',
             fontFamily: 'Montserrat,sans-serif', color: C.text, whiteSpace: 'nowrap' }}>
-          ✉ Mass Outreach ({filtered.length})
+          ✉ Outreach ({filtered.length})
         </button>
-        <button onClick={() => exportToCSV(filtered, section, `${sectionLabel[section]}${filter ? '_' + filter : ''}`)}
-          style={{ padding: '7px 14px', borderRadius: 8, border: `1px solid ${C.border}`,
+        <button onClick={() => exportToCSV(filtered, section, `${sectionLabel[section]}${activeFilters.map(([,v])=>'_'+v).join('')}`)}
+          style={{ padding: '7px 13px', borderRadius: 8, border: `1px solid ${C.border}`,
             background: '#fff', fontWeight: 600, fontSize: 12, cursor: 'pointer',
             fontFamily: 'Montserrat,sans-serif', color: C.text, whiteSpace: 'nowrap' }}>
-          ⬇ Export CSV ({filtered.length})
+          ⬇ Export ({filtered.length})
         </button>
+
+        {/* Move selected */}
+        {selected.size > 0 && moveTargets.length > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <select value={moveTarget || ''} onChange={e => setMoveTarget(e.target.value)}
+              style={{ ...inputStyle, width: 'auto', fontSize: 12, padding: '6px 10px', cursor: 'pointer' }}>
+              <option value="">Move to…</option>
+              {moveTargets.map(t => <option key={t} value={t}>{sectionLabel[t]}</option>)}
+            </select>
+            {moveTarget && (
+              <button onClick={handleMove}
+                style={{ padding: '7px 13px', borderRadius: 8, border: `1px solid ${C.navy}`,
+                  background: C.navy, color: '#fff', fontWeight: 600, fontSize: 12,
+                  cursor: 'pointer', fontFamily: 'Montserrat,sans-serif', whiteSpace: 'nowrap' }}>
+                Move {selected.size}
+              </button>
+            )}
+          </div>
+        )}
+
         {selected.size > 0 && section !== 'clients' && (
           <button onClick={handleDeleteSelected}
-            style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid #fecaca',
+            style={{ padding: '7px 13px', borderRadius: 8, border: '1px solid #fecaca',
               background: '#fff', fontWeight: 600, fontSize: 12, cursor: 'pointer',
               fontFamily: 'Montserrat,sans-serif', color: '#dc2626', whiteSpace: 'nowrap' }}>
-            🗑 Delete Selected ({selected.size})
+            🗑 Delete ({selected.size})
           </button>
         )}
-        <span style={{ fontSize: 12, color: C.muted, fontFamily: 'Montserrat,sans-serif', marginLeft: 4 }}>
-          {filtered.length} of {contacts.length} · {contacts.filter(c => c.unsubscribed).length} unsubscribed
+
+        <span style={{ fontSize: 12, color: C.muted, fontFamily: 'Montserrat,sans-serif' }}>
+          {filtered.length} of {contacts.length}
+          {contacts.filter(c => c.unsubscribed).length > 0 && ` · ${contacts.filter(c => c.unsubscribed).length} unsub`}
           {selected.size > 0 && ` · ${selected.size} selected`}
         </span>
       </div>
 
-      {/* tier groups for referrers */}
-      {section === 'referrers' && !filter && !search
+      {/* ── List (tier-grouped for referrers when no filter active) ── */}
+      {section === 'referrers' && activeFilters.every(([k]) => k !== 'tier') && !search
         ? REFERRER_TIERS.map(tier => {
+            const tierFilter = filters['tier']
             const tc = filtered.filter(c => c.tier === tier.id)
             if (tc.length === 0) return null
             return (
-              <div key={tier.id} style={{ marginBottom: 28 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+              <div key={tier.id} style={{ marginBottom: 24 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
                   <Pill label={`${tier.label} · ${tc.length}`} colour={tier.colour} />
-                  <span style={{ fontSize: 12, color: C.muted, fontFamily: 'Montserrat,sans-serif' }}>{tier.desc}</span>
+                  <span style={{ fontSize: 11, color: C.muted, fontFamily: 'Montserrat,sans-serif' }}>{tier.desc}</span>
                 </div>
                 <ContactTable contacts={tc} section={section} onSelect={onSelect}
-                  selected={selected} onToggle={toggleOne} onToggleAll={() => {
-                    const ids = new Set(tc.map(c => c.id || c._id))
+                  selected={selected} onToggle={toggleOne}
+                  onToggleAll={() => {
                     const allOn = tc.every(c => selected.has(c.id || c._id))
-                    const next = new Set(selected)
-                    ids.forEach(id => allOn ? next.delete(id) : next.add(id))
+                    const next  = new Set(selected)
+                    tc.forEach(c => allOn ? next.delete(c.id || c._id) : next.add(c.id || c._id))
                     setSelected(next)
                   }} />
               </div>
@@ -749,11 +819,16 @@ export default function Marketing() {
   const rradarClients = useMemo(() => loadClients(), [])
   const [clientOverrides, setClientOverrides] = useState(() => loadStore(STORAGE_KEYS.clientOv))
   const [referrers, setReferrers] = useState(() => {
+    // v2 = cleaned (nan nan removed). If stored version differs, reseed.
+    const REFERRER_VERSION = 'v2'
+    const storedVer = localStorage.getItem('rion-marketing-referrers-version')
+    if (storedVer !== REFERRER_VERSION) {
+      saveStore(STORAGE_KEYS.referrers, DEFAULT_REFERRERS)
+      localStorage.setItem('rion-marketing-referrers-version', REFERRER_VERSION)
+      return DEFAULT_REFERRERS
+    }
     const stored = loadStore(STORAGE_KEYS.referrers)
-    if (stored.length > 0) return stored
-    // Seed from imported list on first load
-    saveStore(STORAGE_KEYS.referrers, DEFAULT_REFERRERS)
-    return DEFAULT_REFERRERS
+    return stored.length > 0 ? stored : DEFAULT_REFERRERS
   })
   const [lenders,   setLenders]   = useState(() => loadStore(STORAGE_KEYS.lenders))
   const [others,    setOthers]    = useState(() => loadStore(STORAGE_KEYS.others))
@@ -938,12 +1013,41 @@ export default function Marketing() {
         {selected
           ? <ContactDetail contact={selected} section={section} rradarClients={rradarClients}
               onBack={() => setSelected(null)} onSave={handleSaveContact}
-              onDelete={() => handleDeleteContact(selected)} />
+              onDelete={() => handleDeleteContact(selected)}
+              onMove={(contact, targetSection) => {
+                const clean = { ...contact }
+                delete clean._clientName; delete clean._connNo; delete clean._ovKey; delete clean._id
+                saveList(targetSection, list => {
+                  if (list.find(c => c.id === clean.id)) return list
+                  return [...list, { ...clean, tier: targetSection === 'referrers' ? (clean.tier || 'contenders') : clean.tier }]
+                })
+                if (section !== 'clients') saveList(section, list => list.filter(c => c.id !== contact.id))
+                setSelected(null)
+              }} />
           : <ContactList contacts={sectionContacts} section={section}
               onSelect={setSelected} onOutreach={setOutreach}
               onAdd={() => { setAddForm({}); setAdding(true) }}
               onDeleteMultiple={ids => {
                 if (section !== 'clients') {
+                  saveList(section, list => list.filter(c => !ids.includes(c.id)))
+                }
+              }}
+              onMoveContacts={(contacts, targetSection) => {
+                // Add to target list
+                saveList(targetSection, list => {
+                  const existingIds = new Set(list.map(c => c.id))
+                  const toAdd = contacts
+                    .filter(c => !existingIds.has(c.id))
+                    .map(c => ({ ...c,
+                      // strip client-specific fields when moving to referrer/lender/other
+                      _clientName: undefined, _connNo: undefined, _ovKey: undefined, _id: undefined,
+                      tier: targetSection === 'referrers' ? (c.tier || 'contenders') : undefined,
+                    }))
+                  return [...list, ...toAdd]
+                })
+                // Remove from current list (not clients — those are read-only from Rradar)
+                if (section !== 'clients') {
+                  const ids = contacts.map(c => c.id)
                   saveList(section, list => list.filter(c => !ids.includes(c.id)))
                 }
               }} />
