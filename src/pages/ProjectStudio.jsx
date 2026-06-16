@@ -87,6 +87,12 @@ export default function ProjectStudio() {
   function deleteTask(pId, mId, tId) {
     setProjects(ps=>ps.map(p=>p.id!==pId?p:{...p,milestones:p.milestones.map(m=>m.id!==mId?m:{...m,tasks:m.tasks.filter(t=>t.id!==tId)})}))
   }
+  function updateTaskDate(pId, mId, tId, newDate) {
+    setProjects(ps=>ps.map(p=>p.id!==pId?p:{...p,milestones:p.milestones.map(m=>m.id!==mId?m:{...m,tasks:m.tasks.map(t=>t.id!==tId?t:{...t,due:newDate})})}))
+  }
+  function updateMilestoneDate(pId, mId, newDate) {
+    setProjects(ps=>ps.map(p=>p.id!==pId?p:{...p,milestones:p.milestones.map(m=>m.id!==mId?m:{...m,due:newDate})}))
+  }
 
   function addTask(pId, mId) {
     if (!newTask.title.trim()) return
@@ -292,7 +298,14 @@ export default function ProjectStudio() {
                   </div>
                   <div style={{ textAlign:'right', minWidth:60 }}>
                     <div style={{ fontSize:13, fontWeight:600, color:borderColor }}>{mp}%</div>
-                    <div style={{ fontSize:10, color:'#7A8090' }}>{fmtDate(m.due)}</div>
+                    <input
+                      type="date"
+                      value={m.due || ''}
+                      onChange={e=>updateMilestoneDate(proj.id, m.id, e.target.value)}
+                      onClick={e=>e.stopPropagation()}
+                      title="Click to change milestone date"
+                      style={{ fontSize:10, color:'#7A8090', border:'none', background:'transparent', cursor:'pointer', textAlign:'right', width:90, outline:'none', fontFamily:"'Montserrat',sans-serif" }}
+                    />
                   </div>
                 </div>
                 {/* Tasks */}
@@ -307,7 +320,15 @@ export default function ProjectStudio() {
                       <div key={t.id} style={{ display:'grid', gridTemplateColumns:'8px 1fr 100px 110px 28px', gap:'0 10px', alignItems:'center', padding:'7px 0', borderBottom:'1px solid #f0f2f6' }}>
                         <span style={{ width:8, height:8, borderRadius:'50%', background:PRIO_COLOR[t.priority]||'#7A8090', display:'block' }}/>
                         <span style={{ fontSize:12, color:t.status==='Done'?'#7A8090':'#1C2533', textDecoration:t.status==='Done'?'line-through':'none' }}>{t.title}</span>
-                        <span style={{ fontSize:11, color:t.due&&new Date(t.due)<new Date()&&t.status!=='Done'?'#C0443C':'#7A8090' }}>{fmtDate(t.due)}</span>
+                        <span style={{ fontSize:11, color:t.due&&new Date(t.due)<new Date()&&t.status!=='Done'?'#C0443C':'#7A8090' }}>
+                          <input
+                            type="date"
+                            value={t.due || ''}
+                            onChange={e=>updateTaskDate(proj.id, m.id, t.id, e.target.value)}
+                            title="Click to change task date"
+                            style={{ fontSize:11, color:t.due&&new Date(t.due)<new Date()&&t.status!=='Done'?'#C0443C':'#7A8090', border:'none', background:'transparent', cursor:'pointer', outline:'none', width:100, fontFamily:"'Montserrat',sans-serif" }}
+                          />
+                        </span>
                         <StatusBadge status={t.status} onClick={()=>cycleStatus(proj.id,m.id,t.id)}/>
                         <button onClick={()=>deleteTask(proj.id,m.id,t.id)} style={{ background:'none', border:'none', cursor:'pointer', color:'#CBD2DC', fontSize:14, lineHeight:1 }}
                           onMouseOver={e=>e.currentTarget.style.color='#C0443C'} onMouseOut={e=>e.currentTarget.style.color='#CBD2DC'}>×</button>
