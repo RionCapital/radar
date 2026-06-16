@@ -138,6 +138,7 @@ function AnnualReview({ client, onBack, logNote }) {
     { lender: '', type: '', rate: '', repayment: '' },
   ])
   const [secValues, setSecValues] = useState(securities.map(s => ({ ...s, coreLogicVal: s.estVal || '' })))
+  const [rpmtOverrides, setRpmtOverrides] = useState(() => Object.fromEntries(loans.map((l, i) => [i, ''])))
 
   const totalBalance = loans.filter(l => l.balance).reduce((s, l) => s + (l.balance || 0), 0)
   const totalSecValue = secValues.reduce((s, sv) => s + (Number(sv.coreLogicVal) || 0), 0)
@@ -152,15 +153,18 @@ function AnnualReview({ client, onBack, logNote }) {
     const greeting = defaultGreeting
     const fmtWhole = v => v ? '$' + Math.round(Number(v)).toLocaleString() : '—'
 
-    const loanRows = loans.filter(l => l.acc || l.lname).map(l => `
+    const loanRows = loans.filter(l => l.acc || l.lname).map((l, li) => {
+      const overrideVal = rpmtOverrides[li]
+      const rpmtDisplay = overrideVal ? '$' + Number(overrideVal).toLocaleString() + '/mo' : (calcRepayment(l) ? '$' + calcRepayment(l).toLocaleString() + '/mo' : '—')
+      return `
       <tr style="border-bottom:0.5px solid #f1f5f9">
         <td style="padding:6px 6px;font-size:10px">${l.lname || l.acc || '—'}</td>
         <td style="padding:6px 6px;font-size:10px">${l.bank || '—'}</td>
         <td style="padding:6px 6px;font-size:10px">${l.rpmt || '—'}</td>
         <td style="padding:6px 8px;font-size:10px;text-align:right;white-space:nowrap">${fmtWhole(l.balance)}</td>
         <td style="padding:6px 6px;font-size:10px;text-align:right;white-space:nowrap">${l.rate ? l.rate.toFixed(2) + '%' : '—'}</td>
-        <td style="padding:6px 6px;font-size:10px;text-align:right;white-space:nowrap">${calcRepayment(l) ? '$' + calcRepayment(l).toLocaleString() : '—'}</td>
-      </tr>`).join('')
+        <td style="padding:6px 6px;font-size:10px;text-align:right;white-space:nowrap">${rpmtDisplay}</td>
+      </tr>`}).join('')
 
     const secRows = secValues.map(s => `
       <tr style="border-bottom:0.5px solid #f1f5f9">
@@ -206,7 +210,7 @@ function AnnualReview({ client, onBack, logNote }) {
             <col style="width:18%"/>
           </colgroup>
           <thead style="background:#f8fafc">
-            <tr>${['Facility','Lender','Type','Balance','Rate','Rpmt'].map(h => `<th style="padding:5px 6px;font-size:9px;text-align:${['Balance','Rate','Rpmt'].includes(h)?'right':'left'};color:#64748b;font-weight:600;text-transform:uppercase">${h}</th>`).join('')}</tr>
+            <tr>${['Facility','Lender','Type','Balance','Rate','Est. Rpmt.'].map(h => `<th style="padding:5px 6px;font-size:9px;text-align:${['Balance','Rate','Est. Rpmt.'].includes(h)?'right':'left'};color:#64748b;font-weight:600;text-transform:uppercase">${h}</th>`).join('')}</tr>
           </thead>
           <tbody>${loanRows}</tbody>
           <tfoot style="background:#f8fafc">
@@ -374,13 +378,27 @@ function AnnualReview({ client, onBack, logNote }) {
           {loans.length === 0
             ? <div style={{ fontSize: 11, color: '#94a3b8', fontStyle: 'italic' }}>No loans found for this client</div>
             : loans.map((l, i) => (
-              <div key={i} style={{ padding: '6px 0', borderBottom: '0.5px solid #f1f5f9', fontSize: 11, color: '#334155' }}>
-                <div style={{ fontWeight: 600 }}>{l.lname || l.acc || `Loan ${i + 1}`}</div>
-                <div style={{ color: '#64748b' }}>{l.bank} · {l.rpmt} · {fmtPct(l.rate)} · Balance: {fmt(l.balance)}</div>
+              <div key={i} style={{ padding: '8px 0', borderBottom: '0.5px solid #f1f5f9', fontSize: 11, color: '#334155' }}>
+                <div style={{ fontWeight: 600, marginBottom: 2 }}>{l.lname || l.acc || `Loan ${i + 1}`}</div>
+                <div style={{ color: '#64748b', marginBottom: 6 }}>{l.bank} · {l.rpmt} · {fmtPct(l.rate)} · Balance: {fmt(l.balance)}</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <label style={{ fontSize: 9, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>Override Est. Rpmt.</label>
+                  <input
+                    type="number"
+                    value={rpmtOverrides[i] || ''}
+                    placeholder={calcRepayment(l) ? calcRepayment(l).toLocaleString() : 'Auto'}
+                    onChange={e => setRpmtOverrides(prev => ({ ...prev, [i]: e.target.value }))}
+                    style={{ flex: 1, fontSize: 11, padding: '4px 7px', border: '0.5px solid #d1d5db', borderRadius: 5, background: rpmtOverrides[i] ? '#fff9f0' : '#fff', color: '#2A3545', outline: 'none' }}
+                  />
+                  {rpmtOverrides[i] && (
+                    <button onClick={() => setRpmtOverrides(prev => ({ ...prev, [i]: '' }))}
+                      style={{ fontSize: 10, padding: '3px 6px', borderRadius: 4, border: '0.5px solid #e2e8f0', background: '#f8fafc', color: '#94a3b8', cursor: 'pointer' }}>✕</button>
+                  )}
+                </div>
               </div>
             ))
           }
-          <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 6, fontStyle: 'italic' }}>Pre-populated from client record. Edit loans in the client screen.</div>
+          <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 6, fontStyle: 'italic' }}>Repayments are auto-calculated. Override only if you want to show an actual or adjusted figure.</div>
         </Section>
 
         <Section title="Securities & CoreLogic values">
