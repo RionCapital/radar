@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { loadClients } from '../lib/data'
+import { DEFAULT_REFERRERS } from '../lib/referrersData'
 
 const C = {
   navy:    '#3D4F6B',
@@ -634,7 +635,13 @@ export default function Marketing() {
 
   const rradarClients = useMemo(() => loadClients(), [])
   const [clientOverrides, setClientOverrides] = useState(() => loadStore(STORAGE_KEYS.clientOv))
-  const [referrers, setReferrers] = useState(() => loadStore(STORAGE_KEYS.referrers))
+  const [referrers, setReferrers] = useState(() => {
+    const stored = loadStore(STORAGE_KEYS.referrers)
+    if (stored.length > 0) return stored
+    // Seed from imported list on first load
+    saveStore(STORAGE_KEYS.referrers, DEFAULT_REFERRERS)
+    return DEFAULT_REFERRERS
+  })
   const [lenders,   setLenders]   = useState(() => loadStore(STORAGE_KEYS.lenders))
   const [others,    setOthers]    = useState(() => loadStore(STORAGE_KEYS.others))
 
