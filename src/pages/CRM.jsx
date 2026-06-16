@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react'
+import ReactDOM from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { PIPELINE_DATA } from '../lib/pipelineData'
 import { loadSettings, calcUpfront } from '../lib/settings'
@@ -77,6 +78,7 @@ function getConnName(dealName) {
 // Inline stage dropdown
 function StageDropdown({ deal, onChangeStage }) {
   const [open, setOpen] = useState(false)
+  const [pos, setPos] = useState({ top: 0, left: 0 })
   const ref = useRef(null)
   const sc = STAGE_COLORS[deal.Status] || STAGE_COLORS['1. Lead']
 
@@ -87,14 +89,27 @@ function StageDropdown({ deal, onChangeStage }) {
     return () => document.removeEventListener('mousedown', handler)
   }, [open])
 
+  function handleOpen(e) {
+    e.stopPropagation()
+    if (!open) {
+      const rect = ref.current.getBoundingClientRect()
+      // flip upward if not enough space below
+      const spaceBelow = window.innerHeight - rect.bottom
+      const dropH = STAGES.length * 33
+      const top = spaceBelow < dropH ? rect.top - dropH - 4 : rect.bottom + 4
+      setPos({ top, left: rect.left })
+    }
+    setOpen(o => !o)
+  }
+
   return (
     <div ref={ref} style={{ position:'relative', display:'inline-block' }}>
-      <span onClick={e => { e.stopPropagation(); setOpen(o => !o) }}
+      <span onClick={handleOpen}
         style={{ fontSize:10, padding:'2px 7px', borderRadius:20, background:sc.bg, color:sc.color, fontWeight:500, cursor:'pointer', whiteSpace:'nowrap', userSelect:'none' }}>
         {deal.Status} ▾
       </span>
-      {open && (
-        <div style={{ position:'absolute', left:0, top:'100%', marginTop:4, background:'#fff', borderRadius:8, border:'1px solid #e8eaed', boxShadow:'0 4px 16px rgba(0,0,0,0.12)', zIndex:999, minWidth:160, overflow:'hidden' }}>
+      {open && ReactDOM.createPortal(
+        <div style={{ position:'fixed', top:pos.top, left:pos.left, background:'#fff', borderRadius:8, border:'1px solid #e8eaed', boxShadow:'0 4px 24px rgba(0,0,0,0.15)', zIndex:9999, minWidth:170, overflow:'hidden' }}>
           {STAGES.map(s => {
             const ssc = STAGE_COLORS[s]
             return (
@@ -108,7 +123,8 @@ function StageDropdown({ deal, onChangeStage }) {
               </div>
             )
           })}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )
