@@ -521,11 +521,12 @@ function AnnualReview({ client, onBack, logNote }) {
 }
 
 // ── FIXED / IO EXPIRY ─────────────────────────────────────────────────────────
-function ExpiryEmail({ client, onBack, expiryType, logNote }) {
+function ExpiryEmail({ client, onBack, expiryType: initialExpiryType, logNote }) {
   const contacts = client.contacts || []
   const loans = client.loans || []
   const greeting = contactGreeting(contacts) || client.name || ''
 
+  const [expiryType, setExpiryType] = useState(initialExpiryType)
   const [brokerName, setBrokerName] = useState('')
   const [brokerPhone, setBrokerPhone] = useState('')
   const [selectedLoan, setSelectedLoan] = useState(0)
@@ -536,62 +537,74 @@ function ExpiryEmail({ client, onBack, expiryType, logNote }) {
   const expiryLabel = expiryType === 'fixed' ? 'Fixed Rate Expiry' : 'Interest Only Period Expiry'
   const isFixed = expiryType === 'fixed'
 
+  const openingCommentary = isFixed
+    ? `Your fixed rate period on <strong>${loan.lname || loan.acc || 'your facility'}</strong> is approaching expiry on <strong>${fmtDate(expiryDate)}</strong>. When a fixed rate expires, your loan automatically reverts to your lender's standard variable rate — which is typically higher than your current rate. This is one of the most important windows to act on, and we want to make sure you are well positioned to take advantage of the options available to you. We will be working through the market on your behalf ahead of this date to ensure you have the best possible outcome.`
+    : `Your interest only period on <strong>${loan.lname || loan.acc || 'your facility'}</strong> is due to expire on <strong>${fmtDate(expiryDate)}</strong>. When an interest only period ends, your repayments will automatically convert to principal &amp; interest — this can represent a meaningful increase in your monthly cash flow obligations, particularly where you hold this facility as an investment. It is important we review your position now so that we can explore your options and ensure the transition has minimal impact on your financial position.`
+
   function buildHtml() {
     return `<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;background:#f8fafc">
       <div style="max-width:600px;margin:0 auto;background:#fff">
         ${emailHeader(greeting)}
-        <div style="padding:12px 16px;background:#fef3c7;border-radius:8px;border-left:4px solid #f59e0b;margin-bottom:20px">
-          <strong style="font-size:13px;color:#92400e">⚠ ${expiryLabel} — Action Required</strong>
-          <p style="font-size:12px;color:#78350f;margin:4px 0 0">Your ${isFixed ? 'fixed rate' : 'interest only period'} on <strong>${loan.lname || loan.acc || 'your facility'}</strong> expires on <strong>${fmtDate(expiryDate)}</strong>. Now is the time to review your options.</p>
+        <div style="padding:14px 16px 0">
+          <div style="padding:14px;background:${isFixed ? '#fef3c7' : '#eff6ff'};border-radius:8px;border-left:4px solid ${isFixed ? '#f59e0b' : '#3b82f6'};margin-bottom:20px">
+            <strong style="font-size:13px;color:${isFixed ? '#92400e' : '#1e3a5f'}">⚠ ${expiryLabel} — Action Required</strong>
+            <p style="font-size:12px;color:${isFixed ? '#78350f' : '#1e40af'};margin:6px 0 0;line-height:1.7">${openingCommentary}</p>
+          </div>
         </div>
 
-        <div style="background:#3D4F6B;padding:10px 14px;border-radius:6px 6px 0 0">
-          <span style="font-size:11px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:0.06em">Affected Facility</span>
-        </div>
-        <table style="width:100%;border-collapse:collapse;border:0.5px solid #e2e8f0">
-          <thead style="background:#f8fafc"><tr>
-            <th style="padding:7px 8px;font-size:10px;text-align:left;color:#64748b;font-weight:600">Facility</th>
-            <th style="padding:7px 8px;font-size:10px;text-align:left;color:#64748b;font-weight:600">Lender</th>
-            <th style="padding:7px 8px;font-size:10px;text-align:right;color:#64748b;font-weight:600">Balance</th>
-            <th style="padding:7px 8px;font-size:10px;text-align:right;color:#64748b;font-weight:600">Current Rate</th>
-            <th style="padding:7px 8px;font-size:10px;text-align:right;color:#64748b;font-weight:600">${isFixed ? 'Fixed Expiry' : 'IO Expiry'}</th>
-          </tr></thead>
-          <tbody><tr>
-            <td style="padding:7px 8px;font-size:11px">${loan.lname || loan.acc || '—'}</td>
-            <td style="padding:7px 8px;font-size:11px">${loan.bank || '—'}</td>
-            <td style="padding:5px 4px;font-size:10px;text-align:right">${fmt(loan.balance)}</td>
-            <td style="padding:5px 4px;font-size:10px;text-align:right">${fmtPct(loan.rate)}</td>
-            <td style="padding:7px 8px;font-size:11px;text-align:right;color:#d97706;font-weight:600">${fmtDate(expiryDate)}</td>
-          </tr></tbody>
-        </table>
-
-        <div style="margin-top:20px;padding:16px;background:#f8fafc;border-radius:8px;border-left:4px solid #EB99C2">
-          <div style="font-size:12px;font-weight:700;color:#3D4F6B;margin-bottom:10px">Your Options at Expiry</div>
-          ${(isFixed
-            ? ['Roll to a variable rate at your current lender\'s standard rate.',
-              'Lock in a new fixed rate term — we\'ll compare available rates across the market.',
-              'Refinance to a more competitive lender with a better rate or features.']
-            : ['Switch to principal & interest — your repayments will increase but you\'ll reduce your loan balance.',
-              'Extend your IO period with your current lender (subject to approval).',
-              'Refinance to a new lender with a fresh IO period or restructure your facility.']
-          ).map((s, i) => `
-            <table style="width:100%;border-collapse:collapse;margin-bottom:8px">
-              <tr>
-                <td style="width:26px;vertical-align:top;padding-top:2px">
-                  <table style="border-collapse:collapse"><tr><td style="width:22px;height:22px;background:#3D4F6B;color:#ffffff;font-size:11px;font-weight:700;text-align:center;vertical-align:middle;border-radius:11px">${i + 1}</td></tr></table>
-                </td>
-                <td style="font-size:12px;color:#2A3545;line-height:1.6;padding-left:10px">${s}</td>
-              </tr>
-            </table>`).join('')}
+        <div style="padding:0 16px">
+          <div style="background:#3D4F6B;padding:10px 14px;border-radius:6px 6px 0 0">
+            <span style="font-size:11px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:0.06em">Affected Facility</span>
+          </div>
+          <table style="width:100%;border-collapse:collapse;border:0.5px solid #e2e8f0">
+            <thead style="background:#f8fafc"><tr>
+              <th style="padding:7px 8px;font-size:10px;text-align:left;color:#64748b;font-weight:600">Facility</th>
+              <th style="padding:7px 8px;font-size:10px;text-align:left;color:#64748b;font-weight:600">Lender</th>
+              <th style="padding:7px 8px;font-size:10px;text-align:right;color:#64748b;font-weight:600">Balance</th>
+              <th style="padding:7px 8px;font-size:10px;text-align:right;color:#64748b;font-weight:600">Current Rate</th>
+              <th style="padding:7px 8px;font-size:10px;text-align:right;color:#64748b;font-weight:600">${isFixed ? 'Fixed Expiry' : 'IO Expiry'}</th>
+            </tr></thead>
+            <tbody><tr>
+              <td style="padding:7px 8px;font-size:11px">${loan.lname || loan.acc || '—'}</td>
+              <td style="padding:7px 8px;font-size:11px">${loan.bank || '—'}</td>
+              <td style="padding:5px 4px;font-size:10px;text-align:right">${fmt(loan.balance)}</td>
+              <td style="padding:5px 4px;font-size:10px;text-align:right">${fmtPct(loan.rate)}</td>
+              <td style="padding:7px 8px;font-size:11px;text-align:right;color:#d97706;font-weight:600">${fmtDate(expiryDate)}</td>
+            </tr></tbody>
+          </table>
         </div>
 
-        ${notes ? `<div style="margin-top:16px;padding:14px;background:#fff;border:0.5px solid #e2e8f0;border-radius:8px"><p style="font-size:12px;color:#2A3545;margin:0;line-height:1.7">${notes}</p></div>` : ''}
-
-        <div style="margin-top:20px;padding:14px;background:#EB99C2;border-radius:8px;text-align:center">
-          <p style="font-size:12px;color:#fff;margin:0 0 4px;font-weight:600">${brokerName || 'Your broker'} will be in touch within 48 hours to discuss your options.</p>
-          ${brokerPhone ? `<p style="font-size:12px;color:#fff;margin:0">Or call us directly: <strong>${brokerPhone}</strong></p>` : ''}
+        <div style="padding:16px">
+          <div style="padding:16px;background:#f8fafc;border-radius:8px;border-left:4px solid #EB99C2">
+            <div style="font-size:12px;font-weight:700;color:#3D4F6B;margin-bottom:10px">Your Options at Expiry</div>
+            ${(isFixed
+              ? ['Roll to a variable rate at your current lender\'s standard rate — we\'ll negotiate on your behalf for a rate reduction.',
+                'Lock in a new fixed rate term — we\'ll compare available fixed rates across the market to secure the best deal.',
+                'Refinance to a more competitive lender with a better rate or a product that better suits your current needs.']
+              : ['Switch to principal & interest — your repayments will increase but you\'ll begin reducing your loan balance.',
+                'Extend your IO period with your current lender (subject to credit assessment and approval).',
+                'Refinance to a new lender with a fresh IO period or restructure your facility to better suit your strategy.']
+            ).map((s, i) => `
+              <table style="width:100%;border-collapse:collapse;margin-bottom:8px">
+                <tr>
+                  <td style="width:26px;vertical-align:top;padding-top:2px">
+                    <table style="border-collapse:collapse"><tr><td style="width:22px;height:22px;background:#3D4F6B;color:#ffffff;font-size:11px;font-weight:700;text-align:center;vertical-align:middle;border-radius:11px">${i + 1}</td></tr></table>
+                  </td>
+                  <td style="font-size:12px;color:#2A3545;line-height:1.6;padding-left:10px">${s}</td>
+                </tr>
+              </table>`).join('')}
+          </div>
         </div>
-        <p style="font-size:13px;margin-top:20px;line-height:1.7">Warm regards,<br/><strong>${brokerName || '[Broker Name]'}</strong><br/>${brokerPhone || ''}</p>
+
+        ${notes ? `<div style="padding:0 16px 16px"><div style="padding:14px;background:#fff;border:0.5px solid #e2e8f0;border-radius:8px"><p style="font-size:12px;color:#2A3545;margin:0;line-height:1.7">${notes}</p></div></div>` : ''}
+
+        <div style="padding:0 16px 16px">
+          <div style="padding:14px;background:#EB99C2;border-radius:8px;text-align:center">
+            <p style="font-size:12px;color:#fff;margin:0 0 4px;font-weight:600">${brokerName || 'Your broker'} will be in touch within 48 hours to discuss your options.</p>
+            ${brokerPhone ? `<p style="font-size:12px;color:#fff;margin:0">Or call us directly: <strong>${brokerPhone}</strong></p>` : ''}
+          </div>
+        </div>
+        <p style="font-size:13px;margin:0 16px 20px;line-height:1.7">Warm regards,<br/><strong>${brokerName || '[Broker Name]'}</strong><br/>${brokerPhone || ''}</p>
         ${emailFooter(brokerName, brokerPhone)}
       </div></body></html>`
   }
@@ -607,6 +620,28 @@ function ExpiryEmail({ client, onBack, expiryType, logNote }) {
     <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: 0, height: 'calc(100vh - 56px)', overflow: 'hidden' }}>
       <div style={{ overflowY: 'auto', padding: '16px', background: '#f8fafc', borderRight: '0.5px solid #e2e8f0' }}>
         <button onClick={onBack} style={{ fontSize: 11, color: '#64748b', background: 'none', border: 'none', cursor: 'pointer', padding: '0 0 12px' }}>← Back to templates</button>
+
+        <Section title="Email type">
+          <div style={{ display: 'flex', gap: 0, border: '0.5px solid #e2e8f0', borderRadius: 7, overflow: 'hidden', marginBottom: 6 }}>
+            {[['fixed', '🔒 Fixed Rate'], ['io', '📅 Interest Only']].map(([val, label]) => (
+              <button key={val} onClick={() => setExpiryType(val)}
+                style={{
+                  flex: 1, padding: '8px 0', fontSize: 11, fontWeight: 600, cursor: 'pointer', border: 'none',
+                  background: expiryType === val ? '#3D4F6B' : '#fff',
+                  color: expiryType === val ? '#fff' : '#64748b',
+                  transition: 'all 0.15s'
+                }}>
+                {label}
+              </button>
+            ))}
+          </div>
+          <div style={{ fontSize: 10, color: '#94a3b8', fontStyle: 'italic', lineHeight: 1.5 }}>
+            {isFixed
+              ? 'Loan reverts to standard variable rate at expiry.' 
+              : 'Repayments convert to P&I at expiry — impacts cash flow.'}
+          </div>
+        </Section>
+
         <Section title="Broker details">
           <Field lbl="Broker name" value={brokerName} onChange={setBrokerName} placeholder="Cameron Finlayson" />
           <Field lbl="Broker phone" value={brokerPhone} onChange={setBrokerPhone} placeholder="0400 000 000" />
@@ -623,11 +658,11 @@ function ExpiryEmail({ client, onBack, expiryType, logNote }) {
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <div style={{ padding: '10px 16px', background: '#fff', borderBottom: '0.5px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: NAVY }}>🔒 {expiryLabel} — Live Preview</div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: NAVY }}>{isFixed ? '🔒' : '📅'} {expiryLabel} — Live Preview</div>
           <div style={{ display: 'flex', gap: 8 }}>
             <button onClick={() => navigator.clipboard.writeText(buildHtml())} style={{ fontSize: 11, padding: '5px 14px', borderRadius: 6, border: `1px solid ${PINK}`, color: PINK, background: '#fff', cursor: 'pointer', fontWeight: 600 }}>Copy HTML</button>
             <button onClick={openOutlook} style={{ fontSize: 11, padding: '5px 12px', borderRadius: 6, border: `1px solid ${NAVY}`, color: NAVY, background: '#fff', cursor: 'pointer', fontWeight: 600 }}>↓ .eml</button>
-            <button onClick={async () => { const to = contacts.filter(c=>c.email).map(c=>c.email).join(', '); try { const subj = buildSubject ? buildSubject() : 'Email from Rion Capital'; await sendEmail(to, subj, buildHtml()); logNote?.(subj, to, 'Direct send'); alert('Sent!') } catch(e) { alert('Error: ' + e.message) } }} style={{ fontSize: 11, padding: '5px 16px', borderRadius: 6, border: 'none', background: NAVY, color: '#fff', cursor: 'pointer', fontWeight: 600 }}>✉ Send Email</button>
+            <button onClick={async () => { const to = contacts.filter(c=>c.email).map(c=>c.email).join(', '); try { const subj = `${expiryLabel} — ${loan.lname || client.name} · ${fmtDate(expiryDate)}`; await sendEmail(to, subj, buildHtml()); logNote?.(subj, to, 'Direct send'); alert('Sent!') } catch(e) { alert('Error: ' + e.message) } }} style={{ fontSize: 11, padding: '5px 16px', borderRadius: 6, border: 'none', background: NAVY, color: '#fff', cursor: 'pointer', fontWeight: 600 }}>✉ Send Email</button>
           </div>
         </div>
         <div style={{ flex: 1, overflowY: 'auto', padding: 20, background: '#f1f5f9' }}>
