@@ -460,6 +460,10 @@ export default function ClientDashboard({ clients, updateClient }) {
         <Panel>
           <PanelTitle action={
             <div style={{display:'flex',gap:6,alignItems:'center'}}>
+              <button onClick={()=>navigate(`/radar/clients/${encodeURIComponent(client.name)}/contacts`)}
+                style={{fontSize:10,padding:'3px 10px',borderRadius:6,border:'1px solid #3D4F6B',color:'#3D4F6B',background:'transparent',cursor:'pointer'}}>
+                👤 Manage contacts
+              </button>
               <button onClick={()=>navigate(`/radar/clients/${encodeURIComponent(client.name)}/email`)}
                 style={{fontSize:10,padding:'3px 10px',borderRadius:6,border:'1px solid var(--pk)',color:'var(--pk)',background:'transparent',cursor:'pointer'}}>
                 ✉ Email clients
