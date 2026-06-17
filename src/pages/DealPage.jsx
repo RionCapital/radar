@@ -327,6 +327,10 @@ export default function DealPage({ onUpdateDeals, clients = [] }) {
     if (onUpdateDeals) onUpdateDeals(updated)
     setEditing(false); setDraft(null); setSaved(true)
     setTimeout(()=>setSaved(false), 3000)
+    // If name changed, navigate to new URL
+    if (finalDraft['Transaction Name'] && finalDraft['Transaction Name'] !== decodedName) {
+      navigate(`/crm/deal/${encodeURIComponent(finalDraft['Transaction Name'])}`, { replace: true })
+    }
   }
 
   const d = editing ? draft : deal
@@ -368,6 +372,7 @@ export default function DealPage({ onUpdateDeals, clients = [] }) {
               <div style={{ fontSize:11, fontWeight:600, color:'#7A8090', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:14 }}>Deal details</div>
               {editing ? (
                 <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+                  <div style={{gridColumn:'1/-1'}}><Field label="Deal name"><input style={inp} value={d['Transaction Name']||''} onChange={e=>set('Transaction Name',e.target.value)}/></Field></div>
                   <Field label="Status"><select style={inp} value={d.Status} onChange={e=>set('Status',e.target.value)}>{STAGES.map(s=><option key={s} value={s}>{s}</option>)}</select></Field>
                   <Field label="Amount ($)"><input style={inp} type="number" value={d.Amount||''} onChange={e=>set('Amount',e.target.value?Number(e.target.value):null)}/></Field>
                   <Field label="Category"><select style={inp} value={d.Categories||''} onChange={e=>set('Categories',e.target.value)}><option value="">— Select —</option>{CATEGORIES.map(c=><option key={c} value={c}>{c}</option>)}</select></Field>

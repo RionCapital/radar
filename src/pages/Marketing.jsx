@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { loadClients } from '../lib/data'
 import { DEFAULT_REFERRERS } from '../lib/referrersData'
+import { loadSettings } from '../lib/settings'
 
 const C = {
   navy:    '#3D4F6B',
@@ -260,6 +261,167 @@ function InfoTile({ label, value, highlight }) {
 }
 
 // ─── Contact Detail ───────────────────────────────────────────────────────────
+// ─── Touch Points ────────────────────────────────────────────────────────────
+const TOUCH_TYPES = [
+  { id: 'email',  label: 'Email',  icon: '✉', colour: '#3D4F6B' },
+  { id: 'call',   label: 'Call',   icon: '📞', colour: '#2A7A2A' },
+  { id: 'sms',    label: 'SMS',    icon: '💬', colour: '#DA408D' },
+  { id: 'meeting',label: 'Meeting',icon: '🤝', colour: '#7A8090' },
+  { id: 'other',  label: 'Other',  icon: '📝', colour: '#9CA3AF' },
+]
+
+function TouchPoints({ contact, onSave }) {
+  const [adding, setAdding]     = useState(false)
+  const [type, setType]         = useState('call')
+  const [summary, setSummary]   = useState('')
+  const [touchDate, setTouchDate] = useState(new Date().toISOString().slice(0,10))
+
+  const touches = contact.touchPoints || []
+
+  function addTouch() {
+    if (!summary.trim()) return
+    const tp = {
+      id:      newId(),
+      type,
+      summary: summary.trim(),
+      date:    touchDate,
+      ts:      new Date().toISOString(),
+      auto:    false,
+    }
+    onSave({ ...contact, touchPoints: [tp, ...touches] })
+    setSummary(''); setAdding(false)
+  }
+
+  function deleteTouch(id) {
+    onSave({ ...contact, touchPoints: touches.filter(t => t.id !== id) })
+  }
+
+  const typeCfg = id => TOUCH_TYPES.find(t => t.id === id) || TOUCH_TYPES[4]
+
+  return (
+    <div style={{ marginTop: 28, paddingTop: 20, borderTop: `1px solid ${C.border}` }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+        <div style={{ fontSize: 14, fontWeight: 700, color: C.text, fontFamily: 'Montserrat,sans-serif' }}>
+          Touch Points
+          {touches.length > 0 && <span style={{ marginLeft: 8, fontSize: 12, color: C.muted }}>({touches.length})</span>}
+        </div>
+        <button onClick={() => setAdding(v => !v)}
+          style={{ padding: '5px 12px', borderRadius: 7, border: `1px solid ${C.border}`,
+            background: adding ? C.navy : '#fff', color: adding ? '#fff' : C.navy,
+            fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'Montserrat,sans-serif' }}>
+          + Log Touch
+        </button>
+      </div>
+
+      {/* Quick-log from action buttons */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
+        {contact.email && (
+          <a href={`mailto:${contact.email}`}
+            onClick={() => {
+              const tp = { id: newId(), type: 'email', summary: `Email sent to ${contact.name}`, date: new Date().toISOString().slice(0,10), ts: new Date().toISOString(), auto: true }
+              onSave({ ...contact, touchPoints: [tp, ...(contact.touchPoints||[])] })
+            }}
+            style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 8,
+              background: '#3D4F6B', color: '#fff', textDecoration: 'none', fontSize: 12,
+              fontWeight: 600, fontFamily: 'Montserrat,sans-serif' }}>
+            ✉ Email
+          </a>
+        )}
+        {contact.mobile && (
+          <>
+            <a href={`tel:${contact.mobile.replace(/\s/g,'')}`}
+              onClick={() => {
+                const tp = { id: newId(), type: 'call', summary: `Called ${contact.name}`, date: new Date().toISOString().slice(0,10), ts: new Date().toISOString(), auto: true }
+                onSave({ ...contact, touchPoints: [tp, ...(contact.touchPoints||[])] })
+              }}
+              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 8,
+                background: '#2A7A2A', color: '#fff', textDecoration: 'none', fontSize: 12,
+                fontWeight: 600, fontFamily: 'Montserrat,sans-serif' }}>
+              📞 Call
+            </a>
+            <a href={`sms:${contact.mobile.replace(/\s/g,'')}`}
+              onClick={() => {
+                const tp = { id: newId(), type: 'sms', summary: `SMS sent to ${contact.name}`, date: new Date().toISOString().slice(0,10), ts: new Date().toISOString(), auto: true }
+                onSave({ ...contact, touchPoints: [tp, ...(contact.touchPoints||[])] })
+              }}
+              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 8,
+                background: '#DA408D', color: '#fff', textDecoration: 'none', fontSize: 12,
+                fontWeight: 600, fontFamily: 'Montserrat,sans-serif' }}>
+              💬 SMS
+            </a>
+          </>
+        )}
+      </div>
+
+      {/* Manual add form */}
+      {adding && (
+        <div style={{ padding: 14, background: '#F4F6FA', borderRadius: 10,
+          border: `1px solid ${C.border}`, marginBottom: 14 }}>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+            {TOUCH_TYPES.map(t => (
+              <button key={t.id} onClick={() => setType(t.id)}
+                style={{ padding: '5px 12px', borderRadius: 20,
+                  border: `1px solid ${type === t.id ? t.colour : C.border}`,
+                  background: type === t.id ? t.colour : '#fff',
+                  color: type === t.id ? '#fff' : C.text, fontSize: 12,
+                  fontWeight: type === t.id ? 700 : 500, cursor: 'pointer',
+                  fontFamily: 'Montserrat,sans-serif' }}>
+                {t.icon} {t.label}
+              </button>
+            ))}
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+            <input type="date" value={touchDate} onChange={e => setTouchDate(e.target.value)}
+              style={{ ...inputStyle, width: 140, flexShrink: 0 }} />
+            <input value={summary} onChange={e => setSummary(e.target.value)}
+              placeholder="Brief summary of the interaction…"
+              onKeyDown={e => e.key === 'Enter' && addTouch()}
+              style={{ ...inputStyle, flex: 1 }} />
+            <button onClick={addTouch}
+              style={{ padding: '9px 16px', borderRadius: 8, border: 'none',
+                background: C.navy, color: '#fff', fontWeight: 700, fontSize: 12,
+                cursor: 'pointer', fontFamily: 'Montserrat,sans-serif', whiteSpace: 'nowrap' }}>
+              Save
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Touch point history */}
+      {touches.length === 0
+        ? <div style={{ fontSize: 13, color: C.muted, fontFamily: 'Montserrat,sans-serif' }}>No touch points logged yet.</div>
+        : touches.map((tp, i) => {
+            const cfg = typeCfg(tp.type)
+            return (
+              <div key={tp.id || i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start',
+                padding: '10px 0', borderBottom: i < touches.length - 1 ? `1px solid ${C.border}` : 'none' }}>
+                <div style={{ width: 28, height: 28, borderRadius: '50%', background: cfg.colour + '18',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, flexShrink: 0 }}>
+                  {cfg.icon}
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: cfg.colour, fontFamily: 'Montserrat,sans-serif' }}>
+                      {cfg.label}
+                    </span>
+                    {tp.auto && <span style={{ fontSize: 10, color: C.muted, fontFamily: 'Montserrat,sans-serif' }}>auto-logged</span>}
+                    <span style={{ fontSize: 11, color: C.muted, fontFamily: 'Montserrat,sans-serif', marginLeft: 'auto' }}>
+                      {tp.date}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 13, color: C.text, fontFamily: 'Montserrat,sans-serif', marginTop: 2 }}>{tp.summary}</div>
+                </div>
+                <button onClick={() => deleteTouch(tp.id)}
+                  style={{ border: 'none', background: 'none', cursor: 'pointer',
+                    color: '#CBD5E1', fontSize: 14, padding: '0 4px', flexShrink: 0 }}>×</button>
+              </div>
+            )
+          })
+      }
+    </div>
+  )
+}
+
 function ReferrerClientsPanel({ contact, rradarClients, allClients, onSave }) {
   // allClients = marketing client overrides + rradar clients merged
   // Match via: (1) client.referredBy contains referrer name, (2) manually linked
@@ -495,7 +657,7 @@ function ReferrerClientsPanel({ contact, rradarClients, allClients, onSave }) {
   )
 }
 
-function ContactDetail({ contact, section, onBack, onSave, onDelete, onMove, rradarClients, allClients }) {
+function ContactDetail({ contact, section, onBack, onSave, onDelete, onMove, rradarClients, allClients, brokers }) {
   const [editing, setEditing]   = useState(false)
   const [form, setForm]         = useState({ ...contact })
   const [noteText, setNoteText] = useState('')
@@ -587,8 +749,6 @@ function ContactDetail({ contact, section, onBack, onSave, onDelete, onMove, rra
         </div>
       </div>
 
-      <ContactActions email={contact.email} mobile={contact.mobile} />
-
       {/* info grid */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 20 }}>
         <InfoTile label="Email" value={contact.email} />
@@ -609,6 +769,20 @@ function ContactDetail({ contact, section, onBack, onSave, onDelete, onMove, rra
         <InfoTile label="BDM Name" value={contact.bdmName} />
         <InfoTile label="BDM Email" value={contact.bdmEmail} />
         <InfoTile label="BDM Mobile" value={contact.bdmMobile} />
+        {contact.assignedBroker && <InfoTile label="Assigned Broker" value={contact.assignedBroker} />}
+      </div>
+
+      {/* Broker assignment */}
+      <div style={{ marginTop: 14, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 12, fontWeight: 600, color: C.muted, fontFamily: 'Montserrat,sans-serif', whiteSpace: 'nowrap' }}>
+          Assigned to:
+        </span>
+        <select
+          value={contact.assignedBroker || brokers[0]?.name || ''}
+          onChange={e => onSave({ ...contact, assignedBroker: e.target.value })}
+          style={{ ...inputStyle, width: 'auto', fontSize: 12, padding: '6px 10px', cursor: 'pointer' }}>
+          {brokers.map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
+        </select>
       </div>
 
       {/* linked referrers (for clients) */}
@@ -632,7 +806,10 @@ function ContactDetail({ contact, section, onBack, onSave, onDelete, onMove, rra
         />
       )}
 
-      {/* notes */}
+      {/* Touch Points */}
+      <TouchPoints contact={contact} onSave={onSave} />
+
+      {/* Notes */}
       <div style={{ marginTop: 28, paddingTop: 20, borderTop: `1px solid ${C.border}` }}>
         <div style={{ fontSize: 14, fontWeight: 700, color: C.text, fontFamily: 'Montserrat,sans-serif', marginBottom: 12 }}>Notes</div>
         <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
@@ -712,6 +889,15 @@ function EditContactModal({ contact, section, onChange, onSave, onClose }) {
         </>
       )}
 
+      <Field label="Assigned Broker">
+        <select style={{ ...inputStyle, appearance: 'none', cursor: 'pointer' }}
+          value={f.assignedBroker || ''}
+          onChange={e => set('assignedBroker', e.target.value)}>
+          {(loadSettings().users || []).filter(u => u.active).map(b => (
+            <option key={b.id} value={b.name}>{b.name}</option>
+          ))}
+        </select>
+      </Field>
       <Textarea label="Notes (optional)" value={f.notesDraft || ''} onChange={e => set('notesDraft', e.target.value)} />
 
       <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
@@ -1073,6 +1259,11 @@ export default function Marketing() {
   const navigate = useNavigate()
 
   const rradarClients = useMemo(() => loadClients(), [])
+  const brokers = useMemo(() => {
+    const settings = loadSettings()
+    return (settings.users || []).filter(u => u.active)
+  }, [])
+  const defaultBroker = brokers[0]?.name || 'Cameron Finlayson' 
   const [clientOverrides, setClientOverrides] = useState(() => loadStore(STORAGE_KEYS.clientOv))
   const [referrers, setReferrers] = useState(() => {
     // v2 = cleaned (nan nan removed). If stored version differs, reseed.
@@ -1119,6 +1310,7 @@ export default function Marketing() {
           address:     ct.homeAddress || '',
           stream:      rc.stream,
           notes:       ov.notes   || [],
+          assignedBroker: ov.assignedBroker || defaultBroker,
           profession:      ov.profession      || '',
           industry:        ov.industry        || '',
           referredBy:      ov.referredBy      || '',
@@ -1167,7 +1359,8 @@ export default function Marketing() {
 
   function handleAdd() {
     if (!addForm.name?.trim()) return
-    const newContact = { ...addForm, id: newId(), notes: [] }
+    const newContact = { ...addForm, id: newId(), notes: [],
+      assignedBroker: addForm.assignedBroker || defaultBroker }
     if (addForm.notesDraft) {
       newContact.notes = [{ id: newId(), date: new Date().toLocaleDateString('en-AU'), text: addForm.notesDraft }]
       delete newContact.notesDraft
@@ -1268,7 +1461,7 @@ export default function Marketing() {
 
         {selected
           ? <ContactDetail contact={selected} section={section} rradarClients={rradarClients}
-              allClients={clients}
+              allClients={clients} brokers={brokers}
               onBack={() => setSelected(null)} onSave={handleSaveContact}
               onDelete={() => handleDeleteContact(selected)}
               onMove={(contact, targetSection) => {
