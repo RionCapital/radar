@@ -526,197 +526,183 @@ function ReferrerClientsPanel({ contact, rradarClients, allClients, onSave }) {
         </div>
       )}
 
-      {/* ── Settled Clients ── */}
-      <div style={sHead}>
-        <span>Settled Clients ({linkedClients.length})</span>
-        <button onClick={() => setAddingClient(v => !v)}
-          style={{ padding: '5px 12px', borderRadius: 7, border: `1px solid ${C.border}`,
-            background: addingClient ? C.navy : '#fff', color: addingClient ? '#fff' : C.navy,
-            fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'Montserrat,sans-serif' }}>
-          + Link Client
-        </button>
-      </div>
+      {/* ── Settled Clients + Inflight side by side ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, alignItems: 'start', marginTop: 4 }}>
 
-      {addingClient && (
-        <div style={{ marginBottom: 14, padding: 14, background: '#F4F6FA', borderRadius: 10, border: `1px solid ${C.border}` }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: C.muted, fontFamily: 'Montserrat,sans-serif', marginBottom: 8 }}>
-            Search Rradar clients to link
+        {/* LEFT: Settled Clients */}
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            borderBottom: `1px solid ${C.border}`, paddingBottom: 8, marginBottom: 10 }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: C.text, fontFamily: 'Montserrat,sans-serif' }}>
+              Settled Clients ({linkedClients.length})
+            </span>
+            <button onClick={() => setAddingClient(v => !v)}
+              style={{ padding: '3px 9px', borderRadius: 6, border: `1px solid ${C.border}`,
+                background: addingClient ? C.navy : '#fff', color: addingClient ? '#fff' : C.navy,
+                fontSize: 10, fontWeight: 600, cursor: 'pointer', fontFamily: 'Montserrat,sans-serif' }}>
+              + Link
+            </button>
           </div>
-          <input value={clientSearch} onChange={e => setClientSearch(e.target.value)}
-            placeholder="Type client name…" style={{ ...inputStyle, marginBottom: 8 }} autoFocus />
-          {availableClients.map(rc => (
-            <div key={rc.name}
-              onClick={() => {
-                onSave({ ...contact, linkedClients: [...manualLinks, rc.name] })
-                setAddingClient(false); setClientSearch('')
-              }}
-              style={{ padding: '8px 10px', borderRadius: 7, cursor: 'pointer', fontSize: 13,
-                fontFamily: 'Montserrat,sans-serif', color: C.text, borderBottom: `1px solid ${C.border}` }}
-              onMouseEnter={e => e.currentTarget.style.background = '#E8EDF5'}
-              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-              {rc.name} <span style={{ color: C.muted, fontSize: 11 }}>#{rc.connNo}</span>
-            </div>
-          ))}
-          {clientSearch && availableClients.length === 0 && (
-            <div style={{ fontSize: 12, color: C.muted, fontFamily: 'Montserrat,sans-serif' }}>No matches found.</div>
-          )}
-        </div>
-      )}
 
-      {linkedClients.length === 0 && (
-        <div style={{ fontSize: 13, color: C.muted, fontFamily: 'Montserrat,sans-serif', paddingBottom: 8 }}>
-          No settled clients linked yet. Attach a referrer from a client's Rradar page or use Link Client above.
-        </div>
-      )}
-
-      {linkedClients.map(rc => {
-        const comm     = clientComm(rc)
-        const isManual = manualLinks.includes(rc.name)
-        const loans    = rc.loans.filter(l => !l.closed)
-        const totalBal = loans.reduce((s, l) => s + (l.balance || 0), 0)
-        return (
-          <div key={rc.name} style={{ marginBottom: 10, border: `1px solid ${C.border}`,
-            borderRadius: 10, background: '#fff', overflow: 'hidden' }}>
-            {/* Client row — clickable to Rradar */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px',
-              background: '#FAFBFD', cursor: 'pointer' }}
-              onClick={() => {
-                sessionStorage.setItem('rion-from-marketing', '1')
-                window.location.href = `/radar/clients/${encodeURIComponent(rc.name)}`
-              }}
-              onMouseEnter={e => e.currentTarget.style.background = '#EFF6FF'}
-              onMouseLeave={e => e.currentTarget.style.background = '#FAFBFD'}>
-              <Avatar name={rc.name} size={30} />
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: C.navy,
-                  fontFamily: 'Montserrat,sans-serif', textDecoration: 'underline dotted' }}>
-                  {rc.name}
-                  <span style={{ marginLeft: 6, fontSize: 10, color: C.muted, textDecoration: 'none' }}>#{rc.connNo}</span>
+          {addingClient && (
+            <div style={{ marginBottom: 10, padding: 10, background: '#F4F6FA', borderRadius: 8, border: `1px solid ${C.border}` }}>
+              <input value={clientSearch} onChange={e => setClientSearch(e.target.value)}
+                placeholder="Search client…" style={{ ...inputStyle, marginBottom: 6, fontSize: 12 }} autoFocus />
+              {availableClients.map(rc => (
+                <div key={rc.name}
+                  onClick={() => { onSave({ ...contact, linkedClients: [...manualLinks, rc.name] }); setAddingClient(false); setClientSearch('') }}
+                  style={{ padding: '6px 8px', borderRadius: 6, cursor: 'pointer', fontSize: 12,
+                    fontFamily: 'Montserrat,sans-serif', color: C.text, borderBottom: `1px solid ${C.border}` }}
+                  onMouseEnter={e => e.currentTarget.style.background = '#E8EDF5'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                  {rc.name} <span style={{ color: C.muted, fontSize: 10 }}>#{rc.connNo}</span>
                 </div>
-                <div style={{ fontSize: 11, color: C.muted, fontFamily: 'Montserrat,sans-serif' }}>
-                  {loans.length} loan{loans.length !== 1 ? 's' : ''} · Bal {fmt(totalBal)}
-                  {isManual && <span style={{ marginLeft: 6, color: C.navy }}>● manually linked</span>}
-                </div>
-              </div>
-              <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                <div style={{ fontSize: 11, color: '#2A7A2A', fontFamily: 'Montserrat,sans-serif', fontWeight: 600 }}>
-                  Trail {fmtD(comm.trail)}/yr
-                </div>
-                <div style={{ fontSize: 11, color: C.navy, fontFamily: 'Montserrat,sans-serif', fontWeight: 600 }}>
-                  Upfront {fmtD(comm.upfront)}
-                </div>
-              </div>
-              <span style={{ color: C.slate, fontSize: 14 }}>›</span>
-              {isManual && (
-                <button onClick={e => {
-                    e.stopPropagation()
-                    onSave({ ...contact, linkedClients: manualLinks.filter(n => n !== rc.name) })
-                  }}
-                  style={{ border: 'none', background: 'none', cursor: 'pointer',
-                    color: '#CBD5E1', fontSize: 14, padding: '0 4px' }} title="Unlink">×</button>
+              ))}
+              {clientSearch && availableClients.length === 0 && (
+                <div style={{ fontSize: 11, color: C.muted, fontFamily: 'Montserrat,sans-serif' }}>No matches.</div>
               )}
             </div>
-            {/* Per-loan commission detail */}
-            {loans.filter(l => (l.commissionHistory||[]).length > 0).map(loan => {
-              const lUpfront = (loan.commissionHistory||[]).reduce((s,h) => s+(h.upfrontComm||0), 0)
-              const lTrail   = (loan.commissionHistory||[]).reduce((s,h) => s+(h.trailComm||0),   0)
-              if (!lUpfront && !lTrail) return null
-              return (
-                <div key={loan.acc} style={{ display: 'flex', alignItems: 'center', gap: 10,
-                  padding: '7px 14px', borderTop: `1px solid ${C.border}`,
-                  fontSize: 12, fontFamily: 'Montserrat,sans-serif', color: C.text }}>
-                  <div style={{ flex: 1 }}>
-                    <span style={{ fontWeight: 600 }}>{loan.lname || loan.bank}</span>
-                    <span style={{ color: C.muted, marginLeft: 6, fontSize: 11 }}>{loan.bank}</span>
-                  </div>
-                  <span style={{ color: C.navy, fontWeight: 600 }}>↑ {fmtD(lUpfront)}</span>
-                  <span style={{ color: '#2A7A2A', fontWeight: 600 }}>~ {fmtD(lTrail)}/yr</span>
-                </div>
-              )
-            })}
-          </div>
-        )
-      })}
+          )}
 
-      {/* ── Inflight CRM Deals ── */}
-      {inflightDeals.length > 0 && (
-        <>
-          <div style={sHead}>
-            <span>Inflight Deals ({inflightDeals.length})</span>
-          </div>
-          {inflightDeals.map((d, i) => {
-            const col = STAGE_COLORS[d.Status] || '#94a3b8'
+          {linkedClients.length === 0 && (
+            <div style={{ fontSize: 12, color: C.muted, fontFamily: 'Montserrat,sans-serif', fontStyle: 'italic' }}>
+              No settled clients yet.
+            </div>
+          )}
+
+          {linkedClients.map(rc => {
+            const comm     = clientComm(rc)
+            const isManual = manualLinks.includes(rc.name)
+            const loans    = rc.loans.filter(l => !l.closed)
+            const totalBal = loans.reduce((s, l) => s + (l.balance || 0), 0)
             return (
-              <div key={i}
-                onClick={() => {
-                  sessionStorage.setItem('rion-from-marketing', '1')
-                  window.location.href = `/crm/deal/${encodeURIComponent(d['Transaction Name'])}`
-                }}
-                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px',
-                  border: `1px solid ${C.border}`, borderRadius: 10, marginBottom: 8,
-                  background: '#fff', cursor: 'pointer' }}
-                onMouseEnter={e => e.currentTarget.style.background = '#F4F6FA'}
-                onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
-                <div style={{ width: 8, height: 8, borderRadius: '50%', background: col, flexShrink: 0 }} />
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: C.navy,
-                    fontFamily: 'Montserrat,sans-serif' }}>{d['Transaction Name']}</div>
-                  <div style={{ fontSize: 11, color: C.muted, fontFamily: 'Montserrat,sans-serif', marginTop: 2 }}>
-                    {d.Categories} {d['Transaction Type'] ? `· ${d['Transaction Type']}` : ''} {d.Lender ? `· ${d.Lender}` : ''}
+              <div key={rc.name} style={{ marginBottom: 8, border: `1px solid ${C.border}`,
+                borderRadius: 8, background: '#fff', overflow: 'hidden' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px',
+                  cursor: 'pointer', background: '#FAFBFD' }}
+                  onClick={() => { sessionStorage.setItem('rion-from-marketing','1'); window.location.href=`/radar/clients/${encodeURIComponent(rc.name)}` }}
+                  onMouseEnter={e => e.currentTarget.style.background='#EFF6FF'}
+                  onMouseLeave={e => e.currentTarget.style.background='#FAFBFD'}>
+                  <Avatar name={rc.name} size={26} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: C.navy,
+                      fontFamily: 'Montserrat,sans-serif', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {rc.name} <span style={{ color: C.muted, fontSize: 10, fontWeight: 400 }}>#{rc.connNo}</span>
+                    </div>
+                    <div style={{ fontSize: 10, color: C.muted, fontFamily: 'Montserrat,sans-serif' }}>
+                      {loans.length} loan{loans.length !== 1 ? 's' : ''} · Bal {fmt(totalBal)}
+                    </div>
                   </div>
+                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                    <div style={{ fontSize: 10, color: '#2A7A2A', fontWeight: 600, fontFamily: 'Montserrat,sans-serif' }}>~ {fmtD(comm.trail)}/yr</div>
+                    <div style={{ fontSize: 10, color: C.navy, fontWeight: 600, fontFamily: 'Montserrat,sans-serif' }}>↑ {fmtD(comm.upfront)}</div>
+                  </div>
+                  {isManual && (
+                    <button onClick={e => { e.stopPropagation(); onSave({ ...contact, linkedClients: manualLinks.filter(n => n !== rc.name) }) }}
+                      style={{ border:'none', background:'none', cursor:'pointer', color:'#CBD5E1', fontSize:13, padding:'0 2px' }}>×</button>
+                  )}
+                  <span style={{ color: C.slate, fontSize: 13 }}>›</span>
                 </div>
-                <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: C.pinkBtn, fontFamily: 'Montserrat,sans-serif' }}>
-                    {d.Amount ? `$${Number(d.Amount).toLocaleString()}` : '—'}
-                  </div>
-                  <div style={{ fontSize: 10, fontWeight: 600, color: col, fontFamily: 'Montserrat,sans-serif',
-                    background: col + '18', padding: '2px 7px', borderRadius: 10, marginTop: 2 }}>
-                    {d.Status}
-                  </div>
-                </div>
-                <span style={{ color: C.slate, fontSize: 14 }}>›</span>
+                {loans.filter(l => (l.commissionHistory||[]).length > 0).map(loan => {
+                  const lU = (loan.commissionHistory||[]).reduce((s,h)=>s+(h.upfrontComm||0),0)
+                  const lT = (loan.commissionHistory||[]).reduce((s,h)=>s+(h.trailComm||0),0)
+                  if (!lU && !lT) return null
+                  return (
+                    <div key={loan.acc} style={{ display:'flex', gap:8, padding:'5px 12px',
+                      borderTop:`1px solid ${C.border}`, fontSize:11, fontFamily:'Montserrat,sans-serif' }}>
+                      <div style={{ flex:1, color:C.text, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                        {loan.lname || loan.bank} <span style={{ color:C.muted }}>{loan.bank}</span>
+                      </div>
+                      <span style={{ color:C.navy, fontWeight:600 }}>↑ {fmtD(lU)}</span>
+                      <span style={{ color:'#2A7A2A', fontWeight:600 }}>~ {fmtD(lT)}/yr</span>
+                    </div>
+                  )
+                })}
               </div>
             )
           })}
-        </>
-      )}
+        </div>
 
-      {/* ── Settled CRM deals (not matched to Rradar client) ── */}
-      {settledDeals.length > 0 && (
-        <>
-          <div style={sHead}>
-            <span>Settled Deals from CRM ({settledDeals.length})</span>
+        {/* RIGHT: Inflight + Settled CRM Deals */}
+        <div>
+          <div style={{ borderBottom: `1px solid ${C.border}`, paddingBottom: 8, marginBottom: 10 }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: C.text, fontFamily: 'Montserrat,sans-serif' }}>
+              Inflight Deals ({inflightDeals.length})
+            </span>
           </div>
-          {settledDeals.map((d, i) => (
-            <div key={i}
-              onClick={() => {
-                sessionStorage.setItem('rion-from-marketing', '1')
-                window.location.href = `/crm/deal/${encodeURIComponent(d['Transaction Name'])}`
-              }}
-              style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px',
-                border: `1px solid ${C.border}`, borderRadius: 10, marginBottom: 8,
-                background: '#fff', cursor: 'pointer' }}
-              onMouseEnter={e => e.currentTarget.style.background = '#F4F6FA'}
-              onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
-              <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#22c55e', flexShrink: 0 }} />
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: C.navy, fontFamily: 'Montserrat,sans-serif' }}>
-                  {d['Transaction Name']}
-                </div>
-                <div style={{ fontSize: 11, color: C.muted, fontFamily: 'Montserrat,sans-serif', marginTop: 2 }}>
-                  {d['Date Settled'] || d['Month of Settlement']} · {d.Categories} · {d.Lender}
-                </div>
-              </div>
-              <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: C.navy, fontFamily: 'Montserrat,sans-serif' }}>
-                  {d.Amount ? `$${Number(d.Amount).toLocaleString()}` : '—'}
-                </div>
-              </div>
-              <span style={{ color: C.slate, fontSize: 14 }}>›</span>
+
+          {inflightDeals.length === 0 && (
+            <div style={{ fontSize: 12, color: C.muted, fontFamily: 'Montserrat,sans-serif', fontStyle: 'italic', marginBottom: 8 }}>
+              No active deals.
             </div>
-          ))}
-        </>
-      )}
+          )}
+
+          {inflightDeals.map((d, i) => {
+            const SC = {'1. Lead':'#94a3b8','2. Strategy':'#60a5fa','3. Pre-Lodged':'#a78bfa','4. Lodged':'#fb923c','5. Conditional':'#facc15','6. Unconditional':'#4ade80'}
+            const col = SC[d.Status] || '#94a3b8'
+            return (
+              <div key={i}
+                onClick={() => { sessionStorage.setItem('rion-from-marketing','1'); window.location.href=`/crm/deal/${encodeURIComponent(d['Transaction Name'])}` }}
+                style={{ display:'flex', alignItems:'center', gap:8, padding:'9px 12px',
+                  border:`1px solid ${C.border}`, borderRadius:8, marginBottom:6,
+                  background:'#fff', cursor:'pointer' }}
+                onMouseEnter={e => e.currentTarget.style.background='#F4F6FA'}
+                onMouseLeave={e => e.currentTarget.style.background='#fff'}>
+                <div style={{ width:7,height:7,borderRadius:'50%',background:col,flexShrink:0 }} />
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontSize:12, fontWeight:700, color:C.navy, fontFamily:'Montserrat,sans-serif',
+                    overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{d['Transaction Name']}</div>
+                  <div style={{ fontSize:10, color:C.muted, fontFamily:'Montserrat,sans-serif' }}>
+                    {[d.Categories, d['Transaction Type'], d.Lender].filter(Boolean).join(' · ')}
+                  </div>
+                </div>
+                <div style={{ textAlign:'right', flexShrink:0 }}>
+                  <div style={{ fontSize:11, fontWeight:700, color:C.pinkBtn, fontFamily:'Montserrat,sans-serif' }}>
+                    {d.Amount ? `$${Number(d.Amount).toLocaleString()}` : '—'}
+                  </div>
+                  <div style={{ fontSize:9, fontWeight:600, color:col, background:col+'20',
+                    padding:'1px 6px', borderRadius:8, fontFamily:'Montserrat,sans-serif', marginTop:2 }}>
+                    {d.Status}
+                  </div>
+                </div>
+                <span style={{ color:C.slate, fontSize:13 }}>›</span>
+              </div>
+            )
+          })}
+
+          {settledDeals.length > 0 && (
+            <>
+              <div style={{ fontSize:11, fontWeight:700, color:C.slate, textTransform:'uppercase',
+                letterSpacing:'0.05em', fontFamily:'Montserrat,sans-serif', marginTop:10, marginBottom:6 }}>
+                Settled via CRM ({settledDeals.length})
+              </div>
+              {settledDeals.map((d, i) => (
+                <div key={i}
+                  onClick={() => { sessionStorage.setItem('rion-from-marketing','1'); window.location.href=`/crm/deal/${encodeURIComponent(d['Transaction Name'])}` }}
+                  style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 12px',
+                    border:`1px solid ${C.border}`, borderRadius:8, marginBottom:6,
+                    background:'#fff', cursor:'pointer' }}
+                  onMouseEnter={e => e.currentTarget.style.background='#F4F6FA'}
+                  onMouseLeave={e => e.currentTarget.style.background='#fff'}>
+                  <div style={{ width:7,height:7,borderRadius:'50%',background:'#22c55e',flexShrink:0 }} />
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontSize:12, fontWeight:700, color:C.navy, fontFamily:'Montserrat,sans-serif',
+                      overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{d['Transaction Name']}</div>
+                    <div style={{ fontSize:10, color:C.muted, fontFamily:'Montserrat,sans-serif' }}>
+                      {d['Date Settled']||d['Month of Settlement']} · {d.Categories}
+                    </div>
+                  </div>
+                  <div style={{ fontSize:11, fontWeight:700, color:C.navy, fontFamily:'Montserrat,sans-serif', flexShrink:0 }}>
+                    {d.Amount ? `$${Number(d.Amount).toLocaleString()}` : '—'}
+                  </div>
+                  <span style={{ color:C.slate, fontSize:13 }}>›</span>
+                </div>
+              ))}
+            </>
+          )}
+        </div>
+
+      </div>
     </div>
   )
 }
@@ -844,47 +830,68 @@ function ContactDetail({ contact, section, onBack, onSave, onDelete, onMove, rra
         </div>
       )}
 
-      {/* info grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 16 }}>
-        <InfoTile label="Email" value={contact.email} />
-        <InfoTile label="Mobile" value={contact.mobile} />
-        {dobDisplay && <InfoTile label={`Date of Birth${ageVal ? ` (Age ${ageVal})` : ''}`} value={dobDisplay} highlight={bdayIn !== null} />}
-        {clientSince && <InfoTile label="Client Since" value={(() => { try { return new Date(clientSince).toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric' }) } catch { return clientSince } })()} />}
-        <InfoTile label="Address" value={contact.address} />
-        <InfoTile label="Company" value={contact.company} />
-        <InfoTile label="Profession" value={contact.profession} />
-        <InfoTile label="Industry" value={contact.industry} />
-        <InfoTile label="Preferred Contact" value={contact.preferredContact} />
-        <InfoTile label="Referred By" value={contact.referredBy} />
-        <InfoTile label="Spouse / Partner" value={contact.spouseName} />
-        {contact.linkedIn && <InfoTile label="LinkedIn" value={contact.linkedIn} />}
-        <InfoTile label="Tier" value={tierCfg?.label} />
-        <InfoTile label="Type" value={contact.type} />
-        <InfoTile label="Referral Count" value={contact.referralCount ? `${contact.referralCount} referrals` : null} />
-        <InfoTile label="BDM Name" value={contact.bdmName} />
-        <InfoTile label="BDM Email" value={contact.bdmEmail} />
-        <InfoTile label="BDM Mobile" value={contact.bdmMobile} />
-        {contact.assignedBroker && <InfoTile label="Assigned Broker" value={contact.assignedBroker} />}
-      </div>
-
-      {/* Broker assignment */}
-      <div style={{ marginTop: 14, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 12, fontWeight: 600, color: C.muted, fontFamily: 'Montserrat,sans-serif', whiteSpace: 'nowrap' }}>
-          Assigned to:
-        </span>
-        <select
-          value={contact.assignedBroker || brokers[0]?.name || ''}
-          onChange={e => onSave({ ...contact, assignedBroker: e.target.value })}
-          style={{ ...inputStyle, width: 'auto', fontSize: 12, padding: '6px 10px', cursor: 'pointer' }}>
-          {brokers.map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
-        </select>
+      {/* ── Contact details card ── always visible, compact row layout ── */}
+      <div style={{ marginTop: 16, background: '#F9FAFB', borderRadius: 10,
+        border: `1px solid ${C.border}`, padding: '12px 16px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: C.slate, textTransform: 'uppercase',
+            letterSpacing: '0.06em', fontFamily: 'Montserrat,sans-serif' }}>Contact Details</span>
+          <button onClick={() => setEditing(true)}
+            style={{ fontSize: 10, padding: '2px 9px', borderRadius: 6, border: `1px solid ${C.border}`,
+              background: '#fff', color: C.navy, cursor: 'pointer', fontFamily: 'Montserrat,sans-serif', fontWeight: 600 }}>
+            ✎ Edit
+          </button>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 16px' }}>
+          {[
+            ['Email',           contact.email         || '—'],
+            ['Mobile',          contact.mobile        || '—'],
+            ['Company',         contact.company       || '—'],
+            ['Type',            contact.type          || '—'],
+            ['Address',         contact.address       || '—'],
+            ...(dobDisplay ? [[`DOB${ageVal ? ` (${ageVal}yrs)` : ''}`, dobDisplay]] : []),
+            ...(clientSince ? [['Client Since', (() => { try { return new Date(clientSince).toLocaleDateString('en-AU',{day:'2-digit',month:'short',year:'numeric'}) } catch { return clientSince } })()]] : []),
+            ...(contact.profession ? [['Profession', contact.profession]] : []),
+            ...(contact.industry   ? [['Industry',   contact.industry]]   : []),
+            ...(contact.referralCount ? [['Referrals', `${contact.referralCount} total`]] : []),
+            ...(contact.preferredContact ? [['Pref. Contact', contact.preferredContact]] : []),
+            ...(contact.spouseName ? [['Spouse/Partner', contact.spouseName]] : []),
+            ...(contact.referredBy ? [['Referred By', contact.referredBy]] : []),
+            ...(contact.bdmName    ? [['BDM', contact.bdmName]]            : []),
+            ...(contact.linkedIn   ? [['LinkedIn', contact.linkedIn]]      : []),
+            ['Assigned To',     contact.assignedBroker || brokers[0]?.name || '—'],
+          ].map(([label, value]) => (
+            <div key={label} style={{ display: 'flex', gap: 6, alignItems: 'flex-start',
+              fontSize: 12, fontFamily: 'Montserrat,sans-serif', minWidth: 0 }}>
+              <span style={{ color: C.slate, fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0, minWidth: 90 }}>
+                {label}:
+              </span>
+              <span style={{ color: value === '—' ? '#CBD5E1' : C.text,
+                overflow: 'hidden', textOverflow: 'ellipsis', wordBreak: 'break-all' }}>
+                {value}
+              </span>
+            </div>
+          ))}
+        </div>
+        {/* Broker assignment inline */}
+        <div style={{ marginTop: 10, paddingTop: 8, borderTop: `1px solid ${C.border}`,
+          display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 11, fontWeight: 600, color: C.slate, fontFamily: 'Montserrat,sans-serif', whiteSpace: 'nowrap' }}>
+            Assigned to:
+          </span>
+          <select value={contact.assignedBroker || brokers[0]?.name || ''}
+            onChange={e => onSave({ ...contact, assignedBroker: e.target.value })}
+            style={{ ...inputStyle, width: 'auto', fontSize: 11, padding: '4px 8px', cursor: 'pointer' }}>
+            {brokers.map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
+          </select>
+        </div>
       </div>
 
       {/* linked referrers (for clients) */}
       {section === 'clients' && contact.linkedReferrers?.length > 0 && (
-        <div style={{ marginTop: 16 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: C.muted, textTransform: 'uppercase',
-            letterSpacing: '0.05em', fontFamily: 'Montserrat,sans-serif', marginBottom: 8 }}>Referred By</div>
+        <div style={{ marginTop: 12 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.slate, textTransform: 'uppercase',
+            letterSpacing: '0.05em', fontFamily: 'Montserrat,sans-serif', marginBottom: 6 }}>Referred By</div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {contact.linkedReferrers.map(r => <Pill key={r} label={r} colour={C.navy} />)}
           </div>
