@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { PIPELINE_DATA } from '../lib/pipelineData'
 import CRMTopbar from '../components/CRMTopbar'
+import ReferrerPicker from '../components/ReferrerPicker'
 
 const STAGES = ['1. Lead','2. Strategy','3. Pre-Lodged','4. Lodged','5. Conditional','6. Unconditional','7. Settled','8. Withdrawn']
 const CATEGORIES = ['Residential','Asset Finance','Commercial Loans','Business Loans','SMSF','Invoice Finance','Other']
@@ -389,6 +390,9 @@ export default function DealPage({ onUpdateDeals, clients = [] }) {
                   <ReadRow label="Transaction type" value={d['Transaction Type']}/>
                   <ReadRow label="Lender" value={d.Lender}/>
                   <ReadRow label="Lead source" value={d['Lead Source']}/>
+                  {(d['_referrers']||[]).length > 0 && (
+                    <ReadRow label="Referral partner" value={(d['_referrers']||[]).map(r=>r.name).join(', ')}/>
+                  )}
                   <ReadRow label="Total security" value={fmtAmt(d['Total Security'])}/>
                   <ReadRow label="Internal reference" value={d['Internal Reference']}/>
                 </>
@@ -431,6 +435,21 @@ export default function DealPage({ onUpdateDeals, clients = [] }) {
           <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
             {/* Clients & Contacts — Rradar linked */}
             <RradarContactsPanel deal={d} clients={clients} editing={editing} draft={draft} set={set} inp={inp} />
+
+            {/* Referral partner */}
+            <div style={{ background:'#fff', borderRadius:10, border:'0.5px solid #e8eaed', padding:'16px 18px' }}>
+              <div style={{ fontSize:11, fontWeight:600, color:'#7A8090', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:4 }}>Referral Partner</div>
+              <ReferrerPicker
+                compact
+                label=""
+                attached={d['_referrers'] || (d['_referrer'] ? [{ name:d['_referrer'], tier:'contenders' }] : [])}
+                onAttach={r => {
+                  const curr = draft?.['_referrers'] || []
+                  if (!curr.find(x => x.name === r.name)) set('_referrers', [...curr, r])
+                }}
+                onDetach={name => set('_referrers', (draft?.['_referrers']||[]).filter(x => x.name !== name))}
+              />
+            </div>
 
             <div style={{ background:'#fff', borderRadius:10, border:'0.5px solid #e8eaed', padding:'16px 18px' }}>
               <div style={{ fontSize:11, fontWeight:600, color:'#7A8090', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:14 }}>Team & notes</div>

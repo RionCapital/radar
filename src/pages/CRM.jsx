@@ -80,11 +80,18 @@ function StageDropdown({ deal, onChangeStage }) {
   const [open, setOpen] = useState(false)
   const [pos, setPos] = useState({ top: 0, left: 0 })
   const ref = useRef(null)
+  const portalRef = useRef(null)
   const sc = STAGE_COLORS[deal.Status] || STAGE_COLORS['1. Lead']
 
   useEffect(() => {
     if (!open) return
-    function handler(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    function handler(e) {
+      // Must check both the trigger ref AND the portal node —
+      // the portal is in document.body so ref.current.contains() misses it
+      const inTrigger = ref.current && ref.current.contains(e.target)
+      const inPortal  = portalRef.current && portalRef.current.contains(e.target)
+      if (!inTrigger && !inPortal) setOpen(false)
+    }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [open])
@@ -109,7 +116,7 @@ function StageDropdown({ deal, onChangeStage }) {
         {deal.Status} ▾
       </span>
       {open && ReactDOM.createPortal(
-        <div style={{ position:'fixed', top:pos.top, left:pos.left, background:'#fff', borderRadius:8, border:'1px solid #e8eaed', boxShadow:'0 4px 24px rgba(0,0,0,0.15)', zIndex:9999, minWidth:170, overflow:'hidden' }}>
+        <div ref={portalRef} style={{ position:'fixed', top:pos.top, left:pos.left, background:'#fff', borderRadius:8, border:'1px solid #e8eaed', boxShadow:'0 4px 24px rgba(0,0,0,0.15)', zIndex:9999, minWidth:170, overflow:'hidden' }}>
           {STAGES.map(s => {
             const ssc = STAGE_COLORS[s]
             return (

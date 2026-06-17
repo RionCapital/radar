@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { totalBal, totalAmt, pwBal, commBal, fmt, calcOpp, ini, LOAN_TYPES, BANKS } from '../lib/data'
 import { fmtDate, dateCellStyle, loanFlag, effectiveRpmt, calcRepayment } from '../lib/dateUtils'
 import { Panel, PanelTitle, EditBtn, SaveBtn, CancelBtn, ActionBtn, FieldGroup, Pill, DateInput } from '../components/UI'
+import ReferrerPicker from '../components/ReferrerPicker'
 import NewOpportunityModal from '../components/NewOpportunityModal'
 
 const CONTACT_TYPES = ['Individual','Company','Trust','Partnership','Sole Trader']
@@ -700,6 +701,23 @@ export default function ClientDashboard({ clients, updateClient }) {
         <div style={{fontSize:10,color:'var(--text-tertiary)',marginTop:8,paddingTop:8,borderTop:'0.5px solid var(--border-light)'}}>
           Click any row to open the full loan account details
         </div>
+      </Panel>
+
+      {/* Referral partners */}
+      <Panel style={{marginBottom:14}}>
+        <PanelTitle>Referral Partners</PanelTitle>
+        <ReferrerPicker
+          label=""
+          attached={client.referrers || []}
+          onAttach={r => updateClient(client.name, c => ({
+            ...c,
+            referrers: [...(c.referrers||[]).filter(x => x.name !== r.name), r]
+          }))}
+          onDetach={name => updateClient(client.name, c => ({
+            ...c,
+            referrers: (c.referrers||[]).filter(x => x.name !== name)
+          }))}
+        />
       </Panel>
 
       {/* Opp score & Notes */}
