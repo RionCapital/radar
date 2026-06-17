@@ -7,7 +7,7 @@ const BG = '#3D5570'
 const APPS = [
   { name: 'Mercury',     url: 'https://login.connective.com.au/',          domain: 'login.connective.com.au' },
   { name: 'CoreLogic',   url: 'https://propertyhub.corelogic.asia/',       domain: 'propertyhub.corelogic.asia' },
-  { name: 'Brokerpedia', url: 'https://brokerpedia.com.au/',                domain: 'brokerpedia.com.au' },
+  { name: 'Brokerpedia', url: 'https://m5.connective.com.au/api/brokerpedia.jsp?userId=CA87684&firstName=Cameron&lastName=Finlayson&email=cameron@rion-capital.com', domain: 'connective.com.au' },
   { name: 'Quickli',     url: 'https://app.quickli.com.au/',                domain: 'app.quickli.com.au' },
   { name: 'ValEX',       url: 'https://valstatus.rpdata.com/',              domain: 'valstatus.rpdata.com' },
   { name: 'ABN Lookup',  url: 'https://abr.business.gov.au/',               domain: 'abr.business.gov.au' },
