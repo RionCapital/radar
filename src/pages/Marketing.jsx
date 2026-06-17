@@ -850,9 +850,10 @@ function ContactDetail({ contact, section, onBack, onSave, onDelete, onMove, rra
           const isEmail= v => v && v.includes('@')
 
           const DetailRow = ({ label, value, icon }) => {
-            if (!value) return null
             let content
-            if (isEmail(value))
+            if (!value)
+              content = <span style={{ color:'#CBD5E1', fontStyle:'italic', fontSize:11 }}>Not set</span>
+            else if (isEmail(value))
               content = <a href={`mailto:${value}`} style={{ color: C.navy, textDecoration:'underline', wordBreak:'break-all' }}>{value}</a>
             else if (isTel(value))
               content = <a href={`tel:${value.replace(/\s/g,'')}`} style={{ color: C.navy, textDecoration:'underline' }}>{value}</a>
@@ -871,28 +872,42 @@ function ContactDetail({ contact, section, onBack, onSave, onDelete, onMove, rra
             )
           }
 
+          // Build field list based on section — always show all relevant fields
+          const fields = [
+            { label:'Email',          value:contact.email,          icon:'✉' },
+            { label:'Mobile',         value:contact.mobile,         icon:'📱' },
+            { label:'Bus. Phone',     value:contact.busPhone,       icon:'📞' },
+            { label:'Company',        value:contact.company },
+            { label:'Type / Role',    value:contact.type },
+            { label:'Address',        value:contact.address },
+            { label:`DOB${ageVal ? ` (${ageVal}yrs)` : ''}`, value: dobDisplay || contact.dob || '' },
+            ...(clientSince ? [{ label:'Client Since', value: (() => { try { return new Date(clientSince).toLocaleDateString('en-AU',{day:'2-digit',month:'short',year:'numeric'}) } catch { return clientSince } })() }] : []),
+            ...(section === 'clients' ? [
+              { label:'Profession',    value:contact.profession },
+              { label:'Industry',     value:contact.industry },
+              { label:'Spouse/Partner',value:contact.spouseName },
+              { label:'Referred By',  value:contact.referredBy },
+            ] : []),
+            ...(section === 'referrers' ? [
+              { label:'Referrals',    value:contact.referralCount ? `${contact.referralCount} total` : '' },
+              { label:'Tier',         value:tierCfg?.label || contact.tier },
+            ] : []),
+            ...(section === 'lenders' ? [
+              { label:'BDM Name',     value:contact.bdmName },
+              { label:'BDM Email',    value:contact.bdmEmail, icon:'✉' },
+              { label:'BDM Mobile',   value:contact.bdmMobile, icon:'📱' },
+            ] : []),
+            { label:'Pref. Contact',  value:contact.preferredContact },
+            { label:'Website',        value:contact.website,        icon:'🌐' },
+            { label:'LinkedIn',       value:contact.linkedIn,       icon:'in' },
+            { label:'Facebook',       value:contact.facebook,       icon:'f' },
+            { label:'Instagram',      value:contact.instagram,      icon:'◎' },
+            { label:'Twitter/X',      value:contact.twitter,        icon:'𝕏' },
+          ]
+
           return (
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'7px 16px' }}>
-              <DetailRow label="Email"         value={contact.email}          icon="✉" />
-              <DetailRow label="Mobile"        value={contact.mobile}         icon="📱" />
-              <DetailRow label="Bus. Phone"    value={contact.busPhone}       icon="📞" />
-              <DetailRow label="Company"       value={contact.company} />
-              <DetailRow label="Type"          value={contact.type} />
-              <DetailRow label="Address"       value={contact.address} />
-              {dobDisplay && <DetailRow label={`DOB${ageVal ? ` (${ageVal}yrs)` : ''}`} value={dobDisplay} />}
-              {clientSince && <DetailRow label="Client Since" value={(() => { try { return new Date(clientSince).toLocaleDateString('en-AU',{day:'2-digit',month:'short',year:'numeric'}) } catch { return clientSince } })()} />}
-              <DetailRow label="Profession"    value={contact.profession} />
-              <DetailRow label="Industry"      value={contact.industry} />
-              <DetailRow label="Referrals"     value={contact.referralCount ? `${contact.referralCount} total` : null} />
-              <DetailRow label="Pref. Contact" value={contact.preferredContact} />
-              <DetailRow label="Spouse/Partner" value={contact.spouseName} />
-              <DetailRow label="Referred By"   value={contact.referredBy} />
-              <DetailRow label="BDM"           value={contact.bdmName} />
-              <DetailRow label="Website"       value={contact.website}        icon="🌐" />
-              <DetailRow label="LinkedIn"      value={contact.linkedIn}       icon="in" />
-              <DetailRow label="Facebook"      value={contact.facebook}       icon="f" />
-              <DetailRow label="Instagram"     value={contact.instagram}      icon="◎" />
-              <DetailRow label="Twitter/X"     value={contact.twitter}        icon="𝕏" />
+              {fields.map(f => <DetailRow key={f.label} label={f.label} value={f.value} icon={f.icon} />)}
             </div>
           )
         })()}
