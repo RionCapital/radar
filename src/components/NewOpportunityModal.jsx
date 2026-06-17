@@ -48,7 +48,10 @@ export default function NewOpportunityModal({ onClose, onCreated, prefillClientN
   const searchRef = useRef()
 
   // Deal fields
-  const [dealSuffix, setDealSuffix] = useState('') // appended to client name to make unique transaction name
+  const [dealSuffix, setDealSuffix]       = useState('') // appended to client name to make unique transaction name
+  const [dealNumber, setDealNumber]       = useState('')   // e.g. "3" → auto-names "ClientName (3)"
+  const [dealNameOverride, setDealNameOverride] = useState('')  // manual override of transaction name
+  const [nameOverrideActive, setNameOverrideActive] = useState(false)
   const [status, setStatus] = useState('1. Lead')
   const [amount, setAmount] = useState('')
   const [category, setCategory] = useState('')
@@ -65,10 +68,19 @@ export default function NewOpportunityModal({ onClose, onCreated, prefillClientN
 
   const clientDisplayName = clientMode === 'existing' ? selectedClient : newClientName
 
-  // Build the transaction name: "ClientName — suffix" or just "ClientName" if no suffix
-  const transactionName = dealSuffix.trim()
-    ? `${clientDisplayName} — ${dealSuffix.trim()}`
-    : clientDisplayName
+  // Build the auto transaction name
+  const autoTransactionName = (() => {
+    const base = clientDisplayName || ''
+    if (dealNumber.trim()) return `${base} (${dealNumber.trim()})`
+    if (dealSuffix.trim()) return `${base} — ${dealSuffix.trim()}`
+    return base
+  })()
+  const transactionName = nameOverrideActive && dealNameOverride.trim()
+    ? dealNameOverride.trim()
+    : autoTransactionName
+
+  // When auto-name changes, update override field to match (so user sees current value)
+  // (handled via useEffect in JSX — override input is controlled)
 
   function handleCreate() {
     if (!clientDisplayName.trim()) { setError('Please select or enter a client name.'); return }
@@ -198,14 +210,60 @@ export default function NewOpportunityModal({ onClose, onCreated, prefillClientN
             )}
           </div>
 
-          {/* Deal description / suffix */}
+          {/* Deal number + description + name */}
           <div style={{ marginBottom: 14 }}>
-            <label style={lbl}>Deal description <span style={{ color: '#94a3b8', fontWeight: 400, textTransform: 'none' }}>(optional — appended to client name)</span></label>
-            <input style={inp} value={dealSuffix} placeholder="e.g. Home Purchase, Refinance 2025…"
-              onChange={e => setDealSuffix(e.target.value)} />
+            {/* Row: Deal # + Description */}
+            <div style={{ display: 'grid', gridTemplateColumns: '90px 1fr', gap: 8, marginBottom: 8 }}>
+              <div>
+                <label style={lbl}>Deal #</label>
+                <input style={inp} value={dealNumber} placeholder="e.g. 3"
+                  onChange={e => {
+                    setDealNumber(e.target.value)
+                    setNameOverrideActive(false) // reset override when number changes
+                  }} />
+              </div>
+              <div>
+                <label style={lbl}>Deal description <span style={{ color: '#94a3b8', fontWeight: 400, textTransform: 'none' }}>(optional suffix)</span></label>
+                <input style={inp} value={dealSuffix} placeholder="e.g. SMSF Refinance, Home Purchase…"
+                  onChange={e => {
+                    setDealSuffix(e.target.value)
+                    setNameOverrideActive(false)
+                  }} />
+              </div>
+            </div>
+
+            {/* Auto-generated name preview + override */}
             {clientDisplayName && (
-              <div style={{ marginTop: 5, fontSize: 11, color: '#64748b' }}>
-                Transaction name: <strong style={{ color: NAVY }}>{transactionName}</strong>
+              <div style={{ background: '#F4F6FA', borderRadius: 8, padding: '10px 12px',
+                border: '1px solid #DDE3EC' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: nameOverrideActive ? 8 : 0 }}>
+                  <div style={{ fontSize: 11, color: '#64748b' }}>
+                    Deal name: {' '}
+                    {!nameOverrideActive && (
+                      <strong style={{ color: NAVY }}>{autoTransactionName}</strong>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNameOverrideActive(v => !v)
+                      if (!nameOverrideActive) setDealNameOverride(autoTransactionName)
+                    }}
+                    style={{ fontSize: 10, padding: '2px 8px', borderRadius: 6,
+                      border: '1px solid #DDE3EC', background: nameOverrideActive ? NAVY : '#fff',
+                      color: nameOverrideActive ? '#fff' : '#64748b', cursor: 'pointer',
+                      fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
+                    {nameOverrideActive ? '✕ Cancel override' : '✎ Override name'}
+                  </button>
+                </div>
+                {nameOverrideActive && (
+                  <input style={{ ...inp, marginBottom: 0, background: '#fff' }}
+                    value={dealNameOverride}
+                    placeholder="Enter custom deal name…"
+                    onChange={e => setDealNameOverride(e.target.value)}
+                    autoFocus
+                  />
+                )}
               </div>
             )}
           </div>
