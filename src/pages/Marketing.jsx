@@ -830,7 +830,7 @@ function ContactDetail({ contact, section, onBack, onSave, onDelete, onMove, rra
         </div>
       )}
 
-      {/* ── Contact details card ── always visible, compact row layout ── */}
+      {/* ── Contact details card ── */}
       <div style={{ marginTop: 16, background: '#F9FAFB', borderRadius: 10,
         border: `1px solid ${C.border}`, padding: '12px 16px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
@@ -842,38 +842,62 @@ function ContactDetail({ contact, section, onBack, onSave, onDelete, onMove, rra
             ✎ Edit
           </button>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 16px' }}>
-          {[
-            ['Email',           contact.email         || '—'],
-            ['Mobile',          contact.mobile        || '—'],
-            ['Company',         contact.company       || '—'],
-            ['Type',            contact.type          || '—'],
-            ['Address',         contact.address       || '—'],
-            ...(dobDisplay ? [[`DOB${ageVal ? ` (${ageVal}yrs)` : ''}`, dobDisplay]] : []),
-            ...(clientSince ? [['Client Since', (() => { try { return new Date(clientSince).toLocaleDateString('en-AU',{day:'2-digit',month:'short',year:'numeric'}) } catch { return clientSince } })()]] : []),
-            ...(contact.profession ? [['Profession', contact.profession]] : []),
-            ...(contact.industry   ? [['Industry',   contact.industry]]   : []),
-            ...(contact.referralCount ? [['Referrals', `${contact.referralCount} total`]] : []),
-            ...(contact.preferredContact ? [['Pref. Contact', contact.preferredContact]] : []),
-            ...(contact.spouseName ? [['Spouse/Partner', contact.spouseName]] : []),
-            ...(contact.referredBy ? [['Referred By', contact.referredBy]] : []),
-            ...(contact.bdmName    ? [['BDM', contact.bdmName]]            : []),
-            ...(contact.linkedIn   ? [['LinkedIn', contact.linkedIn]]      : []),
-            ['Assigned To',     contact.assignedBroker || brokers[0]?.name || '—'],
-          ].map(([label, value]) => (
-            <div key={label} style={{ display: 'flex', gap: 6, alignItems: 'flex-start',
-              fontSize: 12, fontFamily: 'Montserrat,sans-serif', minWidth: 0 }}>
-              <span style={{ color: C.slate, fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0, minWidth: 90 }}>
-                {label}:
-              </span>
-              <span style={{ color: value === '—' ? '#CBD5E1' : C.text,
-                overflow: 'hidden', textOverflow: 'ellipsis', wordBreak: 'break-all' }}>
-                {value}
-              </span>
+
+        {/* helper: renders value — plain text or clickable link */}
+        {(() => {
+          const isUrl  = v => v && (v.startsWith('http') || v.startsWith('www') || v.includes('.com') || v.includes('.au'))
+          const isTel  = v => v && /^[\d\s\+\(\)]{7,}$/.test(v)
+          const isEmail= v => v && v.includes('@')
+
+          const DetailRow = ({ label, value, icon }) => {
+            if (!value) return null
+            let content
+            if (isEmail(value))
+              content = <a href={`mailto:${value}`} style={{ color: C.navy, textDecoration:'underline', wordBreak:'break-all' }}>{value}</a>
+            else if (isTel(value))
+              content = <a href={`tel:${value.replace(/\s/g,'')}`} style={{ color: C.navy, textDecoration:'underline' }}>{value}</a>
+            else if (isUrl(value))
+              content = <a href={value.startsWith('http') ? value : `https://${value}`} target="_blank" rel="noopener noreferrer"
+                style={{ color: C.navy, textDecoration:'underline', wordBreak:'break-all' }}>{value} ↗</a>
+            else
+              content = <span style={{ color: C.text, wordBreak:'break-word' }}>{value}</span>
+            return (
+              <div style={{ display:'flex', gap:6, alignItems:'flex-start', fontSize:12, fontFamily:'Montserrat,sans-serif', minWidth:0 }}>
+                <span style={{ color:C.slate, fontWeight:600, whiteSpace:'nowrap', flexShrink:0, minWidth:90 }}>
+                  {icon && <span style={{ marginRight:3 }}>{icon}</span>}{label}:
+                </span>
+                {content}
+              </div>
+            )
+          }
+
+          return (
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'7px 16px' }}>
+              <DetailRow label="Email"         value={contact.email}          icon="✉" />
+              <DetailRow label="Mobile"        value={contact.mobile}         icon="📱" />
+              <DetailRow label="Bus. Phone"    value={contact.busPhone}       icon="📞" />
+              <DetailRow label="Company"       value={contact.company} />
+              <DetailRow label="Type"          value={contact.type} />
+              <DetailRow label="Address"       value={contact.address} />
+              {dobDisplay && <DetailRow label={`DOB${ageVal ? ` (${ageVal}yrs)` : ''}`} value={dobDisplay} />}
+              {clientSince && <DetailRow label="Client Since" value={(() => { try { return new Date(clientSince).toLocaleDateString('en-AU',{day:'2-digit',month:'short',year:'numeric'}) } catch { return clientSince } })()} />}
+              <DetailRow label="Profession"    value={contact.profession} />
+              <DetailRow label="Industry"      value={contact.industry} />
+              <DetailRow label="Referrals"     value={contact.referralCount ? `${contact.referralCount} total` : null} />
+              <DetailRow label="Pref. Contact" value={contact.preferredContact} />
+              <DetailRow label="Spouse/Partner" value={contact.spouseName} />
+              <DetailRow label="Referred By"   value={contact.referredBy} />
+              <DetailRow label="BDM"           value={contact.bdmName} />
+              <DetailRow label="Website"       value={contact.website}        icon="🌐" />
+              <DetailRow label="LinkedIn"      value={contact.linkedIn}       icon="in" />
+              <DetailRow label="Facebook"      value={contact.facebook}       icon="f" />
+              <DetailRow label="Instagram"     value={contact.instagram}      icon="◎" />
+              <DetailRow label="Twitter/X"     value={contact.twitter}        icon="𝕏" />
             </div>
-          ))}
-        </div>
-        {/* Broker assignment inline */}
+          )
+        })()}
+
+        {/* Broker assignment */}
         <div style={{ marginTop: 10, paddingTop: 8, borderTop: `1px solid ${C.border}`,
           display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 11, fontWeight: 600, color: C.slate, fontFamily: 'Montserrat,sans-serif', whiteSpace: 'nowrap' }}>
@@ -957,7 +981,11 @@ function EditContactModal({ contact, section, onChange, onSave, onClose }) {
           <Select label="Industry (Business)" options={INDUSTRIES} value={f.industry || ''} onChange={e => set('industry', e.target.value)} />
           <Select label="Preferred Contact Method" options={CONTACT_PREFS} value={f.preferredContact || ''} onChange={e => set('preferredContact', e.target.value)} />
           <Input label="Spouse / Partner Name" value={f.spouseName || ''} onChange={e => set('spouseName', e.target.value)} />
+          <Input label="Website URL" value={f.website || ''} onChange={e => set('website', e.target.value)} />
           <Input label="LinkedIn URL" value={f.linkedIn || ''} onChange={e => set('linkedIn', e.target.value)} />
+          <Input label="Facebook URL" value={f.facebook || ''} onChange={e => set('facebook', e.target.value)} />
+          <Input label="Instagram URL" value={f.instagram || ''} onChange={e => set('instagram', e.target.value)} />
+          <Input label="Twitter / X URL" value={f.twitter || ''} onChange={e => set('twitter', e.target.value)} />
           <Input label="Referred By" value={f.referredBy || ''} onChange={e => set('referredBy', e.target.value)} />
           <Toggle label="Birthday reminders" checked={!!f.birthdayReminder} onChange={v => set('birthdayReminder', v)} />
           <Toggle label="Unsubscribed from group emails" checked={!!f.unsubscribed} onChange={v => set('unsubscribed', v)} />
@@ -968,8 +996,13 @@ function EditContactModal({ contact, section, onChange, onSave, onClose }) {
         <>
           <Select label="Type" options={REFERRER_TYPES} value={f.type || ''} onChange={e => set('type', e.target.value)} />
           <Select label="Tier" options={REFERRER_TIERS.map(t => t.id)} value={f.tier || ''} onChange={e => set('tier', e.target.value)} />
-          <Select label="Preferred Contact Method" options={CONTACT_PREFS} value={f.preferredContact || ''} onChange={e => set('preferredContact', e.target.value)} />
+          <Input label="Business Phone" value={f.busPhone || ''} onChange={e => set('busPhone', e.target.value)} />
+          <Input label="Website URL" value={f.website || ''} onChange={e => set('website', e.target.value)} />
           <Input label="LinkedIn URL" value={f.linkedIn || ''} onChange={e => set('linkedIn', e.target.value)} />
+          <Input label="Facebook URL" value={f.facebook || ''} onChange={e => set('facebook', e.target.value)} />
+          <Input label="Instagram URL" value={f.instagram || ''} onChange={e => set('instagram', e.target.value)} />
+          <Input label="Twitter / X URL" value={f.twitter || ''} onChange={e => set('twitter', e.target.value)} />
+          <Select label="Preferred Contact Method" options={CONTACT_PREFS} value={f.preferredContact || ''} onChange={e => set('preferredContact', e.target.value)} />
           <Input label="Referral Count (all time)" value={f.referralCount || ''} onChange={e => set('referralCount', e.target.value)} />
           <Toggle label="Unsubscribed from group emails" checked={!!f.unsubscribed} onChange={v => set('unsubscribed', v)} />
         </>
@@ -1383,7 +1416,7 @@ export default function Marketing() {
   const [clientOverrides, setClientOverrides] = useState(() => loadStore(STORAGE_KEYS.clientOv))
   const [referrers, setReferrers] = useState(() => {
     // v2 = cleaned (nan nan removed). If stored version differs, reseed.
-    const REFERRER_VERSION = 'v2'
+    const REFERRER_VERSION = 'v3'
     const storedVer = localStorage.getItem('rion-marketing-referrers-version')
     if (storedVer !== REFERRER_VERSION) {
       saveStore(STORAGE_KEYS.referrers, DEFAULT_REFERRERS)
