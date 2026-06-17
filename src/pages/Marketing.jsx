@@ -260,7 +260,242 @@ function InfoTile({ label, value, highlight }) {
 }
 
 // ─── Contact Detail ───────────────────────────────────────────────────────────
-function ContactDetail({ contact, section, onBack, onSave, onDelete, onMove, rradarClients }) {
+function ReferrerClientsPanel({ contact, rradarClients, allClients, onSave }) {
+  // allClients = marketing client overrides + rradar clients merged
+  // Match via: (1) client.referredBy contains referrer name, (2) manually linked
+  const referrerName = contact.name
+
+  const autoMatched = useMemo(() => {
+    return rradarClients.filter(rc => {
+      const ovs = allClients.filter(c => c._clientName === rc.name)
+      return ovs.some(c => (c.referredBy || '').toLowerCase().includes(referrerName.toLowerCase()))
+        || (rc.referredBy || '').toLowerCase().includes(referrerName.toLowerCase())
+    })
+  }, [rradarClients, referrerName, allClients])
+
+  // Manually linked client names stored on the referrer
+  const manualLinks = contact.linkedClients || []
+
+  // CRM settled deals matching referrer name
+  const crmDeals = useMemo(() => {
+    try {
+      const deals = JSON.parse(localStorage.getItem('rion-crm-deals') || '[]')
+      return deals.filter(d =>
+        d.Status === '7. Settled' &&
+        (d['Referrer'] || d['referrer'] || d['Referred By'] || '').toLowerCase().includes(referrerName.toLowerCase())
+      )
+    } catch { return [] }
+  }, [referrerName])
+
+  // Merged: Rradar clients (auto + manual) + CRM-only deals
+  const rradarLinked = useMemo(() => {
+    const names = new Set([
+      ...autoMatched.map(r => r.name),
+      ...manualLinks,
+    ])
+    return rradarClients.filter(r => names.has(r.name))
+  }, [autoMatched, manualLinks, rradarClients])
+
+  // Compute commission from loan commissionHistory per Rradar client
+  function clientCommission(rc) {
+    let upfront = 0, trail = 0
+    rc.loans.forEach(loan => {
+      (loan.commissionHistory || []).forEach(h => {
+        upfront += h.upfrontComm || 0
+        trail   += h.trailComm   || 0
+      })
+    })
+    return { upfront, trail, total: upfront + trail }
+  }
+
+  // Total commission across all linked clients
+  const totalComm = useMemo(() => {
+    let upfront = 0, trail = 0
+    rradarLinked.forEach(rc => {
+      const c = clientCommission(rc)
+      upfront += c.upfront; trail += c.trail
+    })
+    crmDeals.forEach(d => { upfront += d._upfrontComm || 0 })
+    return { upfront, trail, total: upfront + trail }
+  }, [rradarLinked, crmDeals])
+
+  const fmt  = v => `$${Math.round(v).toLocaleString()}`
+  const fmtD = v => `$${v.toFixed(2)}`
+
+  function addManualLink(name) {
+    if (!name || manualLinks.includes(name)) return
+    onSave({ ...contact, linkedClients: [...manualLinks, name] })
+  }
+  function removeManualLink(name) {
+    onSave({ ...contact, linkedClients: manualLinks.filter(n => n !== name) })
+  }
+
+  const [addingClient, setAddingClient] = useState(false)
+  const [clientSearch, setClientSearch] = useState('')
+  const availableClients = rradarClients
+    .filter(rc => !rradarLinked.find(r => r.name === rc.name))
+    .filter(rc => clientSearch ? rc.name.toLowerCase().includes(clientSearch.toLowerCase()) : true)
+    .slice(0, 8)
+
+  const sectionStyle = {
+    marginTop: 28, paddingTop: 20, borderTop: `1px solid ${C.border}`
+  }
+  const sectionHead = {
+    fontSize: 14, fontWeight: 700, color: C.text, fontFamily: 'Montserrat,sans-serif', marginBottom: 14,
+    display: 'flex', alignItems: 'center', justifyContent: 'space-between'
+  }
+
+  return (
+    <div style={sectionStyle}>
+      <div style={sectionHead}>
+        <span>Settled Clients</span>
+        <button onClick={() => setAddingClient(v => !v)}
+          style={{ padding: '5px 12px', borderRadius: 7, border: `1px solid ${C.border}`,
+            background: '#fff', fontSize: 11, fontWeight: 600, cursor: 'pointer',
+            fontFamily: 'Montserrat,sans-serif', color: C.navy }}>
+          + Link Client
+        </button>
+      </div>
+
+      {/* Commission summary bar */}
+      {(rradarLinked.length > 0 || crmDeals.length > 0) && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 16 }}>
+          {[
+            { label: 'Total Upfront', value: fmt(totalComm.upfront), colour: C.navy },
+            { label: 'Total Trail',   value: fmt(totalComm.trail),   colour: '#2A7A2A' },
+            { label: 'Total Earned',  value: fmt(totalComm.total),   colour: C.pinkBtn },
+          ].map(t => (
+            <div key={t.label} style={{ padding: '12px 14px', borderRadius: 10,
+              background: t.colour + '10', border: `1px solid ${t.colour}30`, textAlign: 'center' }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: t.colour, textTransform: 'uppercase',
+                letterSpacing: '0.05em', fontFamily: 'Montserrat,sans-serif', marginBottom: 4 }}>{t.label}</div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: t.colour, fontFamily: 'Montserrat,sans-serif' }}>{t.value}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Add client search */}
+      {addingClient && (
+        <div style={{ marginBottom: 16, padding: 14, background: '#F4F6FA', borderRadius: 10,
+          border: `1px solid ${C.border}` }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: C.muted, fontFamily: 'Montserrat,sans-serif', marginBottom: 8 }}>
+            Search Rradar clients to link
+          </div>
+          <input value={clientSearch} onChange={e => setClientSearch(e.target.value)}
+            placeholder="Type client name…" style={{ ...inputStyle, marginBottom: 8 }} autoFocus />
+          {availableClients.map(rc => (
+            <div key={rc.name} onClick={() => { addManualLink(rc.name); setAddingClient(false); setClientSearch('') }}
+              style={{ padding: '8px 10px', borderRadius: 7, cursor: 'pointer', fontSize: 13,
+                fontFamily: 'Montserrat,sans-serif', color: C.text, borderBottom: `1px solid ${C.border}` }}
+              onMouseEnter={e => e.currentTarget.style.background = '#E8EDF5'}
+              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+              {rc.name} <span style={{ color: C.muted, fontSize: 11 }}>#{rc.connNo}</span>
+            </div>
+          ))}
+          {clientSearch && availableClients.length === 0 && (
+            <div style={{ fontSize: 12, color: C.muted, fontFamily: 'Montserrat,sans-serif' }}>No matches found.</div>
+          )}
+        </div>
+      )}
+
+      {/* Rradar client rows */}
+      {rradarLinked.length === 0 && crmDeals.length === 0 && (
+        <div style={{ fontSize: 13, color: C.muted, fontFamily: 'Montserrat,sans-serif', padding: '12px 0' }}>
+          No settled clients linked yet. Use "+ Link Client" or set the "Referred By" field on a client to auto-match.
+        </div>
+      )}
+
+      {rradarLinked.map(rc => {
+        const comm = clientCommission(rc)
+        const isManual = manualLinks.includes(rc.name)
+        const isAuto   = autoMatched.some(r => r.name === rc.name)
+        const loans    = rc.loans.filter(l => !l.closed)
+        const totalBal = loans.reduce((s, l) => s + (l.balance || 0), 0)
+        return (
+          <div key={rc.name} style={{ marginBottom: 10, border: `1px solid ${C.border}`, borderRadius: 10,
+            background: '#fff', overflow: 'hidden' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px',
+              borderBottom: `1px solid ${C.border}`, background: '#FAFBFD' }}>
+              <Avatar name={rc.name} size={30} />
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: C.text, fontFamily: 'Montserrat,sans-serif' }}>
+                  {rc.name}
+                  <span style={{ marginLeft: 6, fontSize: 10, color: C.muted }}>#{rc.connNo}</span>
+                </div>
+                <div style={{ fontSize: 11, color: C.muted, fontFamily: 'Montserrat,sans-serif' }}>
+                  {loans.length} loan{loans.length !== 1 ? 's' : ''} · Bal {fmt(totalBal)}
+                  {isAuto && <span style={{ marginLeft: 6, color: '#2A7A2A' }}>● auto-matched</span>}
+                  {isManual && <span style={{ marginLeft: 6, color: C.navy }}>● manually linked</span>}
+                </div>
+              </div>
+              <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                <div style={{ fontSize: 11, color: C.muted, fontFamily: 'Montserrat,sans-serif' }}>Commission earned</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: C.pinkBtn, fontFamily: 'Montserrat,sans-serif' }}>
+                  {fmtD(comm.total)}
+                </div>
+              </div>
+              <a href={`/radar/clients/${rc.name}`} onClick={() => sessionStorage.setItem('rion-from-marketing', '1')}
+                style={{ fontSize: 11, color: C.navy, textDecoration: 'none', fontWeight: 600,
+                  fontFamily: 'Montserrat,sans-serif', whiteSpace: 'nowrap' }}>
+                View →
+              </a>
+              {isManual && (
+                <button onClick={() => removeManualLink(rc.name)}
+                  style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#cbd5e1',
+                    fontSize: 14, padding: '0 4px' }} title="Unlink">×</button>
+              )}
+            </div>
+            {/* Per-loan commission rows */}
+            {loans.map(loan => {
+              const lUpfront = (loan.commissionHistory || []).reduce((s, h) => s + (h.upfrontComm || 0), 0)
+              const lTrail   = (loan.commissionHistory || []).reduce((s, h) => s + (h.trailComm || 0), 0)
+              if (!lUpfront && !lTrail) return null
+              return (
+                <div key={loan.acc} style={{ display: 'flex', alignItems: 'center', gap: 10,
+                  padding: '8px 14px', borderBottom: `1px solid ${C.border}`, fontSize: 12,
+                  fontFamily: 'Montserrat,sans-serif', color: C.text }}>
+                  <div style={{ flex: 1 }}>
+                    <span style={{ fontWeight: 600 }}>{loan.lname || loan.bank}</span>
+                    <span style={{ color: C.muted, marginLeft: 6 }}>{loan.bank}</span>
+                  </div>
+                  <div style={{ color: C.navy, fontWeight: 600 }}>↑ {fmtD(lUpfront)}</div>
+                  <div style={{ color: '#2A7A2A', fontWeight: 600 }}>~ {fmtD(lTrail)}/yr</div>
+                </div>
+              )
+            })}
+          </div>
+        )
+      })}
+
+      {/* CRM-only settled deals */}
+      {crmDeals.length > 0 && (
+        <div style={{ marginTop: 16 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: C.muted, textTransform: 'uppercase',
+            letterSpacing: '0.05em', fontFamily: 'Montserrat,sans-serif', marginBottom: 8 }}>CRM Settled Deals</div>
+          {crmDeals.map((d, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px',
+              border: `1px solid ${C.border}`, borderRadius: 10, marginBottom: 8, background: '#fff',
+              fontSize: 12, fontFamily: 'Montserrat,sans-serif' }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700, color: C.text }}>{d['Transaction Name']}</div>
+                <div style={{ color: C.muted, marginTop: 2 }}>
+                  {d['Date Settled'] || d['Month of Settlement']} · {d.Categories} · {d.Lender}
+                </div>
+              </div>
+              <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                <div style={{ fontWeight: 700, color: C.navy }}>${(d.Amount||0).toLocaleString()}</div>
+                {d._upfrontComm > 0 && <div style={{ color: C.pinkBtn, fontSize: 11 }}>↑ {fmtD(d._upfrontComm)}</div>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ContactDetail({ contact, section, onBack, onSave, onDelete, onMove, rradarClients, allClients }) {
   const [editing, setEditing]   = useState(false)
   const [form, setForm]         = useState({ ...contact })
   const [noteText, setNoteText] = useState('')
@@ -269,15 +504,11 @@ function ContactDetail({ contact, section, onBack, onSave, onDelete, onMove, rra
     ? rradarClients.find(c => c.name === contact._clientName)
     : null
 
-  // client since = earliest settlement date across loans
   const clientSince = rradarClient
     ? rradarClient.loans.map(l => l.settled).filter(Boolean).sort()[0]
     : null
 
-  function handleSave() {
-    onSave({ ...form })
-    setEditing(false)
-  }
+  function handleSave() { onSave({ ...form }); setEditing(false) }
 
   function addNote() {
     if (!noteText.trim()) return
@@ -286,14 +517,12 @@ function ContactDetail({ contact, section, onBack, onSave, onDelete, onMove, rra
       date: new Date().toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit' }),
       text: noteText.trim()
     }
-    const updated = { ...contact, notes: [note, ...(contact.notes || [])] }
-    onSave(updated)
+    onSave({ ...contact, notes: [note, ...(contact.notes || [])] })
     setNoteText('')
   }
 
-  function deleteNote(noteId) {
-    const updated = { ...contact, notes: (contact.notes || []).filter(n => n.id !== noteId) }
-    onSave(updated)
+  function deleteNote(id) {
+    onSave({ ...contact, notes: (contact.notes || []).filter(n => n.id !== id) })
   }
 
   const tierCfg    = REFERRER_TIERS.find(t => t.id === contact.tier)
@@ -313,10 +542,7 @@ function ContactDetail({ contact, section, onBack, onSave, onDelete, onMove, rra
       <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', marginBottom: 16 }}>
         <Avatar name={contact.name} size={56} />
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 22, fontWeight: 700, color: C.text, fontFamily: 'Montserrat,sans-serif' }}>
-            {contact.name}
-          </div>
-          {/* connection info for clients */}
+          <div style={{ fontSize: 22, fontWeight: 700, color: C.text, fontFamily: 'Montserrat,sans-serif' }}>{contact.name}</div>
           {section === 'clients' && contact._clientName && (
             <div style={{ fontSize: 13, color: C.muted, fontFamily: 'Montserrat,sans-serif', marginTop: 2 }}>
               {contact._clientName} Connection · #{contact._connNo}
@@ -325,7 +551,7 @@ function ContactDetail({ contact, section, onBack, onSave, onDelete, onMove, rra
           {contact.company && <div style={{ fontSize: 13, color: C.muted, fontFamily: 'Montserrat,sans-serif', marginTop: 2 }}>{contact.company}</div>}
           <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
             {tierCfg && <Pill label={tierCfg.label} colour={tierCfg.colour} />}
-            {contact.stream && <Pill label={contact.stream === 'Private Wealth' ? 'Private Wealth' : 'Commercial'} colour={contact.stream === 'Commercial' ? C.pinkBtn : C.navy} />}
+            {contact.stream && <Pill label={contact.stream} colour={contact.stream === 'Commercial' ? C.pinkBtn : C.navy} />}
             {contact.profession && <Pill label={contact.profession} colour={C.slate} />}
             {contact.unsubscribed && <Pill label="Unsubscribed" colour="#dc2626" />}
             {bdayIn !== null && <Pill label={`🎂 Birthday in ${bdayIn}d`} colour={C.pink} />}
@@ -346,15 +572,12 @@ function ContactDetail({ contact, section, onBack, onSave, onDelete, onMove, rra
             Edit
           </button>
           {onMove && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <select defaultValue="" onChange={e => { if(e.target.value) onMove(contact, e.target.value) }}
-                style={{ ...inputStyle, width: 'auto', fontSize: 12, padding: '6px 10px', cursor: 'pointer' }}>
-                <option value="">Move to…</option>
-                {['clients','referrers','lenders','others']
-                  .filter(s => s !== section && s !== 'clients')
-                  .map(s => <option key={s} value={s}>{{ clients:'Clients', referrers:'Referral Partners', lenders:'Lenders', others:'Others' }[s]}</option>)}
-              </select>
-            </div>
+            <select defaultValue="" onChange={e => { if(e.target.value) onMove(contact, e.target.value) }}
+              style={{ ...inputStyle, width: 'auto', fontSize: 12, padding: '6px 10px', cursor: 'pointer' }}>
+              <option value="">Move to…</option>
+              {['referrers','lenders','others'].filter(s => s !== section)
+                .map(s => <option key={s} value={s}>{{ referrers:'Referral Partners', lenders:'Lenders', others:'Others' }[s]}</option>)}
+            </select>
           )}
           <button onClick={onDelete} style={{ padding: '7px 14px', borderRadius: 8,
             border: `1px solid #fecaca`, background: '#fff', fontWeight: 600, fontSize: 12,
@@ -380,17 +603,15 @@ function ContactDetail({ contact, section, onBack, onSave, onDelete, onMove, rra
         <InfoTile label="Referred By" value={contact.referredBy} />
         <InfoTile label="Spouse / Partner" value={contact.spouseName} />
         {contact.linkedIn && <InfoTile label="LinkedIn" value={contact.linkedIn} />}
-        {/* referrer-specific */}
         <InfoTile label="Tier" value={tierCfg?.label} />
         <InfoTile label="Type" value={contact.type} />
         <InfoTile label="Referral Count" value={contact.referralCount ? `${contact.referralCount} referrals` : null} />
-        {/* lender-specific */}
         <InfoTile label="BDM Name" value={contact.bdmName} />
         <InfoTile label="BDM Email" value={contact.bdmEmail} />
         <InfoTile label="BDM Mobile" value={contact.bdmMobile} />
       </div>
 
-      {/* linked referrers */}
+      {/* linked referrers (for clients) */}
       {section === 'clients' && contact.linkedReferrers?.length > 0 && (
         <div style={{ marginTop: 16 }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: C.muted, textTransform: 'uppercase',
@@ -401,8 +622,18 @@ function ContactDetail({ contact, section, onBack, onSave, onDelete, onMove, rra
         </div>
       )}
 
+      {/* Referrer → settled clients + commission panel */}
+      {section === 'referrers' && (
+        <ReferrerClientsPanel
+          contact={contact}
+          rradarClients={rradarClients}
+          allClients={allClients || []}
+          onSave={onSave}
+        />
+      )}
+
       {/* notes */}
-      <div style={{ marginTop: 28 }}>
+      <div style={{ marginTop: 28, paddingTop: 20, borderTop: `1px solid ${C.border}` }}>
         <div style={{ fontSize: 14, fontWeight: 700, color: C.text, fontFamily: 'Montserrat,sans-serif', marginBottom: 12 }}>Notes</div>
         <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
           <textarea value={noteText} onChange={e => setNoteText(e.target.value)}
@@ -543,6 +774,7 @@ function ContactList({ contacts, section, onSelect, onOutreach, onAdd, onDeleteM
   const [filters,  setFilters]  = useState({}) // { tier:'gold', stream:'Commercial', type:'Accountant', ... }
   const [selected, setSelected] = useState(new Set())
   const [moveTarget, setMoveTarget] = useState(null) // section to move selected to
+  const [openAccordion, setOpenAccordion] = useState(null)
 
   // Build active filter chips based on section
   const FILTER_GROUPS = useMemo(() => {
@@ -635,30 +867,54 @@ function ContactList({ contacts, section, onSelect, onOutreach, onAdd, onDeleteM
         )}
       </div>
 
-      {/* ── Filter pill rows ── */}
-      {FILTER_GROUPS.map(group => (
-        <div key={group.key} style={{ marginBottom: 10 }}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: C.slate, textTransform: 'uppercase',
-            letterSpacing: '0.06em', fontFamily: 'Montserrat,sans-serif', marginBottom: 5 }}>
-            {group.label}
+      {/* ── Accordion filter groups ── */}
+      {FILTER_GROUPS.map(group => {
+        const isOpen    = openAccordion === group.key
+        const activeVal = filters[group.key]
+        return (
+          <div key={group.key} style={{ marginBottom: 6, borderRadius: 9,
+            border: `1px solid ${activeVal ? C.navy + '55' : C.border}`,
+            background: activeVal ? C.navy + '06' : '#fff', overflow: 'hidden' }}>
+            {/* accordion header */}
+            <button onClick={() => setOpenAccordion(isOpen ? null : group.key)}
+              style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '9px 14px', border: 'none', background: 'transparent', cursor: 'pointer',
+                fontFamily: 'Montserrat,sans-serif' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: activeVal ? C.navy : C.text }}>
+                  {group.label}
+                </span>
+                {activeVal && (
+                  <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 10,
+                    background: C.navy, color: '#fff', fontWeight: 600, fontFamily: 'Montserrat,sans-serif' }}>
+                    {group.opts.find(o => o.value === activeVal)?.label || activeVal}
+                  </span>
+                )}
+              </div>
+              <span style={{ fontSize: 12, color: C.muted, transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>▾</span>
+            </button>
+            {/* accordion body */}
+            {isOpen && (
+              <div style={{ padding: '4px 14px 12px', display: 'flex', flexWrap: 'wrap', gap: 6, borderTop: `1px solid ${C.border}` }}>
+                {group.opts.map(opt => {
+                  const active = filters[group.key] === opt.value
+                  const colour = opt.colour || C.navy
+                  return (
+                    <button key={opt.value} onClick={() => { setFilter(group.key, opt.value); setOpenAccordion(null) }}
+                      style={{ padding: '5px 13px', borderRadius: 20,
+                        border: `1px solid ${active ? colour : C.border}`,
+                        background: active ? colour : '#fff', color: active ? '#fff' : C.text,
+                        fontSize: 12, fontWeight: active ? 700 : 500, cursor: 'pointer',
+                        fontFamily: 'Montserrat,sans-serif', transition: 'all 0.15s', whiteSpace: 'nowrap' }}>
+                      {opt.label}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
           </div>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            {group.opts.map(opt => {
-              const active = filters[group.key] === opt.value
-              const colour = opt.colour || C.navy
-              return (
-                <button key={opt.value} onClick={() => setFilter(group.key, opt.value)}
-                  style={{ padding: '4px 12px', borderRadius: 20, border: `1px solid ${active ? colour : C.border}`,
-                    background: active ? colour : '#fff', color: active ? '#fff' : C.text,
-                    fontSize: 12, fontWeight: active ? 700 : 500, cursor: 'pointer',
-                    fontFamily: 'Montserrat,sans-serif', transition: 'all 0.15s', whiteSpace: 'nowrap' }}>
-                  {opt.label}
-                </button>
-              )
-            })}
-          </div>
-        </div>
-      ))}
+        )
+      })}
 
       {/* ── Action bar ── */}
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', margin: '12px 0 14px', flexWrap: 'wrap' }}>
@@ -1012,6 +1268,7 @@ export default function Marketing() {
 
         {selected
           ? <ContactDetail contact={selected} section={section} rradarClients={rradarClients}
+              allClients={clients}
               onBack={() => setSelected(null)} onSave={handleSaveContact}
               onDelete={() => handleDeleteContact(selected)}
               onMove={(contact, targetSection) => {
