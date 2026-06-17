@@ -1,6 +1,7 @@
 import React, { useState, useCallback } from 'react'
 import { Routes, Route, useLocation, Navigate } from 'react-router-dom'
 import { loadClients, saveClients } from './lib/data'
+import { COMMISSION_HISTORY_BY_ACC, COMMISSION_SEED_VERSION } from './lib/commissionSeed'
 import Topbar from './components/Topbar'
 import Login from './pages/Login'
 import Home from './pages/Home'
@@ -67,8 +68,41 @@ export default function App() {
         return { ...l, balanceHistory: fixHistory(l.balanceHistory), commissionHistory: fixHistory(l.commissionHistory) }
       })
     }))
-    if (needsSave) { saveClients(fixed); return fixed }
-    return loaded
+    if (needsSave) saveClients(fixed)
+
+    // One-time seed: inject full historic commission history from all XLS files
+    const seeded = localStorage.getItem('rion-comm-seed-version')
+    if (seeded !== COMMISSION_SEED_VERSION) {
+      const withComm = (needsSave ? fixed : loaded).map(c => ({
+        ...c,
+        loans: c.loans.map(l => {
+          const acc = String(l.acc || '').trim()
+          if (!acc) return l
+          const history = COMMISSION_HISTORY_BY_ACC[acc]
+          if (!history || history.length === 0) return l
+          // Merge: keep any manually imported entries, add historic ones for months not yet present
+          const existingMonths = new Set((l.commissionHistory || []).map(h => h.month))
+          const existingBalMonths = new Set((l.balanceHistory || []).map(h => h.month))
+          const newCommEntries = history
+            .filter(h => !existingMonths.has(h.month))
+            .map(h => ({ month: h.month, trailComm: h.trailComm, upfrontComm: h.upfrontComm, gst: h.gst, totalPaid: h.totalPaid }))
+          const newBalEntries = history
+            .filter(h => !existingBalMonths.has(h.month) && h.balance > 0)
+            .map(h => ({ month: h.month, balance: h.balance }))
+          if (newCommEntries.length === 0 && newBalEntries.length === 0) return l
+          const commHistory = [...(l.commissionHistory || []), ...newCommEntries]
+            .sort((a, b) => a.month.localeCompare(b.month))
+          const balHistory = [...(l.balanceHistory || []), ...newBalEntries]
+            .sort((a, b) => a.month.localeCompare(b.month))
+          return { ...l, commissionHistory: commHistory, balanceHistory: balHistory }
+        })
+      }))
+      saveClients(withComm)
+      localStorage.setItem('rion-comm-seed-version', COMMISSION_SEED_VERSION)
+      return withComm
+    }
+
+    return needsSave ? fixed : loaded
   })
   const [showBirthdays, setShowBirthdays] = useState(true)
   const [crmDeals, setCrmDeals] = useState(() => {

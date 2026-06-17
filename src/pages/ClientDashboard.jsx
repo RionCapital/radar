@@ -703,27 +703,8 @@ export default function ClientDashboard({ clients, updateClient }) {
         </div>
       </Panel>
 
-      {/* Referral partners */}
-      <Panel style={{marginBottom:14}}>
-        <PanelTitle>Referral Partners</PanelTitle>
-        <ReferrerPicker
-          label=""
-          attached={client.referrers || []}
-          onAttach={r => updateClient(client.name, c => ({
-            ...c,
-            referrers: [...(c.referrers||[]).filter(x => x.name !== r.name), r]
-          }))}
-          onDetach={name => updateClient(client.name, c => ({
-            ...c,
-            referrers: (c.referrers||[]).filter(x => x.name !== name)
-          }))}
-        />
-      </Panel>
-
-      {/* Opp score & Notes */}
+      {/* Notes & Referral Partners */}
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}}>
-
-
         <Panel>
           <PanelTitle>Contact notes & history</PanelTitle>
           <div style={{minHeight:80,marginBottom:10,maxHeight:220,overflowY:'auto'}}>
@@ -752,6 +733,22 @@ export default function ClientDashboard({ clients, updateClient }) {
             <ActionBtn variant="filled" label="Draft review email" onClick={()=>navigate(`/radar/clients/${encodeURIComponent(client.name)}/email`)}/>
             <ActionBtn variant="blue" label="Identify opportunities" onClick={()=>{}}/>
           </div>
+        </Panel>
+
+        <Panel>
+          <PanelTitle>Referral Partners</PanelTitle>
+          <ReferrerPicker
+            label=""
+            attached={client.referrers || []}
+            onAttach={r => updateClient(client.name, c => ({
+              ...c,
+              referrers: [...(c.referrers||[]).filter(x => x.name !== r.name), r]
+            }))}
+            onDetach={name => updateClient(client.name, c => ({
+              ...c,
+              referrers: (c.referrers||[]).filter(x => x.name !== name)
+            }))}
+          />
         </Panel>
       </div>
       {showNewOpp && (

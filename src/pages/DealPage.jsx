@@ -436,18 +436,27 @@ export default function DealPage({ onUpdateDeals, clients = [] }) {
             {/* Clients & Contacts — Rradar linked */}
             <RradarContactsPanel deal={d} clients={clients} editing={editing} draft={draft} set={set} inp={inp} />
 
-            {/* Referral partner */}
+            {/* Referral partner — saves directly to deals, no edit mode required */}
             <div style={{ background:'#fff', borderRadius:10, border:'0.5px solid #e8eaed', padding:'16px 18px' }}>
               <div style={{ fontSize:11, fontWeight:600, color:'#7A8090', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:4 }}>Referral Partner</div>
               <ReferrerPicker
                 compact
                 label=""
-                attached={d['_referrers'] || (d['_referrer'] ? [{ name:d['_referrer'], tier:'contenders' }] : [])}
+                attached={deal['_referrers'] || (deal['_referrer'] ? [{ name:deal['_referrer'], tier:'contenders' }] : [])}
                 onAttach={r => {
-                  const curr = draft?.['_referrers'] || []
-                  if (!curr.find(x => x.name === r.name)) set('_referrers', [...curr, r])
+                  const curr = deal['_referrers'] || []
+                  if (curr.find(x => x.name === r.name)) return
+                  const updated = deals.map(x => x['Transaction Name'] === deal['Transaction Name']
+                    ? { ...x, '_referrers': [...curr, r] } : x)
+                  setDeals(updated); saveDeals(updated)
+                  if (editing) set('_referrers', [...curr, r])
                 }}
-                onDetach={name => set('_referrers', (draft?.['_referrers']||[]).filter(x => x.name !== name))}
+                onDetach={name => {
+                  const updated = deals.map(x => x['Transaction Name'] === deal['Transaction Name']
+                    ? { ...x, '_referrers': (x['_referrers']||[]).filter(r => r.name !== name) } : x)
+                  setDeals(updated); saveDeals(updated)
+                  if (editing) set('_referrers', (draft?.['_referrers']||[]).filter(r => r.name !== name))
+                }}
               />
             </div>
 
