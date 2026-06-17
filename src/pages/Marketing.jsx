@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { loadClients } from '../lib/data'
 import { DEFAULT_REFERRERS } from '../lib/referrersData'
 import { loadSettings } from '../lib/settings'
@@ -423,46 +423,49 @@ function TouchPoints({ contact, onSave }) {
 }
 
 function ReferrerClientsPanel({ contact, rradarClients, allClients, onSave }) {
-  // allClients = marketing client overrides + rradar clients merged
-  // Match via: (1) client.referredBy contains referrer name, (2) manually linked
   const referrerName = contact.name
+  const fmt  = v => `$${Math.round(v).toLocaleString()}`
+  const fmtD = v => `$${Number(v).toFixed(2)}`
 
-  const autoMatched = useMemo(() => {
-    return rradarClients.filter(rc => {
-      const ovs = allClients.filter(c => c._clientName === rc.name)
-      return ovs.some(c => (c.referredBy || '').toLowerCase().includes(referrerName.toLowerCase()))
-        || (rc.referredBy || '').toLowerCase().includes(referrerName.toLowerCase())
+  // ── Match clients 3 ways ──────────────────────────────────────────────────
+  // 1. Rradar client has referrers[] array containing this referrer (from ClientDashboard picker)
+  // 2. Marketing client override has referredBy matching referrer name
+  // 3. Manually linked via linkedClients[] on the referrer
+  const linkedClients = useMemo(() => {
+    const names = new Set(contact.linkedClients || [])
+
+    rradarClients.forEach(rc => {
+      // Method 1: client.referrers array (set via ClientDashboard ReferrerPicker)
+      if ((rc.referrers || []).some(r => r.name === referrerName)) names.add(rc.name)
+      // Method 2: marketing override referredBy field
+      const ov = allClients.find(c => c._clientName === rc.name)
+      if (ov && (ov.referredBy || '').toLowerCase().includes(referrerName.toLowerCase())) names.add(rc.name)
     })
-  }, [rradarClients, referrerName, allClients])
 
-  // Manually linked client names stored on the referrer
-  const manualLinks = contact.linkedClients || []
+    return rradarClients.filter(rc => names.has(rc.name))
+  }, [rradarClients, allClients, referrerName, contact.linkedClients])
 
-  // CRM settled deals matching referrer name
-  const crmDeals = useMemo(() => {
+  // ── CRM deals (ALL statuses) matching this referrer ───────────────────────
+  const allCrmDeals = useMemo(() => {
     try {
       const deals = JSON.parse(localStorage.getItem('rion-crm-deals') || '[]')
-      return deals.filter(d =>
-        d.Status === '7. Settled' &&
-        (d['Referrer'] || d['referrer'] || d['Referred By'] || '').toLowerCase().includes(referrerName.toLowerCase())
-      )
+      const rn = referrerName.toLowerCase()
+      return deals.filter(d => {
+        const ref = (d['_referrers'] || []).map(r => r.name.toLowerCase())
+        const legacy = (d['Referrer'] || d['referrer'] || d['Referred By'] || '').toLowerCase()
+        return ref.some(r => r.includes(rn)) || legacy.includes(rn)
+      })
     } catch { return [] }
   }, [referrerName])
 
-  // Merged: Rradar clients (auto + manual) + CRM-only deals
-  const rradarLinked = useMemo(() => {
-    const names = new Set([
-      ...autoMatched.map(r => r.name),
-      ...manualLinks,
-    ])
-    return rradarClients.filter(r => names.has(r.name))
-  }, [autoMatched, manualLinks, rradarClients])
+  const settledDeals  = allCrmDeals.filter(d => d.Status === '7. Settled')
+  const inflightDeals = allCrmDeals.filter(d => d.Status !== '7. Settled' && d.Status !== '8. Withdrawn')
 
-  // Compute commission from loan commissionHistory per Rradar client
-  function clientCommission(rc) {
+  // ── Commission per Rradar client ──────────────────────────────────────────
+  function clientComm(rc) {
     let upfront = 0, trail = 0
-    rc.loans.forEach(loan => {
-      (loan.commissionHistory || []).forEach(h => {
+    rc.loans.forEach(l => {
+      ;(l.commissionHistory || []).forEach(h => {
         upfront += h.upfrontComm || 0
         trail   += h.trailComm   || 0
       })
@@ -470,84 +473,83 @@ function ReferrerClientsPanel({ contact, rradarClients, allClients, onSave }) {
     return { upfront, trail, total: upfront + trail }
   }
 
-  // Total commission across all linked clients
   const totalComm = useMemo(() => {
     let upfront = 0, trail = 0
-    rradarLinked.forEach(rc => {
-      const c = clientCommission(rc)
-      upfront += c.upfront; trail += c.trail
-    })
-    crmDeals.forEach(d => { upfront += d._upfrontComm || 0 })
+    linkedClients.forEach(rc => { const c = clientComm(rc); upfront += c.upfront; trail += c.trail })
+    settledDeals.forEach(d => { upfront += d._upfrontComm || 0 })
     return { upfront, trail, total: upfront + trail }
-  }, [rradarLinked, crmDeals])
+  }, [linkedClients, settledDeals])
 
-  const fmt  = v => `$${Math.round(v).toLocaleString()}`
-  const fmtD = v => `$${v.toFixed(2)}`
-
-  function addManualLink(name) {
-    if (!name || manualLinks.includes(name)) return
-    onSave({ ...contact, linkedClients: [...manualLinks, name] })
-  }
-  function removeManualLink(name) {
-    onSave({ ...contact, linkedClients: manualLinks.filter(n => n !== name) })
-  }
-
+  // ── Manual link helpers ───────────────────────────────────────────────────
+  const manualLinks = contact.linkedClients || []
   const [addingClient, setAddingClient] = useState(false)
   const [clientSearch, setClientSearch] = useState('')
+  const linkedNames = new Set(linkedClients.map(rc => rc.name))
   const availableClients = rradarClients
-    .filter(rc => !rradarLinked.find(r => r.name === rc.name))
-    .filter(rc => clientSearch ? rc.name.toLowerCase().includes(clientSearch.toLowerCase()) : true)
+    .filter(rc => !linkedNames.has(rc.name))
+    .filter(rc => !clientSearch || rc.name.toLowerCase().includes(clientSearch.toLowerCase()))
     .slice(0, 8)
 
-  const sectionStyle = {
-    marginTop: 28, paddingTop: 20, borderTop: `1px solid ${C.border}`
+  const STAGE_COLORS = {
+    '1. Lead':          '#94a3b8',
+    '2. Strategy':      '#60a5fa',
+    '3. Pre-Lodged':    '#a78bfa',
+    '4. Lodged':        '#fb923c',
+    '5. Conditional':   '#facc15',
+    '6. Unconditional': '#4ade80',
+    '7. Settled':       '#22c55e',
+    '8. Withdrawn':     '#f87171',
   }
-  const sectionHead = {
-    fontSize: 14, fontWeight: 700, color: C.text, fontFamily: 'Montserrat,sans-serif', marginBottom: 14,
-    display: 'flex', alignItems: 'center', justifyContent: 'space-between'
-  }
+
+  const sHead = { fontSize: 13, fontWeight: 700, color: C.text, fontFamily: 'Montserrat,sans-serif',
+    marginBottom: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+    paddingTop: 20, marginTop: 20, borderTop: `1px solid ${C.border}` }
 
   return (
-    <div style={sectionStyle}>
-      <div style={sectionHead}>
-        <span>Settled Clients</span>
-        <button onClick={() => setAddingClient(v => !v)}
-          style={{ padding: '5px 12px', borderRadius: 7, border: `1px solid ${C.border}`,
-            background: '#fff', fontSize: 11, fontWeight: 600, cursor: 'pointer',
-            fontFamily: 'Montserrat,sans-serif', color: C.navy }}>
-          + Link Client
-        </button>
-      </div>
-
-      {/* Commission summary bar */}
-      {(rradarLinked.length > 0 || crmDeals.length > 0) && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 16 }}>
+    <div>
+      {/* ── Commission summary ── */}
+      {(linkedClients.length > 0 || settledDeals.length > 0) && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10,
+          marginTop: 20, marginBottom: 4 }}>
           {[
-            { label: 'Total Upfront', value: fmt(totalComm.upfront), colour: C.navy },
-            { label: 'Total Trail',   value: fmt(totalComm.trail),   colour: '#2A7A2A' },
-            { label: 'Total Earned',  value: fmt(totalComm.total),   colour: C.pinkBtn },
+            { label: 'Total Upfront', value: fmt(totalComm.upfront), col: C.navy },
+            { label: 'Trail p.a.',    value: fmt(totalComm.trail),   col: '#2A7A2A' },
+            { label: 'Total Earned',  value: fmt(totalComm.total),   col: C.pinkBtn },
           ].map(t => (
             <div key={t.label} style={{ padding: '12px 14px', borderRadius: 10,
-              background: t.colour + '10', border: `1px solid ${t.colour}30`, textAlign: 'center' }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: t.colour, textTransform: 'uppercase',
+              background: t.col + '10', border: `1px solid ${t.col}30`, textAlign: 'center' }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: t.col, textTransform: 'uppercase',
                 letterSpacing: '0.05em', fontFamily: 'Montserrat,sans-serif', marginBottom: 4 }}>{t.label}</div>
-              <div style={{ fontSize: 18, fontWeight: 800, color: t.colour, fontFamily: 'Montserrat,sans-serif' }}>{t.value}</div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: t.col, fontFamily: 'Montserrat,sans-serif' }}>{t.value}</div>
             </div>
           ))}
         </div>
       )}
 
-      {/* Add client search */}
+      {/* ── Settled Clients ── */}
+      <div style={sHead}>
+        <span>Settled Clients ({linkedClients.length})</span>
+        <button onClick={() => setAddingClient(v => !v)}
+          style={{ padding: '5px 12px', borderRadius: 7, border: `1px solid ${C.border}`,
+            background: addingClient ? C.navy : '#fff', color: addingClient ? '#fff' : C.navy,
+            fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'Montserrat,sans-serif' }}>
+          + Link Client
+        </button>
+      </div>
+
       {addingClient && (
-        <div style={{ marginBottom: 16, padding: 14, background: '#F4F6FA', borderRadius: 10,
-          border: `1px solid ${C.border}` }}>
+        <div style={{ marginBottom: 14, padding: 14, background: '#F4F6FA', borderRadius: 10, border: `1px solid ${C.border}` }}>
           <div style={{ fontSize: 12, fontWeight: 600, color: C.muted, fontFamily: 'Montserrat,sans-serif', marginBottom: 8 }}>
             Search Rradar clients to link
           </div>
           <input value={clientSearch} onChange={e => setClientSearch(e.target.value)}
             placeholder="Type client name…" style={{ ...inputStyle, marginBottom: 8 }} autoFocus />
           {availableClients.map(rc => (
-            <div key={rc.name} onClick={() => { addManualLink(rc.name); setAddingClient(false); setClientSearch('') }}
+            <div key={rc.name}
+              onClick={() => {
+                onSave({ ...contact, linkedClients: [...manualLinks, rc.name] })
+                setAddingClient(false); setClientSearch('')
+              }}
               style={{ padding: '8px 10px', borderRadius: 7, cursor: 'pointer', fontSize: 13,
                 fontFamily: 'Montserrat,sans-serif', color: C.text, borderBottom: `1px solid ${C.border}` }}
               onMouseEnter={e => e.currentTarget.style.background = '#E8EDF5'}
@@ -561,68 +563,74 @@ function ReferrerClientsPanel({ contact, rradarClients, allClients, onSave }) {
         </div>
       )}
 
-      {/* Rradar client rows */}
-      {rradarLinked.length === 0 && crmDeals.length === 0 && (
-        <div style={{ fontSize: 13, color: C.muted, fontFamily: 'Montserrat,sans-serif', padding: '12px 0' }}>
-          No settled clients linked yet. Use "+ Link Client" or set the "Referred By" field on a client to auto-match.
+      {linkedClients.length === 0 && (
+        <div style={{ fontSize: 13, color: C.muted, fontFamily: 'Montserrat,sans-serif', paddingBottom: 8 }}>
+          No settled clients linked yet. Attach a referrer from a client's Rradar page or use Link Client above.
         </div>
       )}
 
-      {rradarLinked.map(rc => {
-        const comm = clientCommission(rc)
+      {linkedClients.map(rc => {
+        const comm     = clientComm(rc)
         const isManual = manualLinks.includes(rc.name)
-        const isAuto   = autoMatched.some(r => r.name === rc.name)
         const loans    = rc.loans.filter(l => !l.closed)
         const totalBal = loans.reduce((s, l) => s + (l.balance || 0), 0)
         return (
-          <div key={rc.name} style={{ marginBottom: 10, border: `1px solid ${C.border}`, borderRadius: 10,
-            background: '#fff', overflow: 'hidden' }}>
+          <div key={rc.name} style={{ marginBottom: 10, border: `1px solid ${C.border}`,
+            borderRadius: 10, background: '#fff', overflow: 'hidden' }}>
+            {/* Client row — clickable to Rradar */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px',
-              borderBottom: `1px solid ${C.border}`, background: '#FAFBFD' }}>
+              background: '#FAFBFD', cursor: 'pointer' }}
+              onClick={() => {
+                sessionStorage.setItem('rion-from-marketing', '1')
+                window.location.href = `/radar/clients/${encodeURIComponent(rc.name)}`
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = '#EFF6FF'}
+              onMouseLeave={e => e.currentTarget.style.background = '#FAFBFD'}>
               <Avatar name={rc.name} size={30} />
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: C.text, fontFamily: 'Montserrat,sans-serif' }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: C.navy,
+                  fontFamily: 'Montserrat,sans-serif', textDecoration: 'underline dotted' }}>
                   {rc.name}
-                  <span style={{ marginLeft: 6, fontSize: 10, color: C.muted }}>#{rc.connNo}</span>
+                  <span style={{ marginLeft: 6, fontSize: 10, color: C.muted, textDecoration: 'none' }}>#{rc.connNo}</span>
                 </div>
                 <div style={{ fontSize: 11, color: C.muted, fontFamily: 'Montserrat,sans-serif' }}>
                   {loans.length} loan{loans.length !== 1 ? 's' : ''} · Bal {fmt(totalBal)}
-                  {isAuto && <span style={{ marginLeft: 6, color: '#2A7A2A' }}>● auto-matched</span>}
                   {isManual && <span style={{ marginLeft: 6, color: C.navy }}>● manually linked</span>}
                 </div>
               </div>
               <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                <div style={{ fontSize: 11, color: C.muted, fontFamily: 'Montserrat,sans-serif' }}>Commission earned</div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: C.pinkBtn, fontFamily: 'Montserrat,sans-serif' }}>
-                  {fmtD(comm.total)}
+                <div style={{ fontSize: 11, color: '#2A7A2A', fontFamily: 'Montserrat,sans-serif', fontWeight: 600 }}>
+                  Trail {fmtD(comm.trail)}/yr
+                </div>
+                <div style={{ fontSize: 11, color: C.navy, fontFamily: 'Montserrat,sans-serif', fontWeight: 600 }}>
+                  Upfront {fmtD(comm.upfront)}
                 </div>
               </div>
-              <a href={`/radar/clients/${rc.name}`} onClick={() => sessionStorage.setItem('rion-from-marketing', '1')}
-                style={{ fontSize: 11, color: C.navy, textDecoration: 'none', fontWeight: 600,
-                  fontFamily: 'Montserrat,sans-serif', whiteSpace: 'nowrap' }}>
-                View →
-              </a>
+              <span style={{ color: C.slate, fontSize: 14 }}>›</span>
               {isManual && (
-                <button onClick={() => removeManualLink(rc.name)}
-                  style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#cbd5e1',
-                    fontSize: 14, padding: '0 4px' }} title="Unlink">×</button>
+                <button onClick={e => {
+                    e.stopPropagation()
+                    onSave({ ...contact, linkedClients: manualLinks.filter(n => n !== rc.name) })
+                  }}
+                  style={{ border: 'none', background: 'none', cursor: 'pointer',
+                    color: '#CBD5E1', fontSize: 14, padding: '0 4px' }} title="Unlink">×</button>
               )}
             </div>
-            {/* Per-loan commission rows */}
-            {loans.map(loan => {
-              const lUpfront = (loan.commissionHistory || []).reduce((s, h) => s + (h.upfrontComm || 0), 0)
-              const lTrail   = (loan.commissionHistory || []).reduce((s, h) => s + (h.trailComm || 0), 0)
+            {/* Per-loan commission detail */}
+            {loans.filter(l => (l.commissionHistory||[]).length > 0).map(loan => {
+              const lUpfront = (loan.commissionHistory||[]).reduce((s,h) => s+(h.upfrontComm||0), 0)
+              const lTrail   = (loan.commissionHistory||[]).reduce((s,h) => s+(h.trailComm||0),   0)
               if (!lUpfront && !lTrail) return null
               return (
                 <div key={loan.acc} style={{ display: 'flex', alignItems: 'center', gap: 10,
-                  padding: '8px 14px', borderBottom: `1px solid ${C.border}`, fontSize: 12,
-                  fontFamily: 'Montserrat,sans-serif', color: C.text }}>
+                  padding: '7px 14px', borderTop: `1px solid ${C.border}`,
+                  fontSize: 12, fontFamily: 'Montserrat,sans-serif', color: C.text }}>
                   <div style={{ flex: 1 }}>
                     <span style={{ fontWeight: 600 }}>{loan.lname || loan.bank}</span>
-                    <span style={{ color: C.muted, marginLeft: 6 }}>{loan.bank}</span>
+                    <span style={{ color: C.muted, marginLeft: 6, fontSize: 11 }}>{loan.bank}</span>
                   </div>
-                  <div style={{ color: C.navy, fontWeight: 600 }}>↑ {fmtD(lUpfront)}</div>
-                  <div style={{ color: '#2A7A2A', fontWeight: 600 }}>~ {fmtD(lTrail)}/yr</div>
+                  <span style={{ color: C.navy, fontWeight: 600 }}>↑ {fmtD(lUpfront)}</span>
+                  <span style={{ color: '#2A7A2A', fontWeight: 600 }}>~ {fmtD(lTrail)}/yr</span>
                 </div>
               )
             })}
@@ -630,32 +638,89 @@ function ReferrerClientsPanel({ contact, rradarClients, allClients, onSave }) {
         )
       })}
 
-      {/* CRM-only settled deals */}
-      {crmDeals.length > 0 && (
-        <div style={{ marginTop: 16 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: C.muted, textTransform: 'uppercase',
-            letterSpacing: '0.05em', fontFamily: 'Montserrat,sans-serif', marginBottom: 8 }}>CRM Settled Deals</div>
-          {crmDeals.map((d, i) => (
-            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px',
-              border: `1px solid ${C.border}`, borderRadius: 10, marginBottom: 8, background: '#fff',
-              fontSize: 12, fontFamily: 'Montserrat,sans-serif' }}>
+      {/* ── Inflight CRM Deals ── */}
+      {inflightDeals.length > 0 && (
+        <>
+          <div style={sHead}>
+            <span>Inflight Deals ({inflightDeals.length})</span>
+          </div>
+          {inflightDeals.map((d, i) => {
+            const col = STAGE_COLORS[d.Status] || '#94a3b8'
+            return (
+              <div key={i}
+                onClick={() => {
+                  sessionStorage.setItem('rion-from-marketing', '1')
+                  window.location.href = `/crm/deal/${encodeURIComponent(d['Transaction Name'])}`
+                }}
+                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px',
+                  border: `1px solid ${C.border}`, borderRadius: 10, marginBottom: 8,
+                  background: '#fff', cursor: 'pointer' }}
+                onMouseEnter={e => e.currentTarget.style.background = '#F4F6FA'}
+                onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
+                <div style={{ width: 8, height: 8, borderRadius: '50%', background: col, flexShrink: 0 }} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: C.navy,
+                    fontFamily: 'Montserrat,sans-serif' }}>{d['Transaction Name']}</div>
+                  <div style={{ fontSize: 11, color: C.muted, fontFamily: 'Montserrat,sans-serif', marginTop: 2 }}>
+                    {d.Categories} {d['Transaction Type'] ? `· ${d['Transaction Type']}` : ''} {d.Lender ? `· ${d.Lender}` : ''}
+                  </div>
+                </div>
+                <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: C.pinkBtn, fontFamily: 'Montserrat,sans-serif' }}>
+                    {d.Amount ? `$${Number(d.Amount).toLocaleString()}` : '—'}
+                  </div>
+                  <div style={{ fontSize: 10, fontWeight: 600, color: col, fontFamily: 'Montserrat,sans-serif',
+                    background: col + '18', padding: '2px 7px', borderRadius: 10, marginTop: 2 }}>
+                    {d.Status}
+                  </div>
+                </div>
+                <span style={{ color: C.slate, fontSize: 14 }}>›</span>
+              </div>
+            )
+          })}
+        </>
+      )}
+
+      {/* ── Settled CRM deals (not matched to Rradar client) ── */}
+      {settledDeals.length > 0 && (
+        <>
+          <div style={sHead}>
+            <span>Settled Deals from CRM ({settledDeals.length})</span>
+          </div>
+          {settledDeals.map((d, i) => (
+            <div key={i}
+              onClick={() => {
+                sessionStorage.setItem('rion-from-marketing', '1')
+                window.location.href = `/crm/deal/${encodeURIComponent(d['Transaction Name'])}`
+              }}
+              style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px',
+                border: `1px solid ${C.border}`, borderRadius: 10, marginBottom: 8,
+                background: '#fff', cursor: 'pointer' }}
+              onMouseEnter={e => e.currentTarget.style.background = '#F4F6FA'}
+              onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
+              <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#22c55e', flexShrink: 0 }} />
               <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 700, color: C.text }}>{d['Transaction Name']}</div>
-                <div style={{ color: C.muted, marginTop: 2 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: C.navy, fontFamily: 'Montserrat,sans-serif' }}>
+                  {d['Transaction Name']}
+                </div>
+                <div style={{ fontSize: 11, color: C.muted, fontFamily: 'Montserrat,sans-serif', marginTop: 2 }}>
                   {d['Date Settled'] || d['Month of Settlement']} · {d.Categories} · {d.Lender}
                 </div>
               </div>
               <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                <div style={{ fontWeight: 700, color: C.navy }}>${(d.Amount||0).toLocaleString()}</div>
-                {d._upfrontComm > 0 && <div style={{ color: C.pinkBtn, fontSize: 11 }}>↑ {fmtD(d._upfrontComm)}</div>}
+                <div style={{ fontSize: 12, fontWeight: 700, color: C.navy, fontFamily: 'Montserrat,sans-serif' }}>
+                  {d.Amount ? `$${Number(d.Amount).toLocaleString()}` : '—'}
+                </div>
               </div>
+              <span style={{ color: C.slate, fontSize: 14 }}>›</span>
             </div>
           ))}
-        </div>
+        </>
       )}
     </div>
   )
 }
+
 
 function ContactDetail({ contact, section, onBack, onSave, onDelete, onMove, rradarClients, allClients, brokers }) {
   const [editing, setEditing]   = useState(false)
@@ -749,8 +814,38 @@ function ContactDetail({ contact, section, onBack, onSave, onDelete, onMove, rra
         </div>
       </div>
 
+      {/* Contact action buttons — always shown at top */}
+      {(contact.email || contact.mobile) && (
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12, marginBottom: 4 }}>
+          {contact.email && (
+            <a href={`mailto:${contact.email}`}
+              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '8px 16px',
+                borderRadius: 8, background: C.navy, color: '#fff', textDecoration: 'none',
+                fontSize: 12, fontWeight: 600, fontFamily: 'Montserrat,sans-serif' }}>
+              ✉ Email
+            </a>
+          )}
+          {contact.mobile && (
+            <>
+              <a href={`tel:${contact.mobile.replace(/\s/g,'')}`}
+                style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '8px 16px',
+                  borderRadius: 8, background: '#2A7A2A', color: '#fff', textDecoration: 'none',
+                  fontSize: 12, fontWeight: 600, fontFamily: 'Montserrat,sans-serif' }}>
+                📞 Call
+              </a>
+              <a href={`sms:${contact.mobile.replace(/\s/g,'')}`}
+                style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '8px 16px',
+                  borderRadius: 8, background: C.pinkBtn, color: '#fff', textDecoration: 'none',
+                  fontSize: 12, fontWeight: 600, fontFamily: 'Montserrat,sans-serif' }}>
+                💬 SMS
+              </a>
+            </>
+          )}
+        </div>
+      )}
+
       {/* info grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 16 }}>
         <InfoTile label="Email" value={contact.email} />
         <InfoTile label="Mobile" value={contact.mobile} />
         {dobDisplay && <InfoTile label={`Date of Birth${ageVal ? ` (Age ${ageVal})` : ''}`} value={dobDisplay} highlight={bdayIn !== null} />}
@@ -1257,6 +1352,20 @@ function ContactTable({ contacts, section, onSelect, selected, onToggle, onToggl
 // ═══════════════════════════════════════════════════════════════════════════════
 export default function Marketing() {
   const navigate = useNavigate()
+  const location = useLocation()
+
+  // Auto-open a referrer when navigated from ReferrerPicker pill (e.g. ?open=Chris+Angel)
+  useEffect(() => {
+    const params = new URLSearchParams(location.search)
+    const openName = params.get('open') || sessionStorage.getItem('rion-marketing-open-referrer')
+    if (openName) {
+      sessionStorage.removeItem('rion-marketing-open-referrer')
+      setSection('referrers')
+      // Find the referrer by name and open their detail page
+      const found = loadStore(STORAGE_KEYS.referrers).find(r => r.name === openName)
+      if (found) setSelected(found)
+    }
+  }, [])
 
   const rradarClients = useMemo(() => loadClients(), [])
   const brokers = useMemo(() => {

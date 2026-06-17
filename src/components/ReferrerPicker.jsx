@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 
 const NAVY  = '#3D4F6B'
 const PINK  = '#EB99C2'
@@ -30,18 +31,34 @@ function TierDot({ tier }) {
 // ─── Compact pill showing an attached referrer ────────────────────────────────
 function ReferrerPill({ name, tier, onRemove }) {
   const col = TIER_COLOURS[tier] || SLATE
+
+  function handleNavigate(e) {
+    // Only navigate if not clicking the remove button
+    if (e.target.closest('button')) return
+    // Store referrer name to highlight on Marketing page, then navigate
+    sessionStorage.setItem('rion-marketing-open-referrer', name)
+    // Use window.location to avoid needing useNavigate inside this component
+    window.location.href = '/marketing?section=referrers&open=' + encodeURIComponent(name)
+  }
+
   return (
-    <div style={{ display:'inline-flex', alignItems:'center', gap:5,
-      padding:'3px 10px 3px 8px', borderRadius:20,
-      background:col+'18', border:`1px solid ${col}44`,
-      fontFamily:'Montserrat,sans-serif', fontSize:12 }}>
+    <div onClick={handleNavigate}
+      style={{ display:'inline-flex', alignItems:'center', gap:5,
+        padding:'3px 10px 3px 8px', borderRadius:20,
+        background:col+'18', border:`1px solid ${col}44`,
+        fontFamily:'Montserrat,sans-serif', fontSize:12,
+        cursor:'pointer', transition:'opacity 0.15s' }}
+      title={`Open ${name} in Marketing`}
+      onMouseEnter={e => e.currentTarget.style.opacity='0.75'}
+      onMouseLeave={e => e.currentTarget.style.opacity='1'}>
       <TierDot tier={tier} />
       <span style={{ color:NAVY, fontWeight:600 }}>{name}</span>
       {tier && <span style={{ color:col, fontSize:10, fontWeight:700 }}>{TIER_LABELS[tier]}</span>}
+      <span style={{ color:SLATE, fontSize:10, marginLeft:2 }}>↗</span>
       {onRemove && (
-        <button onClick={onRemove}
+        <button onClick={e => { e.stopPropagation(); onRemove() }}
           style={{ border:'none', background:'none', cursor:'pointer',
-            color:'#CBD5E1', fontSize:13, lineHeight:1, padding:'0 0 0 4px',
+            color:'#CBD5E1', fontSize:13, lineHeight:1, padding:'0 0 0 2px',
             display:'flex', alignItems:'center' }}>
           ×
         </button>
