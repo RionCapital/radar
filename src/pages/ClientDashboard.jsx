@@ -3,7 +3,6 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { totalBal, totalAmt, pwBal, commBal, fmt, calcOpp, ini, LOAN_TYPES, BANKS } from '../lib/data'
 import { fmtDate, dateCellStyle, loanFlag, effectiveRpmt, calcRepayment } from '../lib/dateUtils'
 import { Panel, PanelTitle, EditBtn, SaveBtn, CancelBtn, ActionBtn, FieldGroup, Pill, DateInput } from '../components/UI'
-import ReferrerPicker from '../components/ReferrerPicker'
 import NewOpportunityModal from '../components/NewOpportunityModal'
 
 const CONTACT_TYPES = ['Individual','Company','Trust','Partnership','Sole Trader']
@@ -248,8 +247,8 @@ function SecuritiesView({ securities, loans, bal, clientName, navigate }) {
                 <strong>Shared</strong> — Crossed security loan (securities {crossLoans[0].crossed})
               </td>
               <td style={tdStyle({textAlign:'right',color:'#854F0B'})}>—</td>
-              <td style={tdStyle({textAlign:'right',color:'#854F0B'})}>—</td>
               <td style={{...tdStyle(),textAlign:'right',color:'#854F0B',fontWeight:500}}>{fmt(crossDebt)}</td>
+              <td style={tdStyle({textAlign:'right',color:'#854F0B'})}>—</td>
               <td style={{...tdStyle(),textAlign:'right',color:'#854F0B'}}>—</td>
               <td style={tdStyle({color:'#854F0B',textAlign:'right'})}>—</td>
             </tr>
@@ -703,8 +702,10 @@ export default function ClientDashboard({ clients, updateClient }) {
         </div>
       </Panel>
 
-      {/* Notes & Referral Partners */}
+      {/* Opp score & Notes */}
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}}>
+
+
         <Panel>
           <PanelTitle>Contact notes & history</PanelTitle>
           <div style={{minHeight:80,marginBottom:10,maxHeight:220,overflowY:'auto'}}>
@@ -733,22 +734,6 @@ export default function ClientDashboard({ clients, updateClient }) {
             <ActionBtn variant="filled" label="Draft review email" onClick={()=>navigate(`/radar/clients/${encodeURIComponent(client.name)}/email`)}/>
             <ActionBtn variant="blue" label="Identify opportunities" onClick={()=>{}}/>
           </div>
-        </Panel>
-
-        <Panel>
-          <PanelTitle>Referral Partners</PanelTitle>
-          <ReferrerPicker
-            label=""
-            attached={client.referrers || []}
-            onAttach={r => updateClient(client.name, c => ({
-              ...c,
-              referrers: [...(c.referrers||[]).filter(x => x.name !== r.name), r]
-            }))}
-            onDetach={name => updateClient(client.name, c => ({
-              ...c,
-              referrers: (c.referrers||[]).filter(x => x.name !== name)
-            }))}
-          />
         </Panel>
       </div>
       {showNewOpp && (
