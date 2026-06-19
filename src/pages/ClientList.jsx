@@ -75,7 +75,10 @@ export default function ClientList({ clients, onAddClient }) {
                 <div style={{width:28,height:28,borderRadius:'50%',background:isComm?'#eef1f5':'#fdf0f6',color:isComm?'#2A3D54':'var(--pk)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:500,flexShrink:0}}>
                   {c.name.split(/[\s-]+/).map(w=>w[0]||'').join('').toUpperCase().slice(0,2)}
                 </div>
-                <div style={{fontSize:12,fontWeight:500,color:'var(--text-primary)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{c.name}</div>
+                <div style={{fontSize:12,fontWeight:500,color:'var(--text-primary)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
+                  {c.name}
+                  {c._demo && <span style={{marginLeft:6,fontSize:9,fontWeight:700,padding:'1px 5px',borderRadius:3,background:'#854F0B',color:'#fff',letterSpacing:'0.05em'}}>DEMO</span>}
+                </div>
               </div>
               <div><span style={{padding:'2px 7px',borderRadius:20,fontSize:9,fontWeight:500,background:isComm?'#eef1f5':'#fdf0f6',color:isComm?'#2A3D54':'#EB99C2'}}>{c.stream==='Private Wealth'?'PW':'Comm'}</span></div>
               <div style={{fontSize:11,color:'var(--text-secondary)'}}>{c.loans.length} loan{c.loans.length!==1?'s':''}</div>

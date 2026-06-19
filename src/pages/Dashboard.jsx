@@ -72,7 +72,7 @@ function computeImportedCommission(clients) {
 // Compute portfolio balance per month from client balance history
 function computeBalanceByMonth(clients) {
   const balMap = {}
-  ;(clients || []).forEach(c => {
+  ;(clients || []).filter(c => !c._demo).forEach(c => {
     ;(c.loans || []).forEach(l => {
       ;(l.balanceHistory || []).forEach(h => {
         if (!balMap[h.month]) balMap[h.month] = 0
@@ -408,10 +408,10 @@ export default function Dashboard({ clients, onImport, onUpdateClients }) {
   const COMM = mergeCommission(clients)
   const latest = COMM[COMM.length - 1]
   const allLoans = clients.flatMap(c => c.loans)
-  const pwTotal = clients.filter(c => c.stream === 'Private Wealth').flatMap(c => c.loans).reduce((s, l) => s + (l.balance || 0), 0)
-  const commTotal = clients.filter(c => c.stream === 'Commercial').flatMap(c => c.loans).reduce((s, l) => s + (l.balance || 0), 0)
-  const overdue = clients.filter(c => c.days >= 365).length
-  const triggers = clients.filter(c => c.loans.some(l => l.io || l.fixed || l.balloon)).length
+  const pwTotal = clients.filter(c => c.stream === 'Private Wealth' && !c._demo).flatMap(c => c.loans).reduce((s, l) => s + (l.balance || 0), 0)
+  const commTotal = clients.filter(c => c.stream === 'Commercial' && !c._demo).flatMap(c => c.loans).reduce((s, l) => s + (l.balance || 0), 0)
+  const overdue = clients.filter(c => !c._demo && c.days >= 365).length
+  const triggers = clients.filter(c => !c._demo && c.loans.some(l => l.io || l.fixed || l.balloon)).length
   const rolling12 = rollingYTD(COMM)
   const quarters = quarterlyIncome(COMM)
 

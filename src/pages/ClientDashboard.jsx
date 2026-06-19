@@ -360,6 +360,7 @@ export default function ClientDashboard({ clients, updateClient }) {
                   <div style={{fontSize:16,fontWeight:500,color:'#fff'}}>{client.name}</div>
                   {isPriority && <span style={{background:'var(--pk)',color:'#fff',padding:'1px 7px',borderRadius:20,fontSize:9,fontWeight:500}}>★ Priority</span>}
                   {flagStyle && <span style={{padding:'1px 7px',borderRadius:20,fontSize:9,fontWeight:500,...flagStyle}}>⚠ Flag</span>}
+                  {client._demo && <span style={{background:'#854F0B',color:'#fff',padding:'1px 7px',borderRadius:20,fontSize:9,fontWeight:700,letterSpacing:'0.05em'}}>DEMO</span>}
                 </div>
                 <div style={{fontSize:11,color:'var(--sbl)',marginTop:2}}>{client.stream} · #{client.connNo}</div>
               </div>
