@@ -106,7 +106,7 @@ function mergeCommission(clients) {
 // One row per client (their first active loan), threshold ≥ 365d, max 10
 function buildAnnualRows(clients) {
   return clients
-    .filter(c => c.days >= 365 && c.loans.filter(l => !l.closed).length > 0)
+    .filter(c => !c._demo && c.days >= 365 && c.loans.filter(l => !l.closed).length > 0)
     .sort((a, b) => b.days - a.days)
     .slice(0, 10)
     .map(c => {
@@ -126,7 +126,7 @@ function buildAnnualRows(clients) {
 // Fixed rate loans only — no maturities. Sort by expiry date ascending. Max 10.
 function buildFixedRows(clients) {
   const rows = []
-  clients.forEach(c => {
+  clients.filter(c => !c._demo).forEach(c => {
     c.loans.filter(l => !l.closed && l.fixed && l.fixed.trim()).forEach(l => {
       rows.push({
         conn: c.name,
@@ -146,7 +146,7 @@ function buildFixedRows(clients) {
 // Loans with IO expiry date. Sort by expiry ascending. Max 10.
 function buildIORows(clients) {
   const rows = []
-  clients.forEach(c => {
+  clients.filter(c => !c._demo).forEach(c => {
     c.loans.filter(l => !l.closed && l.io && l.io.trim()).forEach(l => {
       rows.push({
         conn: c.name,
@@ -170,7 +170,7 @@ function buildMaturingRows(clients) {
   const rows = []
   const now = new Date()
   const cutoff = new Date(now.getFullYear() + 10, now.getMonth(), now.getDate())
-  clients.forEach(c => {
+  clients.filter(c => !c._demo).forEach(c => {
     c.loans.filter(l => {
       if (l.closed) return false
       if (!l.maturity || !l.maturity.trim()) return false
