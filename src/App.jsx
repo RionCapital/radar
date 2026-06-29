@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useEffect } from 'react'
 import { Routes, Route, useLocation, Navigate } from 'react-router-dom'
 import { loadClients, saveClients, syncFromSupabase } from './lib/data'
+import { syncSettingsFromSupabase } from './lib/settings'
 import { sbLoadDeals, sbSaveDeals, sbLoadReferrers, sbSaveReferrers } from './lib/supabase'
 import { COMMISSION_HISTORY_BY_ACC, COMMISSION_SEED_VERSION } from './lib/commissionSeed'
 import Topbar from './components/Topbar'
@@ -129,6 +130,8 @@ export default function App() {
         try { localStorage.setItem('rion-crm-deals', JSON.stringify(cloudDeals)) } catch {}
       }
     }).catch(() => {})
+    // Sync settings from Supabase
+    syncSettingsFromSupabase().catch(() => {})
     // Sync referrers from Supabase
     sbLoadReferrers().then(cloudReferrers => {
       if (cloudReferrers) {

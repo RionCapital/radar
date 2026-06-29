@@ -2,6 +2,7 @@ import React, { useState, useMemo, useRef, useEffect } from 'react'
 import ReactDOM from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { PIPELINE_DATA } from '../lib/pipelineData'
+import { sbSaveDeals } from '../lib/supabase'
 import { loadSettings, calcUpfront } from '../lib/settings'
 import { fmt } from '../lib/data'
 import CRMTopbar, { getBusinessDaysLeft, MONTH_NAMES } from '../components/CRMTopbar'
@@ -408,7 +409,7 @@ export default function CRM({ clients, onUpdateClients }) {
   const [settleModal, setSettleModal] = useState(null)
   const [showPastMonths, setShowPastMonths] = useState(false)
 
-  function saveDeals(d) { setDeals(d); try { localStorage.setItem('rion-crm-deals',JSON.stringify(d)) } catch {} }
+  function saveDeals(d) { setDeals(d); try { localStorage.setItem('rion-crm-deals',JSON.stringify(d)) } catch {} sbSaveDeals(d).catch(() => {}) }
 
   function updateFinanceDate(deal, newDate) {
     saveDeals(deals.map(d => d['Transaction Name'] === deal['Transaction Name']
@@ -725,6 +726,7 @@ export default function CRM({ clients, onUpdateClients }) {
             setDeals(prev => {
               const updated = [...prev, newDeal]
               try { localStorage.setItem('rion-crm-deals', JSON.stringify(updated)) } catch {}
+              sbSaveDeals(updated).catch(() => {})
               return updated
             })
             navigate(`/crm/deal/${encodeURIComponent(newDeal['Transaction Name'])}`)

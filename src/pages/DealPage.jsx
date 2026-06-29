@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { PIPELINE_DATA } from '../lib/pipelineData'
+import { sbSaveDeals } from '../lib/supabase'
 import CRMTopbar from '../components/CRMTopbar'
 import ReferrerPicker from '../components/ReferrerPicker'
 
@@ -45,6 +46,7 @@ function getDeals() {
 }
 function saveDeals(deals) {
   try { localStorage.setItem('rion-crm-deals', JSON.stringify(deals)) } catch {}
+  sbSaveDeals(deals).catch(() => {})
 }
 
 function findLinkedClient(deal, clients) {

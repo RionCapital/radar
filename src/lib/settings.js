@@ -1,4 +1,5 @@
-// Commission rates and app settings — stored in localStorage
+// Commission rates and app settings — stored in localStorage + Supabase
+import { sbLoadSettings, sbSaveSettings } from './supabase.js'
 
 const SETTINGS_KEY = 'rion-settings-v1'
 
@@ -33,6 +34,18 @@ export function loadSettings() {
 
 export function saveSettings(settings) {
   try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)) } catch {}
+  sbSaveSettings(settings).catch(() => {})
+}
+
+export async function syncSettingsFromSupabase() {
+  try {
+    const cloud = await sbLoadSettings()
+    if (cloud) {
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(cloud))
+      return { ...DEFAULT_SETTINGS, ...cloud }
+    }
+  } catch {}
+  return null
 }
 
 export function getUpfrontRate(category) {
