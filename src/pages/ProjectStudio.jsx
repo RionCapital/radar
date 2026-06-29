@@ -1,4 +1,5 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
+import { sbSaveMarketing, sbLoadMarketing } from '../lib/supabase'
 import { fmtDate } from '../lib/dateUtils'
 import { logo_rion_notag } from '../lib/icons'
 import { useNavigate } from 'react-router-dom'
@@ -63,9 +64,32 @@ function StatusBadge({ status, onClick }) {
 
 export default function ProjectStudio() {
   const navigate = useNavigate()
-  const [projects, setProjects] = useState(INIT_PROJECTS)
+  const [projects, setProjects] = useState(() => {
+    try {
+      const s = localStorage.getItem('rion-project-studio')
+      if (s) return JSON.parse(s)
+    } catch {}
+    return INIT_PROJECTS
+  })
   const [activeProject, setActiveProject] = useState(1)
   const [openMilestones, setOpenMilestones] = useState({2:true})
+
+  // ─── Save helper — writes to localStorage + Supabase ─────────────────────
+  const saveProjects = useCallback((ps) => {
+    try { localStorage.setItem('rion-project-studio', JSON.stringify(ps)) } catch {}
+    sbSaveMarketing({ _studio: ps }).catch(() => {})
+  }, [])
+
+  // ─── Startup sync from Supabase ───────────────────────────────────────────
+  useEffect(() => {
+    sbLoadMarketing().then(cloud => {
+      if (cloud?._studio?.length) {
+        localStorage.setItem('rion-project-studio', JSON.stringify(cloud._studio))
+        setProjects(cloud._studio)
+      }
+    }).catch(() => {})
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  // ─────────────────────────────────────────────────────────────────────────
   const [addingTask, setAddingTask] = useState(null)
   const [newTask, setNewTask] = useState({ title:'', due:'', priority:'Medium' })
   const [showNewProject, setShowNewProject] = useState(false)
@@ -81,23 +105,23 @@ export default function ProjectStudio() {
   const overdue = allTasks.filter(t=>t.status!=='Done'&&t.due&&new Date(t.due)<new Date()).length
 
   function cycleStatus(pId, mId, tId) {
-    setProjects(ps=>ps.map(p=>p.id!==pId?p:{...p,milestones:p.milestones.map(m=>m.id!==mId?m:{...m,tasks:m.tasks.map(t=>t.id!==tId?t:{...t,status:STATUS_CYCLE[(STATUS_CYCLE.indexOf(t.status)+1)%STATUS_CYCLE.length]})})}))
+    setProjects(ps=>{const n=ps.map(p=>p.id!==pId?p:{...p,milestones:p.milestones.map(m=>m.id!==mId?m:{...m,tasks:m.tasks.map(t=>t.id!==tId?t:{...t,status:STATUS_CYCLE[(STATUS_CYCLE.indexOf(t.status)+1)%STATUS_CYCLE.length]})})}); saveProjects(n); return n})
   }
 
   function deleteTask(pId, mId, tId) {
-    setProjects(ps=>ps.map(p=>p.id!==pId?p:{...p,milestones:p.milestones.map(m=>m.id!==mId?m:{...m,tasks:m.tasks.filter(t=>t.id!==tId)})}))
+    setProjects(ps=>{const n=ps.map(p=>p.id!==pId?p:{...p,milestones:p.milestones.map(m=>m.id!==mId?m:{...m,tasks:m.tasks.filter(t=>t.id!==tId)})}); saveProjects(n); return n})
   }
   function updateTaskDate(pId, mId, tId, newDate) {
-    setProjects(ps=>ps.map(p=>p.id!==pId?p:{...p,milestones:p.milestones.map(m=>m.id!==mId?m:{...m,tasks:m.tasks.map(t=>t.id!==tId?t:{...t,due:newDate})})}))
+    setProjects(ps=>{const n=ps.map(p=>p.id!==pId?p:{...p,milestones:p.milestones.map(m=>m.id!==mId?m:{...m,tasks:m.tasks.map(t=>t.id!==tId?t:{...t,due:newDate})})}); saveProjects(n); return n})
   }
   function updateMilestoneDate(pId, mId, newDate) {
-    setProjects(ps=>ps.map(p=>p.id!==pId?p:{...p,milestones:p.milestones.map(m=>m.id!==mId?m:{...m,due:newDate})}))
+    setProjects(ps=>{const n=ps.map(p=>p.id!==pId?p:{...p,milestones:p.milestones.map(m=>m.id!==mId?m:{...m,due:newDate})}); saveProjects(n); return n})
   }
 
   function addTask(pId, mId) {
     if (!newTask.title.trim()) return
     const task = { id: Date.now(), ...newTask }
-    setProjects(ps=>ps.map(p=>p.id!==pId?p:{...p,milestones:p.milestones.map(m=>m.id!==mId?m:{...m,tasks:[...m.tasks,task]})}))
+    setProjects(ps=>{const n=ps.map(p=>p.id!==pId?p:{...p,milestones:p.milestones.map(m=>m.id!==mId?m:{...m,tasks:[...m.tasks,task]})}); saveProjects(n); return n})
     setNewTask({ title:'', due:'', priority:'Medium' })
     setAddingTask(null)
   }
@@ -105,7 +129,7 @@ export default function ProjectStudio() {
   function addProject() {
     if (!newProjectName.trim()) return
     const id = Date.now()
-    setProjects(ps=>[...ps,{ id, name:newProjectName, color:PROJECT_COLORS[ps.length%PROJECT_COLORS.length], desc:'', milestones:[] }])
+    setProjects(ps=>{const n=[...ps,{ id, name:newProjectName, color:PROJECT_COLORS[ps.length%PROJECT_COLORS.length], desc:'', milestones:[] }]; saveProjects(n); return n})
     setActiveProject(id)
     setNewProjectName('')
     setShowNewProject(false)
@@ -114,7 +138,7 @@ export default function ProjectStudio() {
   function addMilestone(pId) {
     if (!newMs.name.trim()) return
     const ms = { id:Date.now(), name:newMs.name, status:'To Do', due:newMs.due, tasks:[] }
-    setProjects(ps=>ps.map(p=>p.id!==pId?p:{...p,milestones:[...p.milestones,ms]}))
+    setProjects(ps=>{const n=ps.map(p=>p.id!==pId?p:{...p,milestones:[...p.milestones,ms]}); saveProjects(n); return n})
     setNewMs({ name:'', due:'' })
     setShowNewMilestone(false)
   }
@@ -123,15 +147,19 @@ export default function ProjectStudio() {
   function handleMsDragOver(e, msId) { e.preventDefault(); setDragOverMsId(msId) }
   function handleMsDrop(pId, targetMsId) {
     if (!dragMsId || dragMsId === targetMsId) { setDragMsId(null); setDragOverMsId(null); return }
-    setProjects(ps => ps.map(p => {
-      if (p.id !== pId) return p
-      const milestones = [...p.milestones]
-      const fromIdx = milestones.findIndex(m => m.id === dragMsId)
-      const toIdx = milestones.findIndex(m => m.id === targetMsId)
-      const [moved] = milestones.splice(fromIdx, 1)
-      milestones.splice(toIdx, 0, moved)
-      return { ...p, milestones }
-    }))
+    setProjects(ps => {
+      const n = ps.map(p => {
+        if (p.id !== pId) return p
+        const milestones = [...p.milestones]
+        const fromIdx = milestones.findIndex(m => m.id === dragMsId)
+        const toIdx = milestones.findIndex(m => m.id === targetMsId)
+        const [moved] = milestones.splice(fromIdx, 1)
+        milestones.splice(toIdx, 0, moved)
+        return { ...p, milestones }
+      })
+      saveProjects(n)
+      return n
+    })
     setDragMsId(null)
     setDragOverMsId(null)
   }
