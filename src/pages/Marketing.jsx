@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { loadClients } from '../lib/data'
+import { sbLoadMarketing, sbSaveMarketing } from '../lib/supabase'
 import { DEFAULT_REFERRERS } from '../lib/referrersData'
 import { loadSettings } from '../lib/settings'
 
@@ -42,6 +43,15 @@ function loadStore(key) {
 }
 function saveStore(key, data) {
   try { localStorage.setItem(key, JSON.stringify(data)) } catch {}
+}
+function syncMarketingToSupabase() {
+  const payload = {
+    referrers: (() => { try { const s = localStorage.getItem('rion-marketing-referrers'); return s ? JSON.parse(s) : [] } catch { return [] } })(),
+    lenders:   (() => { try { const s = localStorage.getItem('rion-marketing-lenders');   return s ? JSON.parse(s) : [] } catch { return [] } })(),
+    others:    (() => { try { const s = localStorage.getItem('rion-marketing-others');    return s ? JSON.parse(s) : [] } catch { return [] } })(),
+    clientOv:  (() => { try { const s = localStorage.getItem('rion-marketing-clients');   return s ? JSON.parse(s) : [] } catch { return [] } })(),
+  }
+  sbSaveMarketing(payload).catch(() => {})
 }
 function initials(name = '') {
   return name.trim().split(/\s+/).map(w => w[0] || '').join('').toUpperCase().slice(0, 2) || '?'
@@ -1444,6 +1454,18 @@ export default function Marketing() {
   const [lenders,   setLenders]   = useState(() => loadStore(STORAGE_KEYS.lenders))
   const [others,    setOthers]    = useState(() => loadStore(STORAGE_KEYS.others))
 
+  // ─── Supabase startup sync ────────────────────────────────────────────────
+  useEffect(() => {
+    sbLoadMarketing().then(cloud => {
+      if (!cloud) return
+      if (cloud.referrers?.length) { saveStore(STORAGE_KEYS.referrers, cloud.referrers); setReferrers(cloud.referrers) }
+      if (cloud.lenders?.length)   { saveStore(STORAGE_KEYS.lenders,   cloud.lenders);   setLenders(cloud.lenders) }
+      if (cloud.others?.length)    { saveStore(STORAGE_KEYS.others,    cloud.others);     setOthers(cloud.others) }
+      if (cloud.clientOv?.length)  { saveStore(STORAGE_KEYS.clientOv,  cloud.clientOv);  setClientOverrides(cloud.clientOv) }
+    }).catch(() => {})
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  // ─────────────────────────────────────────────────────────────────────────
+
   const [section,  setSection]  = useState('clients')
   const [selected, setSelected] = useState(null)
   const [outreach, setOutreach] = useState(null)
@@ -1495,12 +1517,14 @@ export default function Marketing() {
     next.push(updated)
     setClientOverrides(next)
     saveStore(STORAGE_KEYS.clientOv, next)
+    syncMarketingToSupabase()
   }
 
   function saveList(sec, fn) {
     if (sec === 'referrers') { const n = fn(referrers); setReferrers(n); saveStore(STORAGE_KEYS.referrers, n) }
     if (sec === 'lenders')   { const n = fn(lenders);   setLenders(n);   saveStore(STORAGE_KEYS.lenders, n) }
     if (sec === 'others')    { const n = fn(others);    setOthers(n);    saveStore(STORAGE_KEYS.others, n) }
+    syncMarketingToSupabase()
   }
 
   function handleSaveContact(updated) {

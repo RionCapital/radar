@@ -145,3 +145,22 @@ export async function sbSaveTicked(ticked) {
     .upsert({ id: 1, data: ticked, updated_at: new Date().toISOString() })
   return !error
 }
+
+// ─── Marketing (all 4 stores: referrers, lenders, others, clientOv) ───────────
+
+export async function sbLoadMarketing() {
+  const { data, error } = await supabase
+    .from('marketing')
+    .select('data')
+    .eq('id', 1)
+    .single()
+  if (error || !data) return null
+  return data.data
+}
+
+export async function sbSaveMarketing(marketingData) {
+  const { error } = await supabase
+    .from('marketing')
+    .upsert({ id: 1, data: marketingData, updated_at: new Date().toISOString() })
+  return !error
+}
