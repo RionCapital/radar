@@ -167,7 +167,9 @@ function UnmatchedRow({ a, idx, clients, onAllocate, onDelete, navigate }) {
                             Replace: {l.lname || l.acc || `Loan ${li+1}`}
                             <span style={{ fontSize: 10, color: '#e8a020', fontWeight: 400, marginLeft: 6 }}>→ marked discharged</span>
                           </div>
-                          <div style={{ fontSize: 10, color: '#64748b' }}>{l.bank} · {l.rpmt} · {fmt(l.balance)}</div>
+                          <div style={{ fontSize: 10, color: '#64748b' }}>
+                            {l.acc && <span style={{marginRight:6}}>Acc: {l.acc} ·</span>}{l.bank} · {l.rpmt} · Limit: {fmt(l.amount)} · Bal: {fmt(l.balance)}
+                          </div>
                         </div>
                       </label>
                     )

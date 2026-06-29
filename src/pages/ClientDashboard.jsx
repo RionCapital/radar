@@ -45,8 +45,14 @@ function ContactsEdit({ draft, setDraft }) {
                 {CONTACT_TYPES.map(t => <option key={t}>{t}</option>)}
               </select>
             </FieldGroup>
-            <button onClick={() => setDraft(draft.filter((_,j)=>j!==i))}
-              style={{padding:'4px 8px',borderRadius:6,border:'0.5px solid #fde8e8',background:'#fde8e8',color:'#c0392b',cursor:'pointer',alignSelf:'flex-end',marginBottom:2}}>✕</button>
+            <div style={{display:'flex',flexDirection:'column',gap:4,alignSelf:'flex-end',marginBottom:2}}>
+              <label style={{fontSize:9,display:'flex',alignItems:'center',gap:3,cursor:'pointer',color:s.closed?'#c0392b':'var(--text-secondary)'}}>
+                <input type="checkbox" checked={!!s.closed} onChange={e=>{const d=draft.map((x,j)=>j===i?{...x,closed:e.target.checked}:x);setDraft(d)}} style={{accentColor:'#c0392b'}}/>
+                Sold
+              </label>
+              <button onClick={() => setDraft(draft.filter((_,j)=>j!==i))}
+                style={{padding:'4px 8px',borderRadius:6,border:'0.5px solid #fde8e8',background:'#fde8e8',color:'#c0392b',cursor:'pointer'}}>✕</button>
+            </div>
           </div>
         </div>
       ))}
@@ -162,8 +168,14 @@ function SecuritiesEdit({ draft, setDraft }) {
                 setDraft(d)
               }}/>
             </FieldGroup>
-            <button onClick={() => setDraft(draft.filter((_,j)=>j!==i))}
-              style={{padding:'4px 8px',borderRadius:6,border:'0.5px solid #fde8e8',background:'#fde8e8',color:'#c0392b',cursor:'pointer',alignSelf:'flex-end',marginBottom:2}}>✕</button>
+            <div style={{display:'flex',flexDirection:'column',gap:4,alignSelf:'flex-end',marginBottom:2}}>
+              <label style={{fontSize:9,display:'flex',alignItems:'center',gap:3,cursor:'pointer',color:s.closed?'#c0392b':'var(--text-secondary)'}}>
+                <input type="checkbox" checked={!!s.closed} onChange={e=>{const d=draft.map((x,j)=>j===i?{...x,closed:e.target.checked}:x);setDraft(d)}} style={{accentColor:'#c0392b'}}/>
+                Sold
+              </label>
+              <button onClick={() => setDraft(draft.filter((_,j)=>j!==i))}
+                style={{padding:'4px 8px',borderRadius:6,border:'0.5px solid #fde8e8',background:'#fde8e8',color:'#c0392b',cursor:'pointer'}}>✕</button>
+            </div>
           </div>
         </div>
       ))}
@@ -176,13 +188,17 @@ function SecuritiesEdit({ draft, setDraft }) {
 }
 
 function SecuritiesView({ securities, loans, bal, clientName, navigate }) {
+  const [secTab, setSecTab] = React.useState('current')
   if (!(securities||[]).length) return (
     <div style={{textAlign:'center',color:'var(--text-tertiary)',padding:16,fontSize:11}}>No securities yet — click Edit to add</div>
   )
+  const activeSecs = (securities||[]).filter(s => !s.closed)
+  const historicSecs = (securities||[]).filter(s => s.closed)
+  const displaySecs = secTab === 'current' ? activeSecs : historicSecs
   const crossLoans = loans.filter(l => l.crossed && l.crossed.trim() && !l.closed)
   const crossDebt = crossLoans.reduce((s,l) => s + (l.balance||0), 0)
-  const totalEstVal = (securities||[]).reduce((s,x) => s + (x.estVal||0), 0)
-  const totalLendingEquity = (securities||[]).reduce((s,x) => {
+  const totalEstVal = activeSecs.reduce((s,x) => s + (x.estVal||0), 0)
+  const totalLendingEquity = activeSecs.reduce((s,x) => {
     const secNum = String(x.num||'').trim()
     const directDebt = loans.filter(l => !l.closed && String(l.security||'').trim()===secNum && !(l.crossed&&l.crossed.trim())).reduce((t,l)=>t+l.balance,0)
     return s + Math.round((x.estVal||0) * ((x.lvr!==undefined?x.lvr:80)/100) - directDebt)
@@ -191,7 +207,19 @@ function SecuritiesView({ securities, loans, bal, clientName, navigate }) {
 
   return (
     <div>
-      <table style={{width:'100%',borderCollapse:'collapse',fontSize:11,tableLayout:'fixed'}}>
+      {/* Securities tab switcher */}
+      <div style={{display:'flex',gap:6,marginBottom:10}}>
+        {[['current','Current'],['historic','Historic / Sold']].map(([key,label])=>(
+          <button key={key} onClick={()=>setSecTab(key)}
+            style={{fontSize:10,padding:'3px 12px',borderRadius:6,border:'none',cursor:'pointer',fontWeight:secTab===key?600:400,
+              background:secTab===key?'#3D4F6B':'var(--bg)',color:secTab===key?'#fff':'var(--text-secondary)',fontFamily:'Montserrat,sans-serif'}}>
+            {label}{key==='historic'&&historicSecs.length>0?` (${historicSecs.length})`:''}
+          </button>
+        ))}
+      </div>
+      {displaySecs.length === 0
+        ? <div style={{textAlign:'center',color:'var(--text-tertiary)',padding:16,fontSize:11}}>{secTab==='current'?'No active securities':'No sold / historic properties'}</div>
+        : (<table style={{width:'100%',borderCollapse:'collapse',fontSize:11,tableLayout:'fixed'}}>
         <colgroup>
           <col style={{width:'4%'}}/>
           <col style={{width:'28%'}}/>
@@ -210,7 +238,7 @@ function SecuritiesView({ securities, loans, bal, clientName, navigate }) {
           </tr>
         </thead>
         <tbody>
-          {(securities||[]).map((s,i) => {
+          {displaySecs.map((s,i) => {
             const secNum = String(s.num||i+1)
             const isCrossed = crossLoans.some(l => l.crossed && l.crossed.split(',').map(x=>x.trim()).includes(secNum))
             const directDebt = loans.filter(l => !l.closed && String(l.security||'').trim()===secNum && !(l.crossed&&l.crossed.trim())).reduce((t,l)=>t+l.balance,0)
@@ -269,6 +297,7 @@ function SecuritiesView({ securities, loans, bal, clientName, navigate }) {
           * Debt balance and actual LVR for crossed securities exclude the shared facility ({fmt(crossDebt)} — acc. {crossLoans.map(l=>l.acc||l.lname).join(', ')}). Shared debt is included in the total. Actual LVR is indicative only.
         </div>
       )}
+      )}
     </div>
   )
 }
@@ -322,7 +351,8 @@ export default function ClientDashboard({ clients, updateClient }) {
   const loans = client.loans || []
   const crossLoans = loans.filter(l => l.crossed && l.crossed.trim() && !l.closed)
   const crossDebt = crossLoans.reduce((s,l) => s + (l.balance||0), 0)
-  const totalLendingEquity = securities.reduce((s,x) => {
+  const activeSecurities = securities.filter(s => !s.closed)
+  const totalLendingEquity = activeSecurities.reduce((s,x) => {
     const secNum = String(x.num||'').trim()
     const directDebt = loans.filter(l => !l.closed && String(l.security||'').trim()===secNum && !(l.crossed&&l.crossed.trim())).reduce((t,l)=>t+l.balance,0)
     return s + Math.round((x.estVal||0) * ((x.lvr!==undefined?x.lvr:80)/100) - directDebt)
@@ -423,12 +453,12 @@ export default function ClientDashboard({ clients, updateClient }) {
             </div>
             <div style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:3}}>
               <span style={{color:'var(--sbl)'}}>Resi @80%</span>
-              <span style={{color:'#fff',fontWeight:500}}>{fmt((securities||[]).filter(s=>s.estVal).reduce((sum,s)=>sum+Math.round(s.estVal*(s.lvr||80)/100),0))}</span>
+              <span style={{color:'#fff',fontWeight:500}}>{fmt((activeSecurities||[]).filter(s=>s.estVal).reduce((sum,s)=>sum+Math.round(s.estVal*(s.lvr||80)/100),0))}</span>
             </div>
             <div style={{display:'flex',justifyContent:'space-between',fontSize:12}}>
               <span style={{color:'var(--sbl)'}}>Portfolio LVR</span>
               <span style={{color:'#fff',fontWeight:500}}>
-                {(()=>{const tv=(securities||[]).reduce((s,x)=>s+(x.estVal||0),0);return tv>0?Math.round(bal/tv*100)+'%':'—'})()}
+                {(()=>{const tv=(activeSecurities||[]).reduce((s,x)=>s+(x.estVal||0),0);return tv>0?Math.round(bal/tv*100)+'%':'—'})()}
               </span>
             </div>
           </div>
@@ -730,8 +760,6 @@ export default function ClientDashboard({ clients, updateClient }) {
                         {(() => {
                           const isActioned = l.actionNotes && l.actionNotes.length > 0
                           if (isActioned) return null
-                          const loanAcknKey = `${client.name}-${l.acc||i}-${new Date().getFullYear()}`
-                          if (acknFlags.has(loanAcknKey)) return null
                           if (flag) return <span style={{padding:'2px 6px',borderRadius:20,fontSize:9,fontWeight:500,background:flag==='overdue'?'#fde8e8':'#fef9c3',color:flag==='overdue'?'#a32d2d':'#854F0B'}}>
                             {flag==='overdue'?'Overdue':'< 120d'}
                           </span>

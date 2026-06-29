@@ -391,7 +391,16 @@ export default function LoanAccount({ clients, updateClient }) {
                 </FieldGroup>
                 <FieldGroup label="Est. repayment override ($)"><input style={inp} type="number" value={l.estRepayment||''} placeholder="Auto-calculated" onChange={e=>set('estRepayment',e.target.value?+e.target.value:null)}/></FieldGroup>
                 <FieldGroup label="Asset description"><input style={inp} value={l.assetDesc||''} onChange={e=>set('assetDesc',e.target.value)}/></FieldGroup>
-                <FieldGroup label="Borrowing entity"><input style={inp} value={l.borrowingEntity||''} onChange={e=>set('borrowingEntity',e.target.value)}/></FieldGroup>
+                <FieldGroup label="Borrowing entity">
+                  <select style={{...inp, appearance:'none', cursor:'pointer'}} value={l.borrowingEntity||''} onChange={e=>set('borrowingEntity',e.target.value)}>
+                    <option value="">— Select or type below —</option>
+                    {(client.contacts||[]).filter(ct => ct.first||ct.last||ct.name).map((ct,ci) => {
+                      const nm = ct.name || [ct.first,ct.middle,ct.last].filter(Boolean).join(' ')
+                      return <option key={ci} value={nm}>{nm}{ct.type==='Co'?' (Company)':ct.type==='Tru'?' (Trust)':ct.type==='Ind'?' (Individual)':''}</option>
+                    })}
+                  </select>
+                  <input style={{...inp, marginTop:4}} placeholder="Or type custom name..." value={l.borrowingEntity||''} onChange={e=>set('borrowingEntity',e.target.value)}/>
+                </FieldGroup>
               </div>
             ):(
               <div>
