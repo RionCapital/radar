@@ -308,6 +308,17 @@ export default function ClientDashboard({ clients, updateClient }) {
   const oppTotal = oppCriteria.reduce((s,o)=>s+o.score,0)
   const isPriority = oppTotal >= 25
 
+  // Lending equity — computed here so it's available throughout the component
+  const securities = client.securities || []
+  const loans = client.loans || []
+  const crossLoans = loans.filter(l => l.crossed && l.crossed.trim() && !l.closed)
+  const crossDebt = crossLoans.reduce((s,l) => s + (l.balance||0), 0)
+  const totalLendingEquity = securities.reduce((s,x) => {
+    const secNum = String(x.num||'').trim()
+    const directDebt = loans.filter(l => !l.closed && String(l.security||'').trim()===secNum && !(l.crossed&&l.crossed.trim())).reduce((t,l)=>t+l.balance,0)
+    return s + Math.round((x.estVal||0) * ((x.lvr!==undefined?x.lvr:80)/100) - directDebt)
+  }, 0) - crossDebt
+
   const worstFlag = client.loans.reduce((worst,l) => {
     const f = loanFlag(l)
     if (f==='overdue') return 'overdue'
