@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { sbLoadTicked, sbSaveTicked } from '../lib/supabase'
 
 const STORAGE_KEY = 'rion-radar-bday-sent'
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
@@ -68,6 +69,17 @@ export function useBirthdayCount(clients) {
 
 export default function BirthdayNotifier({ clients, onClose }) {
   const [sentKeys, setSentKeys] = useState(() => getSentKeys())
+
+  // Sync ticked state from Supabase on mount
+  useEffect(() => {
+    sbLoadTicked().then(cloud => {
+      if (cloud && Array.isArray(cloud)) {
+        const merged = new Set([...getSentKeys(), ...cloud])
+        setSentKeys(merged)
+        saveSentKeys(merged)
+      }
+    }).catch(() => {})
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
   // Build list of upcoming/missed birthdays
   const birthdays = []
   clients.forEach(c => {
@@ -97,6 +109,7 @@ export default function BirthdayNotifier({ clients, onClose }) {
     next.add(bday.key)
     setSentKeys(next)
     saveSentKeys(next)
+    sbSaveTicked([...next]).catch(() => {})
     // Open SMS via phone link
     const msg = encodeURIComponent(buildSMSMessage(bday.firstName))
     const num = bday.mobile.replace(/\s/g, '')
