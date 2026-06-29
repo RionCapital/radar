@@ -730,6 +730,8 @@ export default function ClientDashboard({ clients, updateClient }) {
                         {(() => {
                           const isActioned = l.actionNotes && l.actionNotes.length > 0
                           if (isActioned) return null
+                          const loanAcknKey = `${client.name}-${l.acc||i}-${new Date().getFullYear()}`
+                          if (acknFlags.has(loanAcknKey)) return null
                           if (flag) return <span style={{padding:'2px 6px',borderRadius:20,fontSize:9,fontWeight:500,background:flag==='overdue'?'#fde8e8':'#fef9c3',color:flag==='overdue'?'#a32d2d':'#854F0B'}}>
                             {flag==='overdue'?'Overdue':'< 120d'}
                           </span>
