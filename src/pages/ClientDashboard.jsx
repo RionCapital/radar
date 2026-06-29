@@ -219,84 +219,84 @@ function SecuritiesView({ securities, loans, bal, clientName, navigate }) {
       </div>
       {displaySecs.length === 0
         ? <div style={{textAlign:'center',color:'var(--text-tertiary)',padding:16,fontSize:11}}>{secTab==='current'?'No active securities':'No sold / historic properties'}</div>
-        : (<table style={{width:'100%',borderCollapse:'collapse',fontSize:11,tableLayout:'fixed'}}>
-        <colgroup>
-          <col style={{width:'4%'}}/>
-          <col style={{width:'28%'}}/>
-          <col style={{width:'12%'}}/>
-          <col style={{width:'12%'}}/>
-          <col style={{width:'13%'}}/>
-          <col style={{width:'7%'}}/>
-          <col style={{width:'13%'}}/>
-          <col style={{width:'11%'}}/>
-        </colgroup>
-        <thead>
-          <tr>
-            {['#','Address','Est. value','Debt balance','Lending equity','LVR',crossLoans.length?'Actual LVR *':'Actual LVR',''].map((h,i)=>(
-              <th key={i} style={thStyle({textAlign:i>1&&i<7?'right':'left'})}>{h}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {displaySecs.map((s,i) => {
-            const secNum = String(s.num||i+1)
-            const isCrossed = crossLoans.some(l => l.crossed && l.crossed.split(',').map(x=>x.trim()).includes(secNum))
-            const directDebt = loans.filter(l => !l.closed && String(l.security||'').trim()===secNum && !(l.crossed&&l.crossed.trim())).reduce((t,l)=>t+l.balance,0)
-            const lvr = s.lvr !== undefined ? s.lvr : 80
-            const lendingEquity = s.estVal ? Math.round(s.estVal * lvr/100 - directDebt) : null
-            const actualLVR = s.estVal && directDebt > 0 ? Math.round(directDebt/s.estVal*100) : 0
-            return (
-              <tr key={i} onMouseOver={e=>e.currentTarget.style.background='var(--bg)'} onMouseOut={e=>e.currentTarget.style.background='transparent'}>
-                <td style={tdStyle({color:'var(--pk)',fontWeight:500})}>{secNum}</td>
-                <td style={tdStyle()}>{s.address||'—'}</td>
-                <td style={tdStyle({textAlign:'right',fontWeight:500})}>{s.estVal?fmt(s.estVal):'—'}</td>
-                <td style={tdStyle({textAlign:'right'})}>
-                  {fmt(directDebt)}{isCrossed && <span style={{color:'#e8a020',fontSize:10,marginLeft:3,fontWeight:700}}>*</span>}
-                </td>
-                <td style={tdStyle({textAlign:'right',color:lendingEquity>0?'#27ae60':'#c0392b'})}>{lendingEquity!==null?fmt(lendingEquity):'—'}</td>
-                <td style={tdStyle({textAlign:'right'})}>{lvr}%</td>
-                <td style={tdStyle({textAlign:'right'})}>
-                  {actualLVR>0?actualLVR+'%':'—'}{isCrossed && <span style={{color:'#e8a020',fontSize:10,marginLeft:3,fontWeight:700}}>*</span>}
-                </td>
-                <td style={tdStyle({textAlign:'center'})}>
-                  <button
-                    onClick={e=>{e.stopPropagation();navigate(`/radar/clients/${encodeURIComponent(clientName)}/security-review/${i}`)}}
-                    style={{fontSize:9,padding:'3px 7px',borderRadius:5,border:'0.5px solid var(--pk)',background:'transparent',color:'var(--pk)',cursor:'pointer',fontWeight:600,whiteSpace:'nowrap'}}
-                    title="Send property review follow-up email">
-                    📧 Review
-                  </button>
-                </td>
-              </tr>
-            )
-          })}
-          {crossLoans.length > 0 && (
-            <tr style={{background:'#fef9c3'}}>
-              <td style={{...tdStyle(),color:'#854F0B',fontWeight:700,fontSize:12}}>*</td>
-              <td style={{...tdStyle(),color:'#854F0B',fontSize:11}}>
-                <strong>Shared</strong> — Crossed security loan (securities {crossLoans[0].crossed})
-              </td>
-              <td style={tdStyle({textAlign:'right',color:'#854F0B'})}>—</td>
-              <td style={{...tdStyle(),textAlign:'right',color:'#854F0B',fontWeight:500}}>{fmt(crossDebt)}</td>
-              <td style={tdStyle({textAlign:'right',color:'#854F0B'})}>—</td>
-              <td style={{...tdStyle(),textAlign:'right',color:'#854F0B'}}>—</td>
-              <td style={tdStyle({color:'#854F0B',textAlign:'right'})}>—</td>
+        : <table style={{width:'100%',borderCollapse:'collapse',fontSize:11,tableLayout:'fixed'}}>
+          <colgroup>
+            <col style={{width:'4%'}}/>
+            <col style={{width:'28%'}}/>
+            <col style={{width:'12%'}}/>
+            <col style={{width:'12%'}}/>
+            <col style={{width:'13%'}}/>
+            <col style={{width:'7%'}}/>
+            <col style={{width:'13%'}}/>
+            <col style={{width:'11%'}}/>
+          </colgroup>
+          <thead>
+            <tr>
+              {['#','Address','Est. value','Debt balance','Lending equity','LVR',crossLoans.length?'Actual LVR *':'Actual LVR',''].map((h,i)=>(
+                <th key={i} style={thStyle({textAlign:i>1&&i<7?'right':'left'})}>{h}</th>
+              ))}
             </tr>
-          )}
-          <tr style={{background:'#3D5570'}}>
-            <td colSpan={2} style={{...tdStyle(),color:'#fff',fontWeight:500}}>Total</td>
-            <td style={{...tdStyle(),color:'#fff',fontWeight:500,textAlign:'right'}}>{fmt(totalEstVal)}</td>
-            <td style={{...tdStyle(),color:'#fff',fontWeight:500,textAlign:'right'}}>{fmt(bal)}</td>
-            <td style={{...tdStyle(),color:'#EB99C2',fontWeight:500,textAlign:'right'}}>{fmt(totalLendingEquity)}</td>
-            <td style={{...tdStyle(),color:'var(--sbl)',fontSize:10,textAlign:'right'}}>—</td>
-            <td style={{...tdStyle(),color:'#EB99C2',fontWeight:500,textAlign:'right'}}>{totalActualLVR}%</td>
-          </tr>
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {displaySecs.map((s,i) => {
+              const secNum = String(s.num||i+1)
+              const isCrossed = crossLoans.some(l => l.crossed && l.crossed.split(',').map(x=>x.trim()).includes(secNum))
+              const directDebt = loans.filter(l => !l.closed && String(l.security||'').trim()===secNum && !(l.crossed&&l.crossed.trim())).reduce((t,l)=>t+l.balance,0)
+              const lvr = s.lvr !== undefined ? s.lvr : 80
+              const lendingEquity = s.estVal ? Math.round(s.estVal * lvr/100 - directDebt) : null
+              const actualLVR = s.estVal && directDebt > 0 ? Math.round(directDebt/s.estVal*100) : 0
+              return (
+                <tr key={i} onMouseOver={e=>e.currentTarget.style.background='var(--bg)'} onMouseOut={e=>e.currentTarget.style.background='transparent'}>
+                  <td style={tdStyle({color:'var(--pk)',fontWeight:500})}>{secNum}</td>
+                  <td style={tdStyle()}>{s.address||'—'}</td>
+                  <td style={tdStyle({textAlign:'right',fontWeight:500})}>{s.estVal?fmt(s.estVal):'—'}</td>
+                  <td style={tdStyle({textAlign:'right'})}>
+                    {fmt(directDebt)}{isCrossed && <span style={{color:'#e8a020',fontSize:10,marginLeft:3,fontWeight:700}}>*</span>}
+                  </td>
+                  <td style={tdStyle({textAlign:'right',color:lendingEquity>0?'#27ae60':'#c0392b'})}>{lendingEquity!==null?fmt(lendingEquity):'—'}</td>
+                  <td style={tdStyle({textAlign:'right'})}>{lvr}%</td>
+                  <td style={tdStyle({textAlign:'right'})}>
+                    {actualLVR>0?actualLVR+'%':'—'}{isCrossed && <span style={{color:'#e8a020',fontSize:10,marginLeft:3,fontWeight:700}}>*</span>}
+                  </td>
+                  <td style={tdStyle({textAlign:'center'})}>
+                    <button
+                      onClick={e=>{e.stopPropagation();navigate(`/radar/clients/${encodeURIComponent(clientName)}/security-review/${i}`)}}
+                      style={{fontSize:9,padding:'3px 7px',borderRadius:5,border:'0.5px solid var(--pk)',background:'transparent',color:'var(--pk)',cursor:'pointer',fontWeight:600,whiteSpace:'nowrap'}}
+                      title="Send property review follow-up email">
+                      📧 Review
+                    </button>
+                  </td>
+                </tr>
+              )
+            })}
+            {crossLoans.length > 0 && (
+              <tr style={{background:'#fef9c3'}}>
+                <td style={{...tdStyle(),color:'#854F0B',fontWeight:700,fontSize:12}}>*</td>
+                <td style={{...tdStyle(),color:'#854F0B',fontSize:11}}>
+                  <strong>Shared</strong> — Crossed security loan (securities {crossLoans[0].crossed})
+                </td>
+                <td style={tdStyle({textAlign:'right',color:'#854F0B'})}>—</td>
+                <td style={{...tdStyle(),textAlign:'right',color:'#854F0B',fontWeight:500}}>{fmt(crossDebt)}</td>
+                <td style={tdStyle({textAlign:'right',color:'#854F0B'})}>—</td>
+                <td style={{...tdStyle(),textAlign:'right',color:'#854F0B'}}>—</td>
+                <td style={tdStyle({color:'#854F0B',textAlign:'right'})}>—</td>
+              </tr>
+            )}
+            <tr style={{background:'#3D5570'}}>
+              <td colSpan={2} style={{...tdStyle(),color:'#fff',fontWeight:500}}>Total</td>
+              <td style={{...tdStyle(),color:'#fff',fontWeight:500,textAlign:'right'}}>{fmt(totalEstVal)}</td>
+              <td style={{...tdStyle(),color:'#fff',fontWeight:500,textAlign:'right'}}>{fmt(bal)}</td>
+              <td style={{...tdStyle(),color:'#EB99C2',fontWeight:500,textAlign:'right'}}>{fmt(totalLendingEquity)}</td>
+              <td style={{...tdStyle(),color:'var(--sbl)',fontSize:10,textAlign:'right'}}>—</td>
+              <td style={{...tdStyle(),color:'#EB99C2',fontWeight:500,textAlign:'right'}}>{totalActualLVR}%</td>
+            </tr>
+          </tbody>
+        </table>
+      }
       {crossLoans.length > 0 && (
         <div style={{fontSize:10,color:'#854F0B',marginTop:6,padding:'6px 10px',background:'#FAEEDA',borderRadius:6,borderLeft:'3px solid #e8a020',lineHeight:1.5}}>
           * Debt balance and actual LVR for crossed securities exclude the shared facility ({fmt(crossDebt)} — acc. {crossLoans.map(l=>l.acc||l.lname).join(', ')}). Shared debt is included in the total. Actual LVR is indicative only.
         </div>
-      )}
       )}
     </div>
   )
