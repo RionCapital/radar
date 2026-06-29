@@ -9,18 +9,23 @@ export function loadClients() {
   // Fast synchronous load from localStorage cache
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) return JSON.parse(saved);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      // Handle both wrapped { data, savedAt } and legacy plain array
+      return Array.isArray(parsed) ? parsed : (parsed.data || JSON.parse(JSON.stringify(BASE_DATA)));
+    }
   } catch (e) {}
   return JSON.parse(JSON.stringify(BASE_DATA));
 }
 
 export function saveClients(data) {
-  // Write to localStorage immediately (sync)
+  // Write to localStorage immediately (sync) with a timestamp
+  const payload = { data, savedAt: Date.now() }
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
   } catch (e) {}
   // Then persist to Supabase in background (async, fire-and-forget)
-  sbSaveClients(data).catch(err => console.warn('Supabase save failed:', err));
+  sbSaveClients(payload).catch(err => console.warn('Supabase save failed:', err));
   return true;
 }
 
@@ -32,14 +37,43 @@ export function resetClients() {
 }
 
 // Call this on app startup to hydrate localStorage from Supabase
-// (use in main App component with useEffect)
+// Only applies cloud data if it is newer than what's already in localStorage
 export async function syncFromSupabase() {
   try {
-    const cloudData = await sbLoadClients();
-    if (cloudData && Array.isArray(cloudData) && cloudData.length > 0) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(cloudData));
-      return cloudData;
+    const cloud = await sbLoadClients();
+    if (!cloud) return null;
+
+    // Support both wrapped { data, savedAt } and legacy plain array from Supabase
+    const cloudClients = Array.isArray(cloud) ? cloud : cloud.data;
+    const cloudSavedAt = Array.isArray(cloud) ? 0 : (cloud.savedAt || 0);
+
+    if (!cloudClients || !Array.isArray(cloudClients) || cloudClients.length === 0) return null;
+
+    // Get local timestamp
+    let localSavedAt = 0;
+    try {
+      const localRaw = localStorage.getItem(STORAGE_KEY);
+      if (localRaw) {
+        const localParsed = JSON.parse(localRaw);
+        localSavedAt = Array.isArray(localParsed) ? 0 : (localParsed.savedAt || 0);
+      }
+    } catch (e) {}
+
+    // Only overwrite local if cloud is newer (or local has no timestamp)
+    if (cloudSavedAt >= localSavedAt) {
+      const payload = { data: cloudClients, savedAt: cloudSavedAt || Date.now() };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+      return cloudClients;
     }
+
+    // Local is newer — push local up to Supabase to keep it in sync
+    const localRaw = localStorage.getItem(STORAGE_KEY);
+    if (localRaw) {
+      const localParsed = JSON.parse(localRaw);
+      const localClients = Array.isArray(localParsed) ? localParsed : localParsed.data;
+      if (localClients) sbSaveClients({ data: localClients, savedAt: localSavedAt }).catch(() => {});
+    }
+    return null; // Keep using local data
   } catch (e) {
     console.warn('Supabase sync failed, using local data:', e);
   }
