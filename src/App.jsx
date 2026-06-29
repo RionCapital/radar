@@ -118,21 +118,46 @@ export default function App() {
   } // show on load
 
   // ─── Supabase startup sync ───────────────────────────────────────────────
+  // IMPORTANT: We only pull from Supabase if localStorage has no client data.
+  // This prevents deployments from overwriting locally-applied imports/changes.
+  // localStorage is the source of truth. Supabase is the backup/restore source.
   useEffect(() => {
-    // Sync clients from Supabase on first load
-    syncFromSupabase().then(cloudClients => {
-      if (cloudClients) setClients(cloudClients)
-    })
-    // Sync deals from Supabase
-    sbLoadDeals().then(cloudDeals => {
-      if (cloudDeals && Array.isArray(cloudDeals)) {
-        setCrmDeals(cloudDeals)
-        try { localStorage.setItem('rion-crm-deals', JSON.stringify(cloudDeals)) } catch {}
-      }
-    }).catch(() => {})
-    // Sync settings from Supabase
+    const hasLocalClients = (() => {
+      try {
+        const raw = localStorage.getItem('rion-radar-clients-v13')
+        if (!raw) return false
+        const parsed = JSON.parse(raw)
+        // Support both plain array and wrapped { data, savedAt } format
+        const arr = Array.isArray(parsed) ? parsed : parsed.data
+        return Array.isArray(arr) && arr.length > 0
+      } catch { return false }
+    })()
+
+    if (!hasLocalClients) {
+      // No local data — new device or cleared browser — pull from Supabase
+      syncFromSupabase().then(cloudClients => {
+        if (cloudClients) setClients(cloudClients)
+      })
+    } else {
+      // Local data exists — push it up to Supabase to keep backup current
+      syncFromSupabase().then(() => {}).catch(() => {})
+    }
+
+    // Deals — same logic: only pull if nothing local
+    const hasLocalDeals = (() => {
+      try { const s = localStorage.getItem('rion-crm-deals'); return s && JSON.parse(s).length > 0 } catch { return false }
+    })()
+    if (!hasLocalDeals) {
+      sbLoadDeals().then(cloudDeals => {
+        if (cloudDeals && Array.isArray(cloudDeals)) {
+          setCrmDeals(cloudDeals)
+          try { localStorage.setItem('rion-crm-deals', JSON.stringify(cloudDeals)) } catch {}
+        }
+      }).catch(() => {})
+    }
+
+    // Settings and referrers — always safe to sync (don't affect client data)
     syncSettingsFromSupabase().catch(() => {})
-    // Sync referrers from Supabase
     sbLoadReferrers().then(cloudReferrers => {
       if (cloudReferrers) {
         try { localStorage.setItem('rion-marketing-referrers-v3', JSON.stringify(cloudReferrers)) } catch {}
