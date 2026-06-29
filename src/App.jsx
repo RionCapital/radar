@@ -1,6 +1,7 @@
-import React, { useState, useCallback } from 'react'
+import React, { useState, useCallback, useEffect } from 'react'
 import { Routes, Route, useLocation, Navigate } from 'react-router-dom'
-import { loadClients, saveClients } from './lib/data'
+import { loadClients, saveClients, syncFromSupabase } from './lib/data'
+import { sbLoadDeals, sbSaveDeals, sbLoadReferrers, sbSaveReferrers } from './lib/supabase'
 import { COMMISSION_HISTORY_BY_ACC, COMMISSION_SEED_VERSION } from './lib/commissionSeed'
 import Topbar from './components/Topbar'
 import Login from './pages/Login'
@@ -112,7 +113,31 @@ export default function App() {
   function updateCrmDeals(updated) {
     setCrmDeals(updated)
     try { localStorage.setItem('rion-crm-deals', JSON.stringify(updated)) } catch {}
+    sbSaveDeals(updated).catch(() => {})
   } // show on load
+
+  // ─── Supabase startup sync ───────────────────────────────────────────────
+  useEffect(() => {
+    // Sync clients from Supabase on first load
+    syncFromSupabase().then(cloudClients => {
+      if (cloudClients) setClients(cloudClients)
+    })
+    // Sync deals from Supabase
+    sbLoadDeals().then(cloudDeals => {
+      if (cloudDeals && Array.isArray(cloudDeals)) {
+        setCrmDeals(cloudDeals)
+        try { localStorage.setItem('rion-crm-deals', JSON.stringify(cloudDeals)) } catch {}
+      }
+    }).catch(() => {})
+    // Sync referrers from Supabase
+    sbLoadReferrers().then(cloudReferrers => {
+      if (cloudReferrers) {
+        try { localStorage.setItem('rion-marketing-referrers-v3', JSON.stringify(cloudReferrers)) } catch {}
+      }
+    }).catch(() => {})
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  // ─────────────────────────────────────────────────────────────────────────
+
   const [toast, setToast] = useState(null)
   const location = useLocation()
   const isHome = location.pathname === '/'

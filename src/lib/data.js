@@ -2,7 +2,11 @@ const BASE_DATA = [{"name":"Angel","connNo":1070,"stream":"Private Wealth","days
 
 const STORAGE_KEY = 'rion-radar-clients-v13';
 
+// ─── Supabase-backed load/save (with localStorage cache) ─────────────────────
+import { sbLoadClients, sbSaveClients } from './supabase.js'
+
 export function loadClients() {
+  // Fast synchronous load from localStorage cache
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) return JSON.parse(saved);
@@ -11,17 +15,35 @@ export function loadClients() {
 }
 
 export function saveClients(data) {
+  // Write to localStorage immediately (sync)
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    return true;
-  } catch (e) {
-    return false;
-  }
+  } catch (e) {}
+  // Then persist to Supabase in background (async, fire-and-forget)
+  sbSaveClients(data).catch(err => console.warn('Supabase save failed:', err));
+  return true;
 }
 
 export function resetClients() {
   localStorage.removeItem(STORAGE_KEY);
-  return JSON.parse(JSON.stringify(BASE_DATA));
+  const fresh = JSON.parse(JSON.stringify(BASE_DATA));
+  sbSaveClients(fresh).catch(err => console.warn('Supabase reset failed:', err));
+  return fresh;
+}
+
+// Call this on app startup to hydrate localStorage from Supabase
+// (use in main App component with useEffect)
+export async function syncFromSupabase() {
+  try {
+    const cloudData = await sbLoadClients();
+    if (cloudData && Array.isArray(cloudData) && cloudData.length > 0) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(cloudData));
+      return cloudData;
+    }
+  } catch (e) {
+    console.warn('Supabase sync failed, using local data:', e);
+  }
+  return null;
 }
 
 export const LOAN_TYPES = ['Home Loan (OO)','Home Loan (Inv)','SMSF','Commercial Property','Lease Doc','Term','Asset Finance','Trade Finance','Business Loan','Invoice Finance','Other'];
