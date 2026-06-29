@@ -108,7 +108,7 @@ function buildAnnualRows(clients) {
   return clients
     .filter(c => !c._demo && c.days >= 365 && c.loans.filter(l => !l.closed).length > 0)
     .sort((a, b) => b.days - a.days)
-    .slice(0, 10)
+    .slice(0, 30)
     .map(c => {
       const loan = c.loans.find(l => !l.closed) || c.loans[0]
       return {
@@ -139,7 +139,7 @@ function buildFixedRows(clients) {
       })
     })
   })
-  return rows.sort((a, b) => new Date(a.expiryDate) - new Date(b.expiryDate)).slice(0, 10)
+  return rows.sort((a, b) => new Date(a.expiryDate) - new Date(b.expiryDate)).slice(0, 30)
 }
 
 // ─── Panel C: IO Term Review ──────────────────────────────────────────────────
@@ -159,7 +159,7 @@ function buildIORows(clients) {
       })
     })
   })
-  return rows.sort((a, b) => new Date(a.expiryDate) - new Date(b.expiryDate)).slice(0, 10)
+  return rows.sort((a, b) => new Date(a.expiryDate) - new Date(b.expiryDate)).slice(0, 30)
 }
 
 // ─── Panel D: Maturing Facilities ─────────────────────────────────────────────
@@ -191,7 +191,7 @@ function buildMaturingRows(clients) {
       })
     })
   })
-  return rows.sort((a, b) => new Date(a.expiryDate) - new Date(b.expiryDate)).slice(0, 10)
+  return rows.sort((a, b) => new Date(a.expiryDate) - new Date(b.expiryDate)).slice(0, 30)
 }
 
 function BarChart({ data, keys, colors, title, formatY }) {
@@ -429,9 +429,9 @@ export default function Dashboard({ clients, onImport, onUpdateClients }) {
   const ioRows = buildIORows(clients)
   const maturingRows = buildMaturingRows(clients)
 
-  // Filter out ticked rows
+  // Filter out ticked rows, then cap at 10 so panel always shows up to 10 active items
   function filterRows(rows, panelKey) {
-    return rows.filter(r => !tickedKeys.has(`${panelKey}-${r.conn}-${r.acc}`))
+    return rows.filter(r => !tickedKeys.has(`${panelKey}-${r.conn}-${r.acc}`)).slice(0, 10)
   }
 
   function rowKey(panelKey, row) {

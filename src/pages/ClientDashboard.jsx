@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { totalBal, totalAmt, pwBal, commBal, fmt, calcOpp, ini, LOAN_TYPES, BANKS } from '../lib/data'
 import { fmtDate, dateCellStyle, loanFlag, effectiveRpmt, calcRepayment } from '../lib/dateUtils'
 import { Panel, PanelTitle, EditBtn, SaveBtn, CancelBtn, ActionBtn, FieldGroup, Pill, DateInput } from '../components/UI'
+import ReferrerPicker from '../components/ReferrerPicker'
 import NewOpportunityModal from '../components/NewOpportunityModal'
 
 const CONTACT_TYPES = ['Individual','Company','Trust','Partnership','Sole Trader']
@@ -393,6 +394,24 @@ export default function ClientDashboard({ clients, updateClient }) {
               </div>
             ))}
           </div>
+          {/* Lending Equity */}
+          <div style={{background:'rgba(255,255,255,0.08)',borderRadius:8,padding:'10px 14px'}}>
+            <div style={{fontSize:10,color:'var(--sbl)',marginBottom:6,textTransform:'uppercase',letterSpacing:'0.05em'}}>Lending equity</div>
+            <div style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:3}}>
+              <span style={{color:'var(--sbl)'}}>Available equity</span>
+              <span style={{color:totalLendingEquity>0?'#4ade80':'#f87171',fontWeight:600}}>{fmt(totalLendingEquity)}</span>
+            </div>
+            <div style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:3}}>
+              <span style={{color:'var(--sbl)'}}>Resi @80%</span>
+              <span style={{color:'#fff',fontWeight:500}}>{fmt((securities||[]).filter(s=>s.estVal).reduce((sum,s)=>sum+Math.round(s.estVal*(s.lvr||80)/100),0))}</span>
+            </div>
+            <div style={{display:'flex',justifyContent:'space-between',fontSize:12}}>
+              <span style={{color:'var(--sbl)'}}>Portfolio LVR</span>
+              <span style={{color:'#fff',fontWeight:500}}>
+                {(()=>{const tv=(securities||[]).reduce((s,x)=>s+(x.estVal||0),0);return tv>0?Math.round(bal/tv*100)+'%':'—'})()}
+              </span>
+            </div>
+          </div>
           {/* Portfolio */}
           <div style={{background:'rgba(255,255,255,0.08)',borderRadius:8,padding:'10px 14px'}}>
             <div style={{fontSize:10,color:'var(--sbl)',marginBottom:6,textTransform:'uppercase',letterSpacing:'0.05em'}}>Portfolio</div>
@@ -703,10 +722,8 @@ export default function ClientDashboard({ clients, updateClient }) {
         </div>
       </Panel>
 
-      {/* Opp score & Notes */}
+      {/* Notes + Referral Partners */}
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}}>
-
-
         <Panel>
           <PanelTitle>Contact notes & history</PanelTitle>
           <div style={{minHeight:80,marginBottom:10,maxHeight:220,overflowY:'auto'}}>
@@ -735,6 +752,22 @@ export default function ClientDashboard({ clients, updateClient }) {
             <ActionBtn variant="filled" label="Draft review email" onClick={()=>navigate(`/radar/clients/${encodeURIComponent(client.name)}/email`)}/>
             <ActionBtn variant="blue" label="Identify opportunities" onClick={()=>{}}/>
           </div>
+        </Panel>
+
+        <Panel>
+          <PanelTitle>Referral Partners</PanelTitle>
+          <ReferrerPicker
+            label=""
+            attached={client.referrers || []}
+            onAttach={r => updateClient(client.name, c => ({
+              ...c,
+              referrers: [...(c.referrers||[]).filter(x => x.name !== r.name), r]
+            }))}
+            onDetach={name => updateClient(client.name, c => ({
+              ...c,
+              referrers: (c.referrers||[]).filter(x => x.name !== name)
+            }))}
+          />
         </Panel>
       </div>
       {showNewOpp && (

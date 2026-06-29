@@ -17,6 +17,9 @@ export default function AdminSettings() {
   const [tab, setTab] = useState('commissions')
   const [editUser, setEditUser] = useState(null) // null | user object
   const [newUser, setNewUser] = useState(false)
+  const [restoreStatus, setRestoreStatus] = useState(null) // null | 'confirm' | 'success' | 'error'
+  const [restoreFile, setRestoreFile]     = useState(null)
+  const [backupDone,  setBackupDone]      = useState(false)
 
   function setRate(category, field, value) {
     setSettings(s => ({ ...s, commissionRates: { ...s.commissionRates, [category]: { ...s.commissionRates[category], [field]: parseFloat(value)||0 } } }))
@@ -60,6 +63,65 @@ export default function AdminSettings() {
     { id:'business', label:'Business Details' },
     ...(isAdmin ? [{ id:'team', label:'Team Members' }] : []),
   ]
+
+  // ── Data backup / restore ──────────────────────────────────────────────────
+  const BACKUP_KEYS = [
+    'rion-radar-clients-v12',
+    'rion-crm-deals',
+    'rion-marketing-referrers',
+    'rion-marketing-clients',
+    'rion-marketing-lenders',
+    'rion-marketing-others',
+    'rion-radar-ticked',
+    'rion-comm-seed-version',
+    'rion-marketing-referrers-version',
+    'rion-settings',
+  ]
+
+  function exportBackup() {
+    const backup = { version: '1', exportedAt: new Date().toISOString(), data: {} }
+    BACKUP_KEYS.forEach(k => {
+      const v = localStorage.getItem(k)
+      if (v) backup.data[k] = v
+    })
+    const json = JSON.stringify(backup, null, 2)
+    const blob = new Blob([json], { type: 'application/json' })
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    const date = new Date().toLocaleDateString('en-AU', { day:'2-digit', month:'short', year:'numeric' }).replace(/ /g,'-')
+    a.href = url
+    a.download = `rradar-backup-${date}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+    setBackupDone(true)
+    setTimeout(() => setBackupDone(false), 3000)
+  }
+
+  function handleRestoreFile(e) {
+    const file = e.target.files[0]
+    if (!file) return
+    setRestoreFile(file)
+    setRestoreStatus('confirm')
+  }
+
+  function confirmRestore() {
+    if (!restoreFile) return
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      try {
+        const backup = JSON.parse(e.target.result)
+        if (!backup.data) throw new Error('Invalid backup file')
+        Object.entries(backup.data).forEach(([k, v]) => localStorage.setItem(k, v))
+        setRestoreStatus('success')
+        setTimeout(() => { setRestoreStatus(null); window.location.reload() }, 2000)
+      } catch {
+        setRestoreStatus('error')
+        setTimeout(() => setRestoreStatus(null), 3000)
+      }
+    }
+    reader.readAsText(restoreFile)
+  }
+
 
   return (
     <div>
@@ -253,6 +315,85 @@ export default function AdminSettings() {
             )}
           </Card>
         )}
+
+        {/* ── Data Management ── */}
+        <Card style={{ marginTop:24 }}>
+          <div style={{ fontSize:13, fontWeight:700, color:'#3D4F6B', marginBottom:4 }}>Data Management</div>
+          <div style={{ fontSize:11, color:'#64748b', marginBottom:16, lineHeight:1.6 }}>
+            Export a full backup of all Rradar data (clients, CRM deals, referrers, commission history, settings).
+            Store the file somewhere safe — Google Drive, email to yourself, USB. Restore it any time to recover your data.
+          </div>
+
+          <div style={{ display:'flex', gap:12, flexWrap:'wrap', alignItems:'center' }}>
+            {/* Export */}
+            <button onClick={exportBackup}
+              style={{ display:'flex', alignItems:'center', gap:8, padding:'10px 20px',
+                borderRadius:8, border:'none', background:'#3D4F6B', color:'#fff',
+                fontSize:13, fontWeight:700, cursor:'pointer', fontFamily:'Montserrat,sans-serif' }}>
+              ⬇ Export Backup
+            </button>
+            {backupDone && (
+              <span style={{ fontSize:12, color:'#27ae60', fontWeight:600, fontFamily:'Montserrat,sans-serif' }}>
+                ✓ Backup downloaded!
+              </span>
+            )}
+
+            {/* Restore */}
+            <label style={{ display:'flex', alignItems:'center', gap:8, padding:'10px 20px',
+              borderRadius:8, border:'1px solid #e2e8f0', background:'#fff',
+              fontSize:13, fontWeight:600, cursor:'pointer', fontFamily:'Montserrat,sans-serif', color:'#3D4F6B' }}>
+              ⬆ Restore from Backup
+              <input type="file" accept=".json" onChange={handleRestoreFile}
+                style={{ display:'none' }} />
+            </label>
+          </div>
+
+          {/* Confirm restore */}
+          {restoreStatus === 'confirm' && (
+            <div style={{ marginTop:14, padding:'14px 16px', background:'#FEF3C7',
+              borderRadius:8, border:'1px solid #F59E0B' }}>
+              <div style={{ fontSize:13, fontWeight:700, color:'#92400E', marginBottom:6 }}>
+                ⚠ Restore will overwrite all current data
+              </div>
+              <div style={{ fontSize:12, color:'#78350F', marginBottom:12 }}>
+                File: <strong>{restoreFile?.name}</strong><br/>
+                This will replace all clients, deals, referrers, and settings with the backup. The page will reload.
+              </div>
+              <div style={{ display:'flex', gap:8 }}>
+                <button onClick={confirmRestore}
+                  style={{ padding:'8px 16px', borderRadius:7, border:'none',
+                    background:'#D97706', color:'#fff', fontSize:12, fontWeight:700, cursor:'pointer' }}>
+                  Yes, restore now
+                </button>
+                <button onClick={() => { setRestoreStatus(null); setRestoreFile(null) }}
+                  style={{ padding:'8px 16px', borderRadius:7, border:'1px solid #e2e8f0',
+                    background:'#fff', fontSize:12, cursor:'pointer' }}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
+          {restoreStatus === 'success' && (
+            <div style={{ marginTop:14, padding:'12px 16px', background:'#DCFCE7',
+              borderRadius:8, border:'1px solid #86EFAC', fontSize:13, color:'#166534', fontWeight:600 }}>
+              ✓ Data restored successfully — reloading…
+            </div>
+          )}
+
+          {restoreStatus === 'error' && (
+            <div style={{ marginTop:14, padding:'12px 16px', background:'#FEE2E2',
+              borderRadius:8, border:'1px solid #FECACA', fontSize:13, color:'#991B1B', fontWeight:600 }}>
+              ✗ Invalid backup file — please check the file and try again.
+            </div>
+          )}
+
+          <div style={{ marginTop:16, paddingTop:14, borderTop:'1px solid #f1f5f9',
+            fontSize:11, color:'#94a3b8', fontFamily:'Montserrat,sans-serif' }}>
+            💡 Tip: Export a backup before every major update, and store it in Google Drive or email it to yourself.
+          </div>
+        </Card>
+
       </div>
     </div>
   )
