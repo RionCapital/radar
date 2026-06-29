@@ -456,10 +456,14 @@ export default function ClientDashboard({ clients, updateClient }) {
                 if (!f) return
                 const isActioned = l.actionNotes && l.actionNotes.length > 0
                 if (isActioned) return
+                // Determine flag type label from loan fields
+                const flagType = l.io ? 'IO' : l.fixed ? 'Fixed' : l.balloon ? 'Balloon' : l.rpmt === 'IO' ? 'IO' : ''
+                const accLabel = l.acc ? `Loan: ${l.acc}` : l.lname || `Loan ${i+1}`
+                const flagLabel = flagType ? `${accLabel} (${flagType})` : accLabel
                 flagItems.push(
                   <div key={i} style={{fontSize:11,padding:'3px 0',display:'flex',gap:6,alignItems:'center'}}>
                     <span style={{width:7,height:7,borderRadius:'50%',background:f==='overdue'?'#e74c3c':'#e8a020',display:'inline-block',flexShrink:0}}/>
-                    <span style={{color:f==='overdue'?'#fca5a5':'#fde68a',fontSize:10}}>{l.lname||`Loan ${i+1}`}</span>
+                    <span style={{color:f==='overdue'?'#fca5a5':'#fde68a',fontSize:10}}>{flagLabel}</span>
                   </div>
                 )
               })
