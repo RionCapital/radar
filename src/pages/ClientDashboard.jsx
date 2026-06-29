@@ -290,6 +290,15 @@ export default function ClientDashboard({ clients, updateClient }) {
   const [editingLoanIdx, setEditingLoanIdx] = useState(null)
   const [loanDraft, setLoanDraft] = useState(null)
   const [secPicker, setSecPicker] = useState(null) // loanIdx for picker open
+  const [acknFlags, setAcknFlags] = useState(() => {
+    try { return new Set(JSON.parse(localStorage.getItem('rion-radar-ackn-flags') || '[]')) } catch { return new Set() }
+  })
+  function acknowledgeFlag(key) {
+    const next = new Set(acknFlags)
+    next.add(key)
+    setAcknFlags(next)
+    try { localStorage.setItem('rion-radar-ackn-flags', JSON.stringify([...next])) } catch {}
+  }
   const [pickerPos, setPickerPos] = useState({top:0,left:0})
 
   // Stable setDraft callback so child edit components don't remount
@@ -450,7 +459,7 @@ export default function ClientDashboard({ clients, updateClient }) {
                   </div>
                 )
               }
-              // Loan-level flags (IO, fixed, balloon) — skip if actioned
+              // Loan-level flags (IO, fixed, balloon) — skip if actioned or acknowledged
               client.loans.forEach((l,i) => {
                 const f = loanFlag(l)
                 if (!f) return
@@ -460,10 +469,15 @@ export default function ClientDashboard({ clients, updateClient }) {
                 const flagType = l.io ? 'IO' : l.fixed ? 'Fixed' : l.balloon ? 'Balloon' : l.rpmt === 'IO' ? 'IO' : ''
                 const accLabel = l.acc ? `Loan: ${l.acc}` : l.lname || `Loan ${i+1}`
                 const flagLabel = flagType ? `${accLabel} (${flagType})` : accLabel
+                const acknKey = `${client.name}-${l.acc||i}-${new Date().getFullYear()}`
+                if (acknFlags.has(acknKey)) return
                 flagItems.push(
-                  <div key={i} style={{fontSize:11,padding:'3px 0',display:'flex',gap:6,alignItems:'center'}}>
-                    <span style={{width:7,height:7,borderRadius:'50%',background:f==='overdue'?'#e74c3c':'#e8a020',display:'inline-block',flexShrink:0}}/>
-                    <span style={{color:f==='overdue'?'#fca5a5':'#fde68a',fontSize:10}}>{flagLabel}</span>
+                  <div key={i} style={{fontSize:11,padding:'3px 0',display:'flex',gap:6,alignItems:'center',justifyContent:'space-between'}}>
+                    <div style={{display:'flex',gap:6,alignItems:'center'}}>
+                      <span style={{width:7,height:7,borderRadius:'50%',background:f==='overdue'?'#e74c3c':'#e8a020',display:'inline-block',flexShrink:0}}/>
+                      <span style={{color:f==='overdue'?'#fca5a5':'#fde68a',fontSize:10}}>{flagLabel}</span>
+                    </div>
+                    <button onClick={()=>acknowledgeFlag(acknKey)} style={{fontSize:9,padding:'1px 7px',borderRadius:10,border:'1px solid rgba(255,255,255,0.2)',background:'rgba(255,255,255,0.08)',color:'rgba(255,255,255,0.5)',cursor:'pointer',flexShrink:0,fontFamily:'inherit'}}>✓ Acknowledge</button>
                   </div>
                 )
               })
