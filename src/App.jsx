@@ -120,10 +120,16 @@ export default function App() {
   // ─── Supabase startup sync ───────────────────────────────────────────────
   useEffect(() => {
     async function startupSync() {
-      // 1. Always push local clients up to Supabase (local is source of truth)
-      const localClients = loadClients()
-      if (localClients && localClients.length > 0) {
-        sbSaveClients(localClients).catch(() => {})
+      // 1. Sync clients — use timestamp comparison to pick newest version
+      const cloudClients = await syncFromSupabase()
+      if (cloudClients) {
+        setClients(cloudClients)
+      } else {
+        // Local is newer — push it up to Supabase
+        const localClients = loadClients()
+        if (localClients && localClients.length > 0) {
+          sbSaveClients({ data: localClients, savedAt: Date.now() }).catch(() => {})
+        }
       }
 
       // 2. Push local deals up to Supabase
