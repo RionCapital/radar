@@ -1,5 +1,6 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { sbLoadMarketing } from '../lib/supabase'
 
 const NAVY  = '#3D4F6B'
 const PINK  = '#EB99C2'
@@ -77,8 +78,28 @@ function ReferrerPill({ name, tier, onRemove }) {
 export default function ReferrerPicker({ attached = [], onAttach, onDetach, compact = false, label = 'Referral Partner' }) {
   const [open,   setOpen]   = useState(false)
   const [search, setSearch] = useState('')
+  const [referrers, setReferrers] = useState(() => loadReferrers())
+  const [loadingCloud, setLoadingCloud] = useState(false)
 
-  const referrers = useMemo(() => loadReferrers(), [open]) // reload when opened
+  // Whenever the picker is opened, refresh from whatever's in localStorage right now
+  // (in case Marketing page updated it), AND — this is the actual fix — if that
+  // local cache is empty, fetch straight from Supabase ourselves instead of
+  // silently telling the user "no referrers" just because they opened a client
+  // page before ever visiting Marketing in this browser session.
+  useEffect(() => {
+    if (!open) return
+    const local = loadReferrers()
+    setReferrers(local)
+    if (local.length === 0) {
+      setLoadingCloud(true)
+      sbLoadMarketing().then(cloud => {
+        if (cloud?.referrers?.length) {
+          try { localStorage.setItem('rion-marketing-referrers', JSON.stringify(cloud.referrers)) } catch {}
+          setReferrers(cloud.referrers)
+        }
+      }).catch(() => {}).finally(() => setLoadingCloud(false))
+    }
+  }, [open])
 
   const filtered = useMemo(() => {
     if (!search.trim()) return referrers.slice(0, 12)
@@ -168,9 +189,11 @@ export default function ReferrerPicker({ attached = [], onAttach, onDetach, comp
             {filtered.length === 0 && (
               <div style={{ padding:'14px', fontSize:12, color:'#94a3b8',
                 fontFamily:'Montserrat,sans-serif', textAlign:'center' }}>
-                {referrers.length === 0
-                  ? 'No referrers found — add them in Marketing first'
-                  : 'No matches found'}
+                {loadingCloud
+                  ? 'Loading referral partners…'
+                  : referrers.length === 0
+                    ? 'No referrers found — add them in Marketing first'
+                    : 'No matches found'}
               </div>
             )}
             {filtered.map((r, i) => {
