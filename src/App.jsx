@@ -2,7 +2,7 @@ import React, { useState, useCallback, useEffect } from 'react'
 import { Routes, Route, useLocation, Navigate } from 'react-router-dom'
 import { loadClients, saveClients, syncFromSupabase } from './lib/data'
 import { syncSettingsFromSupabase } from './lib/settings'
-import { sbLoadDeals, sbSaveDeals, sbLoadReferrers, sbSaveReferrers } from './lib/supabase'
+import { sbLoadDeals, sbSaveDeals, sbLoadReferrers, sbSaveReferrers, sbSaveClients, sbSaveSettings } from './lib/supabase'
 import { COMMISSION_HISTORY_BY_ACC, COMMISSION_SEED_VERSION } from './lib/commissionSeed'
 import Topbar from './components/Topbar'
 import Login from './pages/Login'
@@ -131,9 +131,11 @@ export default function App() {
         const localDeals = localStorage.getItem('rion-crm-deals')
         if (localDeals) {
           const parsed = JSON.parse(localDeals)
-          if (parsed && Array.isArray(parsed)) sbSaveDeals(parsed).catch(() => {})
+          if (parsed && Array.isArray(parsed)) {
+            sbSaveDeals(parsed).catch(e => console.warn('deals push failed:', e))
+          }
         }
-      } catch {}
+      } catch (e) { console.warn('deals read failed:', e) }
 
       // 3. Push settings up to Supabase
       try {
@@ -141,11 +143,10 @@ export default function App() {
         if (localSettings) {
           const parsed = JSON.parse(localSettings)
           if (parsed && typeof parsed === 'object') {
-            const { sbSaveSettings } = await import('./lib/supabase')
-            sbSaveSettings(parsed).catch(() => {})
+            sbSaveSettings(parsed).catch(e => console.warn('settings push failed:', e))
           }
         }
-      } catch {}
+      } catch (e) { console.warn('settings read failed:', e) }
 
       // 4. Load referrers from Supabase (referrers table has the 325 contacts)
       try {
