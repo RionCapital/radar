@@ -56,56 +56,13 @@ function RequireAuth({ children }) {
 }
 
 export default function App() {
-  const [clients, setClients] = useState(() => {
-    const loaded = loadClients()
-    // One-time migration: fix bad month key '2026-30' → '2026-04' from filename parsing bug
-    let needsSave = false
-    const fixed = loaded.map(c => ({
-      ...c,
-      loans: c.loans.map(l => {
-        const fixHistory = (arr) => (arr || []).map(h => {
-          if (h.month === '2026-30' || h.month === '2026-05') { needsSave = true; return { ...h, month: '2026-04' } }
-          return h
-        })
-        return { ...l, balanceHistory: fixHistory(l.balanceHistory), commissionHistory: fixHistory(l.commissionHistory) }
-      })
-    }))
-    if (needsSave) saveClients(fixed)
-
-    // One-time seed: inject full historic commission history from all XLS files
-    const seeded = localStorage.getItem('rion-comm-seed-version')
-    if (seeded !== COMMISSION_SEED_VERSION) {
-      const withComm = (needsSave ? fixed : loaded).map(c => ({
-        ...c,
-        loans: c.loans.map(l => {
-          const acc = String(l.acc || '').trim()
-          if (!acc) return l
-          const history = COMMISSION_HISTORY_BY_ACC[acc]
-          if (!history || history.length === 0) return l
-          // Merge: keep any manually imported entries, add historic ones for months not yet present
-          const existingMonths = new Set((l.commissionHistory || []).map(h => h.month))
-          const existingBalMonths = new Set((l.balanceHistory || []).map(h => h.month))
-          const newCommEntries = history
-            .filter(h => !existingMonths.has(h.month))
-            .map(h => ({ month: h.month, trailComm: h.trailComm, upfrontComm: h.upfrontComm, gst: h.gst, totalPaid: h.totalPaid }))
-          const newBalEntries = history
-            .filter(h => !existingBalMonths.has(h.month) && h.balance > 0)
-            .map(h => ({ month: h.month, balance: h.balance }))
-          if (newCommEntries.length === 0 && newBalEntries.length === 0) return l
-          const commHistory = [...(l.commissionHistory || []), ...newCommEntries]
-            .sort((a, b) => a.month.localeCompare(b.month))
-          const balHistory = [...(l.balanceHistory || []), ...newBalEntries]
-            .sort((a, b) => a.month.localeCompare(b.month))
-          return { ...l, commissionHistory: commHistory, balanceHistory: balHistory }
-        })
-      }))
-      saveClients(withComm)
-      localStorage.setItem('rion-comm-seed-version', COMMISSION_SEED_VERSION)
-      return withComm
-    }
-
-    return needsSave ? fixed : loaded
-  })
+  // NOTE: We deliberately do NOT run the one-time migration / commission-seed logic here.
+  // Doing so against loadClients()'s BASE_DATA fallback (which happens on any fresh
+  // cache-clear, before Supabase has had a chance to sync) was the cause of edits
+  // reverting: the seed would build its result from the stale hardcoded BASE_DATA
+  // snapshot and push it to Supabase, overwriting real edits. That logic now runs
+  // in the startupSync effect below, AFTER cloud sync has resolved to real data.
+  const [clients, setClients] = useState(() => loadClients())
   const [showBirthdays, setShowBirthdays] = useState(true)
   const [crmDeals, setCrmDeals] = useState(() => {
     try { const s = localStorage.getItem('rion-crm-deals'); if (s) return JSON.parse(s) } catch {}
@@ -147,6 +104,57 @@ export default function App() {
         }
         // Do NOT push BASE_DATA to Supabase
       }
+
+      // 1.5. One-time migration + commission-history seed — now safe to run because
+      // `clients` state has already been settled to real data (from cloud sync above,
+      // or from a genuine local cache). This NEVER touches BASE_DATA.
+      setClients(prev => {
+        let needsSave = false
+        const fixed = prev.map(c => ({
+          ...c,
+          loans: c.loans.map(l => {
+            const fixHistory = (arr) => (arr || []).map(h => {
+              if (h.month === '2026-30' || h.month === '2026-05') { needsSave = true; return { ...h, month: '2026-04' } }
+              return h
+            })
+            return { ...l, balanceHistory: fixHistory(l.balanceHistory), commissionHistory: fixHistory(l.commissionHistory) }
+          })
+        }))
+
+        const seeded = localStorage.getItem('rion-comm-seed-version')
+        if (seeded !== COMMISSION_SEED_VERSION) {
+          const withComm = (needsSave ? fixed : prev).map(c => ({
+            ...c,
+            loans: c.loans.map(l => {
+              const acc = String(l.acc || '').trim()
+              if (!acc) return l
+              const history = COMMISSION_HISTORY_BY_ACC[acc]
+              if (!history || history.length === 0) return l
+              // Merge: keep any manually imported entries, add historic ones for months not yet present
+              const existingMonths = new Set((l.commissionHistory || []).map(h => h.month))
+              const existingBalMonths = new Set((l.balanceHistory || []).map(h => h.month))
+              const newCommEntries = history
+                .filter(h => !existingMonths.has(h.month))
+                .map(h => ({ month: h.month, trailComm: h.trailComm, upfrontComm: h.upfrontComm, gst: h.gst, totalPaid: h.totalPaid }))
+              const newBalEntries = history
+                .filter(h => !existingBalMonths.has(h.month) && h.balance > 0)
+                .map(h => ({ month: h.month, balance: h.balance }))
+              if (newCommEntries.length === 0 && newBalEntries.length === 0) return l
+              const commHistory = [...(l.commissionHistory || []), ...newCommEntries]
+                .sort((a, b) => a.month.localeCompare(b.month))
+              const balHistory = [...(l.balanceHistory || []), ...newBalEntries]
+                .sort((a, b) => a.month.localeCompare(b.month))
+              return { ...l, commissionHistory: commHistory, balanceHistory: balHistory }
+            })
+          }))
+          saveClients(withComm)
+          localStorage.setItem('rion-comm-seed-version', COMMISSION_SEED_VERSION)
+          return withComm
+        }
+
+        if (needsSave) { saveClients(fixed); return fixed }
+        return prev
+      })
 
       // 2. Push local deals up to Supabase
       try {
