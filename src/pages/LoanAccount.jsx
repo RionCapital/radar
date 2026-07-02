@@ -1,3 +1,4 @@
+import { sbSaveTicked } from '../lib/supabase'
 import React, { useState, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { fmt } from '../lib/data'
@@ -314,6 +315,7 @@ export default function LoanAccount({ clients, updateClient }) {
                       return !k.includes(client.name)
                     })
                     localStorage.setItem('rion-radar-ticked', JSON.stringify(filtered))
+                    sbSaveTicked(filtered).catch(() => {})
                   } catch(e) {}
                 }}
                 style={{

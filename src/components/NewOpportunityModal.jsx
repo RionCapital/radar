@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
+import { sbSaveDeals } from '../lib/supabase'
 
 const STAGES = ['1. Lead','2. Strategy','3. Pre-Lodged','4. Lodged','5. Conditional','6. Unconditional','7. Settled','8. Withdrawn']
 const CATEGORIES = ['Residential','Asset Finance','Commercial Loans','Business Loans','SMSF','Invoice Finance','Other']
@@ -19,7 +20,7 @@ const lbl = { fontSize: 10, fontWeight: 600, color: '#64748b', textTransform: 'u
 // Load clients from localStorage
 function loadClients() {
   try {
-    const s = localStorage.getItem('rion-radar-clients-v12')
+    const s = localStorage.getItem('rion-radar-clients-v13')
     return s ? JSON.parse(s) : []
   } catch { return [] }
 }
@@ -34,6 +35,7 @@ function loadDeals() {
 
 function saveDeals(deals) {
   try { localStorage.setItem('rion-crm-deals', JSON.stringify(deals)) } catch {}
+  sbSaveDeals(deals).catch(() => {})
 }
 
 export default function NewOpportunityModal({ onClose, onCreated, prefillClientName = '' }) {

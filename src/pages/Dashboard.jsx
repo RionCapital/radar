@@ -1,7 +1,8 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { totalBal, fmt } from '../lib/data'
 import { fmtDate, rollingYTD, quarterlyIncome, expiryBadge, daysUntil } from '../lib/dateUtils'
 import { Panel, PanelTitle, DayBadge } from '../components/UI'
+import { sbSaveTicked, sbLoadTicked } from '../lib/supabase'
 import { useNavigate } from 'react-router-dom'
 
 const COMMISSION = [
@@ -405,6 +406,17 @@ export default function Dashboard({ clients, onImport, onUpdateClients }) {
     try { return new Set(JSON.parse(localStorage.getItem('rion-radar-ticked') || '[]')) } catch { return new Set() }
   })
 
+  // Sync ticked items from Supabase on load
+  useEffect(() => {
+    sbLoadTicked().then(cloud => {
+      if (cloud && Array.isArray(cloud) && cloud.length > 0) {
+        const merged = new Set([...tickedKeys, ...cloud])
+        setTickedKeys(merged)
+        try { localStorage.setItem('rion-radar-ticked', JSON.stringify([...merged])) } catch {}
+      }
+    }).catch(() => {})
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
   const COMM = mergeCommission(clients)
   const latest = COMM[COMM.length - 1]
   const allLoans = clients.flatMap(c => c.loans)
@@ -481,6 +493,7 @@ export default function Dashboard({ clients, onImport, onUpdateClients }) {
       const next = new Set(prev)
       next.add(key)
       try { localStorage.setItem('rion-radar-ticked', JSON.stringify([...next])) } catch {}
+      sbSaveTicked([...next]).catch(() => {})
       return next
     })
   }

@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react'
+import React, { useState, useCallback, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { totalBal, totalAmt, pwBal, commBal, fmt, calcOpp, ini, LOAN_TYPES, BANKS } from '../lib/data'
 import { fmtDate, dateCellStyle, loanFlag, effectiveRpmt, calcRepayment } from '../lib/dateUtils'
@@ -326,8 +326,22 @@ export default function ClientDashboard({ clients, updateClient }) {
     const next = new Set(acknFlags)
     next.add(key)
     setAcknFlags(next)
-    try { localStorage.setItem('rion-radar-ackn-flags', JSON.stringify([...next])) } catch {}
+    const arr = [...next]
+    try { localStorage.setItem('rion-radar-ackn-flags', JSON.stringify(arr)) } catch {}
+    // Sync to Supabase so acknowledged flags carry across devices
+    sbSaveMarketing({ _acknFlags: arr }).catch(() => {})
   }
+
+  // Load acknowledged flags from Supabase on mount
+  useEffect(() => {
+    sbLoadMarketing().then(cloud => {
+      if (cloud?._acknFlags?.length) {
+        const merged = new Set([...acknFlags, ...cloud._acknFlags])
+        setAcknFlags(merged)
+        try { localStorage.setItem('rion-radar-ackn-flags', JSON.stringify([...merged])) } catch {}
+      }
+    }).catch(() => {})
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
   const [pickerPos, setPickerPos] = useState({top:0,left:0})
 
   // Stable setDraft callback so child edit components don't remount
