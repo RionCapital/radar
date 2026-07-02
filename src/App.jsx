@@ -120,16 +120,32 @@ export default function App() {
   // ─── Supabase startup sync ───────────────────────────────────────────────
   useEffect(() => {
     async function startupSync() {
-      // 1. Sync clients — use timestamp comparison to pick newest version
-      const cloudClients = await syncFromSupabase()
-      if (cloudClients) {
-        setClients(cloudClients)
-      } else {
-        // Local is newer — push it up to Supabase
-        const localClients = loadClients()
-        if (localClients && localClients.length > 0) {
-          sbSaveClients({ data: localClients, savedAt: Date.now() }).catch(() => {})
+      // 1. Sync clients — check local timestamp first
+      const localRaw = localStorage.getItem('rion-radar-clients-v13')
+      let localSavedAt = 0
+      let localClients = null
+      if (localRaw) {
+        try {
+          const parsed = JSON.parse(localRaw)
+          localSavedAt = Array.isArray(parsed) ? 0 : (parsed.savedAt || 0)
+          localClients = Array.isArray(parsed) ? parsed : parsed.data
+        } catch {}
+      }
+
+      if (localSavedAt > 0 && localClients) {
+        // Local has real user data — let syncFromSupabase compare timestamps
+        const cloudClients = await syncFromSupabase()
+        if (cloudClients) {
+          setClients(cloudClients)
         }
+        // If cloudClients is null, local was newer — already pushed by syncFromSupabase
+      } else {
+        // Local is empty (cache cleared) — always trust Supabase
+        const cloudClients = await syncFromSupabase()
+        if (cloudClients) {
+          setClients(cloudClients)
+        }
+        // Do NOT push BASE_DATA to Supabase
       }
 
       // 2. Push local deals up to Supabase
