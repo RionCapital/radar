@@ -118,51 +118,34 @@ export default function App() {
   } // show on load
 
   // ─── Supabase startup sync ───────────────────────────────────────────────
-  // IMPORTANT: We only pull from Supabase if localStorage has no client data.
-  // This prevents deployments from overwriting locally-applied imports/changes.
-  // localStorage is the source of truth. Supabase is the backup/restore source.
   useEffect(() => {
-    const hasLocalClients = (() => {
-      try {
-        const raw = localStorage.getItem('rion-radar-clients-v13')
-        if (!raw) return false
-        const parsed = JSON.parse(raw)
-        // Support both plain array and wrapped { data, savedAt } format
-        const arr = Array.isArray(parsed) ? parsed : parsed.data
-        return Array.isArray(arr) && arr.length > 0
-      } catch { return false }
-    })()
-
-    if (!hasLocalClients) {
-      // No local data — new device or cleared browser — pull from Supabase
-      syncFromSupabase().then(cloudClients => {
-        if (cloudClients) setClients(cloudClients)
-      })
-    } else {
-      // Local data exists — push it up to Supabase to keep backup current
-      syncFromSupabase().then(() => {}).catch(() => {})
-    }
-
-    // Deals — same logic: only pull if nothing local
-    const hasLocalDeals = (() => {
-      try { const s = localStorage.getItem('rion-crm-deals'); return s && JSON.parse(s).length > 0 } catch { return false }
-    })()
-    if (!hasLocalDeals) {
-      sbLoadDeals().then(cloudDeals => {
-        if (cloudDeals && Array.isArray(cloudDeals)) {
-          setCrmDeals(cloudDeals)
-          try { localStorage.setItem('rion-crm-deals', JSON.stringify(cloudDeals)) } catch {}
-        }
-      }).catch(() => {})
-    }
-
-    // Settings and referrers — always safe to sync (don't affect client data)
-    syncSettingsFromSupabase().catch(() => {})
-    sbLoadReferrers().then(cloudReferrers => {
-      if (cloudReferrers) {
-        try { localStorage.setItem('rion-marketing-referrers-v3', JSON.stringify(cloudReferrers)) } catch {}
+    async function startupSync() {
+      // 1. Always push local clients up to Supabase (local is source of truth)
+      const localClients = loadClients()
+      if (localClients && localClients.length > 0) {
+        sbSaveClients(localClients).catch(() => {})
       }
-    }).catch(() => {})
+
+      // 2. Push local deals up to Supabase
+      try {
+        const localDeals = localStorage.getItem('rion-crm-deals')
+        if (localDeals) {
+          const parsed = JSON.parse(localDeals)
+          if (parsed && parsed.length > 0) sbSaveDeals(parsed).catch(() => {})
+      } catch {}
+
+      // 3. Push settings up to Supabase
+      syncSettingsFromSupabase().catch(() => {})
+
+      // 4. Load referrers from Supabase (referrers table has the 325 contacts)
+      try {
+        const cloudReferrers = await sbLoadReferrers()
+        if (cloudReferrers) {
+          try { localStorage.setItem('rion-marketing-referrers-v3', JSON.stringify(cloudReferrers)) } catch {}
+        }
+      } catch {}
+    }
+    startupSync()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
   // ─────────────────────────────────────────────────────────────────────────
 
