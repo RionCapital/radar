@@ -131,12 +131,21 @@ export default function App() {
         const localDeals = localStorage.getItem('rion-crm-deals')
         if (localDeals) {
           const parsed = JSON.parse(localDeals)
-          if (parsed && parsed.length > 0) sbSaveDeals(parsed).catch(() => {})
+          if (parsed && Array.isArray(parsed)) sbSaveDeals(parsed).catch(() => {})
         }
       } catch {}
 
       // 3. Push settings up to Supabase
-      syncSettingsFromSupabase().catch(() => {})
+      try {
+        const localSettings = localStorage.getItem('rion-settings-v1')
+        if (localSettings) {
+          const parsed = JSON.parse(localSettings)
+          if (parsed && typeof parsed === 'object') {
+            const { sbSaveSettings } = await import('./lib/supabase')
+            sbSaveSettings(parsed).catch(() => {})
+          }
+        }
+      } catch {}
 
       // 4. Load referrers from Supabase (referrers table has the 325 contacts)
       try {
