@@ -132,6 +132,7 @@ export default function App() {
         if (localDeals) {
           const parsed = JSON.parse(localDeals)
           if (parsed && parsed.length > 0) sbSaveDeals(parsed).catch(() => {})
+        }
       } catch {}
 
       // 3. Push settings up to Supabase
