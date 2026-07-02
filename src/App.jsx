@@ -2,7 +2,7 @@ import React, { useState, useCallback, useEffect } from 'react'
 import { Routes, Route, useLocation, Navigate } from 'react-router-dom'
 import { loadClients, saveClients, syncFromSupabase } from './lib/data'
 import { syncSettingsFromSupabase } from './lib/settings'
-import { sbLoadDeals, sbSaveDeals, sbLoadReferrers, sbSaveReferrers, sbSaveClients, sbSaveSettings } from './lib/supabase'
+import { sbSaveDeals, sbSaveClients, sbSaveSettings } from './lib/supabase'
 import { COMMISSION_HISTORY_BY_ACC, COMMISSION_SEED_VERSION } from './lib/commissionSeed'
 import Topbar from './components/Topbar'
 import Login from './pages/Login'
@@ -178,13 +178,10 @@ export default function App() {
         }
       } catch (e) { console.warn('settings read failed:', e) }
 
-      // 4. Load referrers from Supabase (referrers table has the 325 contacts)
-      try {
-        const cloudReferrers = await sbLoadReferrers()
-        if (cloudReferrers) {
-          try { localStorage.setItem('rion-marketing-referrers-v3', JSON.stringify(cloudReferrers)) } catch {}
-        }
-      } catch {}
+      // (Removed: a step here used to pull from a legacy 'referrers' Supabase
+      // table into a 'rion-marketing-referrers-v3' localStorage key that
+      // nothing in the app actually reads. Marketing.jsx and ReferrerPicker
+      // both read/write the current 'marketing' table via 'rion-marketing-referrers'.)
     }
     startupSync()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps

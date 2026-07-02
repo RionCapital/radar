@@ -2,7 +2,6 @@ import { useState, useEffect, useMemo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { loadClients } from '../lib/data'
 import { sbLoadMarketing, sbSaveMarketing } from '../lib/supabase'
-import { DEFAULT_REFERRERS } from '../lib/referrersData'
 import { loadSettings } from '../lib/settings'
 
 const C = {
@@ -1439,18 +1438,7 @@ export default function Marketing() {
   }, [])
   const defaultBroker = brokers[0]?.name || 'Cameron Finlayson' 
   const [clientOverrides, setClientOverrides] = useState(() => loadStore(STORAGE_KEYS.clientOv))
-  const [referrers, setReferrers] = useState(() => {
-    // v2 = cleaned (nan nan removed). If stored version differs, reseed.
-    const REFERRER_VERSION = 'v3'
-    const storedVer = localStorage.getItem('rion-marketing-referrers-version')
-    if (storedVer !== REFERRER_VERSION) {
-      saveStore(STORAGE_KEYS.referrers, DEFAULT_REFERRERS)
-      localStorage.setItem('rion-marketing-referrers-version', REFERRER_VERSION)
-      return DEFAULT_REFERRERS
-    }
-    const stored = loadStore(STORAGE_KEYS.referrers)
-    return stored.length > 0 ? stored : DEFAULT_REFERRERS
-  })
+  const [referrers, setReferrers] = useState(() => loadStore(STORAGE_KEYS.referrers))
   const [lenders,   setLenders]   = useState(() => loadStore(STORAGE_KEYS.lenders))
   const [others,    setOthers]    = useState(() => loadStore(STORAGE_KEYS.others))
 

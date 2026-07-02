@@ -1,6 +1,6 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { PIPELINE_DATA } from '../lib/pipelineData'
+import { loadDeals, syncDealsFromSupabase } from '../lib/deals'
 import { fmt } from '../lib/data'
 import CRMTopbar from '../components/CRMTopbar'
 
@@ -203,10 +203,19 @@ function DealListModal({ category, deals, onClose, navigate }) {
 export default function CRMDashboard() {
   const navigate = useNavigate()
   const [selectedCat, setSelectedCat] = useState(null)
+  const [deals, setDeals] = useState(() => loadDeals())
+
+  // If the local cache was empty on load (e.g. cache just cleared), pull the
+  // real deals down from Supabase instead of showing nothing.
+  useEffect(() => {
+    syncDealsFromSupabase().then(cloud => {
+      if (cloud) setDeals(cloud)
+    })
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const settled = useMemo(() =>
-    PIPELINE_DATA.filter(d => d.Status === '7. Settled' && d['Date Settled'])
-  , [])
+    deals.filter(d => d.Status === '7. Settled' && d['Date Settled'])
+  , [deals])
 
   const today = new Date()
 

@@ -1,8 +1,8 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react'
 import ReactDOM from 'react-dom'
 import { useNavigate } from 'react-router-dom'
-import { PIPELINE_DATA } from '../lib/pipelineData'
 import { sbSaveDeals } from '../lib/supabase'
+import { loadDeals, syncDealsFromSupabase } from '../lib/deals'
 import { loadSettings, calcUpfront } from '../lib/settings'
 import { fmt } from '../lib/data'
 import CRMTopbar, { getBusinessDaysLeft, MONTH_NAMES } from '../components/CRMTopbar'
@@ -399,10 +399,17 @@ function InlineDateCell({ deal, onSave }) {
 export default function CRM({ clients, onUpdateClients }) {
   const navigate = useNavigate()
   const settings = useMemo(() => loadSettings(), [])
-  const [deals, setDeals] = useState(() => {
-    try { const s=localStorage.getItem('rion-crm-deals'); if(s) return JSON.parse(s) } catch {}
-    return PIPELINE_DATA
-  })
+  const [deals, setDeals] = useState(() => loadDeals())
+
+  // If the local cache was empty on load (e.g. cache just cleared), pull the
+  // real deals down from Supabase instead of silently working from nothing.
+  // This never overwrites a session that already has local data.
+  useEffect(() => {
+    syncDealsFromSupabase().then(cloud => {
+      if (cloud) setDeals(cloud)
+    })
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
   const [viewMode, setViewMode] = useState('list')
   const [showForecast, setShowForecast] = useState(true)
   const [showNewOpp, setShowNewOpp] = useState(false)

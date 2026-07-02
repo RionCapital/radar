@@ -1,6 +1,6 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { loadSettings, saveSettings, DEFAULT_SETTINGS, getCurrentUser } from '../lib/settings'
+import { loadSettings, saveSettings, syncSettingsFromSupabase, DEFAULT_SETTINGS, getCurrentUser } from '../lib/settings'
 
 const inp = { border:'1px solid #e8eaed', borderRadius:6, padding:'6px 10px', fontSize:12, width:'100%', boxSizing:'border-box', fontFamily:'inherit' }
 const Card = ({ children, style }) => <div style={{ background:'#fff', borderRadius:8, border:'0.5px solid #e8eaed', padding:'16px 18px', ...style }}>{children}</div>
@@ -13,6 +13,17 @@ export default function AdminSettings() {
   const currentUser = getCurrentUser()
   const isAdmin = currentUser?.role === 'admin'
   const [settings, setSettings] = useState(() => loadSettings())
+
+  // syncSettingsFromSupabase() already existed in lib/settings.js but was
+  // never actually called anywhere — meaning a cleared cache would silently
+  // fall back to DEFAULT_SETTINGS (including the default commission rates
+  // and the default login password) until the next manual save overwrote
+  // the real settings in Supabase with those defaults.
+  useEffect(() => {
+    syncSettingsFromSupabase().then(cloud => {
+      if (cloud) setSettings(cloud)
+    })
+  }, [])
   const [saved, setSaved] = useState(false)
   const [tab, setTab] = useState('commissions')
   const [editUser, setEditUser] = useState(null) // null | user object

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { sbLoadTicked, sbSaveTicked } from '../lib/supabase'
 
 const STORAGE_KEY = 'rion-radar-bday-sent'
@@ -70,9 +70,11 @@ export function useBirthdayCount(clients) {
 export default function BirthdayNotifier({ clients, onClose }) {
   const [sentKeys, setSentKeys] = useState(() => getSentKeys())
 
-  // Sync ticked state from Supabase on mount
+  // Sync ticked state from Supabase on mount (id 2 = birthday-sent state,
+  // kept separate from the Dashboard's ticked-rows state which uses id 1 —
+  // see lib/supabase.js)
   useEffect(() => {
-    sbLoadTicked().then(cloud => {
+    sbLoadTicked(2).then(cloud => {
       if (cloud && Array.isArray(cloud)) {
         const merged = new Set([...getSentKeys(), ...cloud])
         setSentKeys(merged)
@@ -80,9 +82,16 @@ export default function BirthdayNotifier({ clients, onClose }) {
       }
     }).catch(() => {})
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  // Freeze the client list as it was at mount time. Without this, if the
+  // clients prop gets refreshed a moment after mount (e.g. background
+  // Supabase sync finishing), the birthday list below recalculates from
+  // scratch and can come back empty — making the whole modal vanish before
+  // you get a chance to act on it. Only `sentKeys` (updated explicitly when
+  // you send/dismiss one) should ever change what's shown.
+  const frozenClients = useRef(clients).current
   // Build list of upcoming/missed birthdays
   const birthdays = []
-  clients.forEach(c => {
+  frozenClients.forEach(c => {
     (c.contacts || []).forEach(contact => {
       if (contact.type !== 'Ind' || !contact.first || !contact.dob) return
       const days = getDaysUntilBirthday(contact.dob)
@@ -109,7 +118,7 @@ export default function BirthdayNotifier({ clients, onClose }) {
     next.add(bday.key)
     setSentKeys(next)
     saveSentKeys(next)
-    sbSaveTicked([...next]).catch(() => {})
+    sbSaveTicked([...next], 2).catch(() => {})
     // Open SMS via phone link
     const msg = encodeURIComponent(buildSMSMessage(bday.firstName))
     const num = bday.mobile.replace(/\s/g, '')

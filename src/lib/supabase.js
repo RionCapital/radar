@@ -82,21 +82,25 @@ export async function sbSaveSettings(settings) {
 }
 
 // ─── Ticked Items ─────────────────────────────────────────────────────────────
+// id 1 = Dashboard/LoanAccount "ticked row" state. id 2 = Birthday "already sent"
+// state. These used to share id 1, which meant saving one silently wiped out
+// the other (each save is a full overwrite of that row). Kept as separate rows
+// in the same table rather than a schema change.
 
-export async function sbLoadTicked() {
+export async function sbLoadTicked(id = 1) {
   const { data, error } = await supabase
     .from('ticked_items')
     .select('data')
-    .eq('id', 1)
+    .eq('id', id)
     .single()
   if (error || !data) return null
   return data.data
 }
 
-export async function sbSaveTicked(ticked) {
+export async function sbSaveTicked(ticked, id = 1) {
   const { error } = await supabase
     .from('ticked_items')
-    .upsert({ id: 1, data: ticked, updated_at: new Date().toISOString() })
+    .upsert({ id, data: ticked, updated_at: new Date().toISOString() })
   return !error
 }
 

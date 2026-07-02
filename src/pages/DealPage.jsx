@@ -1,7 +1,6 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { PIPELINE_DATA } from '../lib/pipelineData'
-import { sbSaveDeals } from '../lib/supabase'
+import { loadDeals, saveDeals, syncDealsFromSupabase } from '../lib/deals'
 import CRMTopbar from '../components/CRMTopbar'
 import ReferrerPicker from '../components/ReferrerPicker'
 
@@ -40,14 +39,7 @@ function ReadRow({ label, value }) {
   )
 }
 
-function getDeals() {
-  try { const s = localStorage.getItem('rion-crm-deals'); if (s) return JSON.parse(s) } catch {}
-  return PIPELINE_DATA
-}
-function saveDeals(deals) {
-  try { localStorage.setItem('rion-crm-deals', JSON.stringify(deals)) } catch {}
-  sbSaveDeals(deals).catch(() => {})
-}
+function getDeals() { return loadDeals() }
 
 function findLinkedClient(deal, clients) {
   if (!clients?.length) return null
@@ -299,6 +291,14 @@ export default function DealPage({ onUpdateDeals, clients = [] }) {
   const navigate = useNavigate()
   const decodedName = decodeURIComponent(dealName)
   const [deals, setDeals] = useState(() => getDeals())
+
+  // If the local cache was empty on load (e.g. cache just cleared), pull the
+  // real deals down from Supabase rather than working from nothing.
+  useEffect(() => {
+    syncDealsFromSupabase().then(cloud => {
+      if (cloud) setDeals(cloud)
+    })
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(null)
   const [saved, setSaved] = useState(false)
