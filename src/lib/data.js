@@ -49,24 +49,33 @@ export async function syncFromSupabase() {
 
     if (!cloudClients || !Array.isArray(cloudClients) || cloudClients.length === 0) return null;
 
-    // Get local timestamp
+    // Check if local has real user data (not just BASE_DATA fallback)
     let localSavedAt = 0;
+    let localHasRealData = false;
     try {
       const localRaw = localStorage.getItem(STORAGE_KEY);
       if (localRaw) {
         const localParsed = JSON.parse(localRaw);
         localSavedAt = Array.isArray(localParsed) ? 0 : (localParsed.savedAt || 0);
+        localHasRealData = localSavedAt > 0; // Only trust local if it has a real timestamp
       }
     } catch (e) {}
 
-    // Only overwrite local if cloud is newer (or local has no timestamp)
-    if (cloudSavedAt >= localSavedAt) {
+    // If local has no real timestamp, always trust Supabase
+    if (!localHasRealData) {
       const payload = { data: cloudClients, savedAt: cloudSavedAt || Date.now() };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(payload)); } catch {}
       return cloudClients;
     }
 
-    // Local is newer — push local up to Supabase to keep it in sync
+    // Both have timestamps — pick the newer one
+    if (cloudSavedAt >= localSavedAt) {
+      const payload = { data: cloudClients, savedAt: cloudSavedAt };
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(payload)); } catch {}
+      return cloudClients;
+    }
+
+    // Local is newer — push local up to Supabase
     const localRaw = localStorage.getItem(STORAGE_KEY);
     if (localRaw) {
       const localParsed = JSON.parse(localRaw);
