@@ -104,21 +104,42 @@ export async function sbSaveTicked(ticked, id = 1) {
   return !error
 }
 
-// ─── Marketing (all 4 stores: referrers, lenders, others, clientOv) ───────────
+// ─── Marketing table ───────────────────────────────────────────────────────
+// id 1 = Marketing.jsx's referrers/lenders/others/clientOv (all four saved
+// together in one call, so no cross-feature race there).
+// id 2 = Project Studio (_studio)
+// id 3 = ClientDashboard acknowledgement flags (_acknFlags)
+//
+// These used to all share id 1. The JS-side "read row, merge, write row"
+// approach looked safe but wasn't: if two features saved within moments of
+// each other, the second one could read the row before the first one's write
+// landed, then write its own merge back over top — silently reverting the
+// first save. Splitting into separate rows removes the race entirely, since
+// nothing ever reads-then-writes a row another feature owns.
 
-export async function sbLoadMarketing() {
+export async function sbLoadMarketing(id = 1) {
   const { data, error } = await supabase
     .from('marketing')
     .select('data')
-    .eq('id', 1)
+    .eq('id', id)
     .single()
   if (error || !data) return null
   return data.data
 }
 
-export async function sbSaveMarketing(marketingData) {
-  const { error } = await supabase
-    .from('marketing')
-    .upsert({ id: 1, data: marketingData, updated_at: new Date().toISOString() })
-  return !error
+export async function sbSaveMarketing(partialData, id = 1) {
+  try {
+    const { data: existing } = await supabase
+      .from('marketing')
+      .select('data')
+      .eq('id', id)
+      .single()
+    const merged = { ...(existing?.data || {}), ...partialData }
+    const { error } = await supabase
+      .from('marketing')
+      .upsert({ id, data: merged, updated_at: new Date().toISOString() })
+    return !error
+  } catch {
+    return false
+  }
 }

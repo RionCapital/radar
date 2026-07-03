@@ -75,14 +75,16 @@ export default function ProjectStudio() {
   const [openMilestones, setOpenMilestones] = useState({2:true})
 
   // ─── Save helper — writes to localStorage + Supabase ─────────────────────
+  // Uses its own dedicated row (id 2) — see lib/supabase.js — so a Project
+  // Studio save can never race with / overwrite Marketing.jsx's referrer data.
   const saveProjects = useCallback((ps) => {
     try { localStorage.setItem('rion-project-studio', JSON.stringify(ps)) } catch {}
-    sbSaveMarketing({ _studio: ps }).catch(() => {})
+    sbSaveMarketing({ _studio: ps }, 2).catch(() => {})
   }, [])
 
   // ─── Startup sync from Supabase ───────────────────────────────────────────
   useEffect(() => {
-    sbLoadMarketing().then(cloud => {
+    sbLoadMarketing(2).then(cloud => {
       if (cloud?._studio?.length) {
         localStorage.setItem('rion-project-studio', JSON.stringify(cloud._studio))
         setProjects(cloud._studio)

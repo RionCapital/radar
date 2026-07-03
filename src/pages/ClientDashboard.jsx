@@ -329,13 +329,15 @@ export default function ClientDashboard({ clients, updateClient }) {
     setAcknFlags(next)
     const arr = [...next]
     try { localStorage.setItem('rion-radar-ackn-flags', JSON.stringify(arr)) } catch {}
-    // Sync to Supabase so acknowledged flags carry across devices
-    sbSaveMarketing({ _acknFlags: arr }).catch(() => {})
+    // Sync to Supabase so acknowledged flags carry across devices. Uses its
+    // own dedicated row (id 3) — see lib/supabase.js — so this can never
+    // race with / overwrite Marketing.jsx's or Project Studio's data.
+    sbSaveMarketing({ _acknFlags: arr }, 3).catch(() => {})
   }
 
   // Load acknowledged flags from Supabase on mount
   useEffect(() => {
-    sbLoadMarketing().then(cloud => {
+    sbLoadMarketing(3).then(cloud => {
       if (cloud?._acknFlags?.length) {
         const merged = new Set([...acknFlags, ...cloud._acknFlags])
         setAcknFlags(merged)
