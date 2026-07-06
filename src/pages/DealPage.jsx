@@ -325,6 +325,27 @@ const FACILITY_TYPES = ['Home Loan','Term Loan','Line of Credit','Overdraft','Ba
 const ENTITY_TYPES = ['Company','Sole Trader','Partnership','Trust','Individual']
 const ENTITY_POSITIONS = ['Borrower','Co-Borrower','Guarantor','Cash Flow']
 
+// Residential financial-position registers — matches the shape Cameron's
+// existing Mercury CRM already uses for home loan servicing (Living
+// Expenses / Assets - Real Estate / Assets - Other / Liabilities /
+// Employment / Other Income), rather than the P&L-style Financials used for
+// Commercial/Business/etc. Every residential deal needs this regardless of
+// complexity — it's not optional the way trading-analysis financials are.
+const FREQUENCIES = ['Weekly','Fortnightly','Monthly','Quarterly','Annually']
+const FREQ_TO_MONTHLY = { Weekly: 52/12, Fortnightly: 26/12, Monthly: 1, Quarterly: 1/3, Annually: 1/12 }
+function toMonthly(amount, freq) { return (Number(amount)||0) * (FREQ_TO_MONTHLY[freq] || 1) }
+
+const LIVING_EXPENSE_TYPES = ['Clothing & Personal Care','General Insurance','Groceries','Investment Property Costs','Medical & Health','Primary Residence Costs','Recreation & Entertainment','Telephone, Internet, Pay TV & Streaming','Transport','Childcare','Education','Other']
+const REAL_ESTATE_PURPOSES = ['Owner Occupied','Investment']
+const OTHER_ASSET_TYPES = ['Boat','Home Contents','Motor Vehicle','Savings Account','Superannuation','Shares','Other']
+const ASSET_BASIS = ['Applicant Estimate','Bank Valuation','Contract Price']
+const LIABILITY_TYPES = ['HECS','Mortgage Loan','Credit Card','Personal Loan','Car Loan','Store Card','Other']
+const EMPLOYMENT_TYPES = ['Primary Employment','Secondary Employment']
+const EMPLOYMENT_BASIS = ['Full Time','Part Time','Casual']
+const EMPLOYMENT_INCOME_TYPES = ['PAYG','Self-Employed']
+const INCOME_LINE_TYPES = ['Salary','Overtime','Allowance','Bonus','Commission','Other']
+const OTHER_INCOME_TYPES = ['Rental Income','Centrelink / Family Tax Benefit','Dividends','Trust Distribution','Other']
+
 // Keyed by Category (not Transaction Type) — Cameron confirmed Category is
 // the right driver here. 'Other' is the fallback for a deal with no Category
 // set yet.
@@ -502,7 +523,7 @@ const rowLabel = { fontSize:11, color:'#7A8090', flexShrink:0 }
 // Shared so every dollar figure and every LVR% in the funding table sits in
 // the same column, regardless of which row component renders it.
 const AMOUNT_COL_WIDTH = 130
-const LVR_COL_WIDTH = 74
+const LVR_COL_WIDTH = 96
 function rowValueStyle(focused, pink) {
   return {
     border:'none', borderBottom: focused ? '1px solid #EB99C2' : '1px solid transparent',
@@ -777,7 +798,14 @@ function calcFunding(strat, dealType) {
   // purchase those are the same figure, but Construction uses a distinct
   // Estimated Value (post-completion) and Refinance uses Property Value
   // (not the payout amount being refinanced).
-  const lvrBase = dealType === 'Construction' ? n(strat.estimatedValue)
+  // LVR is calculated against the property's value, not its cost — for a
+  // purchase those are the same figure. Construction's Estimated Value is
+  // Land Purchase + Construction (computed, not separately entered) — the
+  // finished property is assumed worth what it cost to get there unless
+  // Cameron tells us otherwise later. Refinance uses Property Value (not
+  // the payout amount being refinanced).
+  const estimatedValue = n(strat.purchasePrice) + n(strat.constructionCost)
+  const lvrBase = dealType === 'Construction' ? estimatedValue
     : dealType === 'Refinance' ? n(strat.propertyValue)
     : n(strat.purchasePrice)
   const lvrPct = n(strat.baseLvr) / 100
@@ -817,7 +845,7 @@ function calcFunding(strat, dealType) {
     constructionCalc = { additionalPurchaseCosts, less20PercentLand, constructionFundsAvailable, constructionSurplusDeficit }
   }
 
-  return { fields, legals, settlementAdj, hasStampDuty, stampDuty, stampDutyEstimate, lmiIncluded, lmi, lvrBase, totalCosts, loanFromLender, totalLVR, capitaliseLMI, showBaseLoan, baseLoan, baseLoanLVR, saleFeesAmount, netSaleProceeds, totalFundsAvailable, surplusDeficit, constructionCalc }
+  return { fields, legals, settlementAdj, hasStampDuty, stampDuty, stampDutyEstimate, lmiIncluded, lmi, estimatedValue, lvrBase, totalCosts, loanFromLender, totalLVR, capitaliseLMI, showBaseLoan, baseLoan, baseLoanLVR, saleFeesAmount, netSaleProceeds, totalFundsAvailable, surplusDeficit, constructionCalc }
 }
 
 function fmtM(v) { return v==='' || v===undefined || v===null || isNaN(v) ? '—' : `$${Math.round(Number(v)).toLocaleString()}` }
@@ -838,7 +866,7 @@ function ComputedRow({ label, value, tone='navy', big, side }) {
     <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'8px 10px', margin:'4px 0', borderRadius:6, background:t.bg }}>
       <span style={{ fontSize:11.5, fontWeight:700, color:t.fg }}>{label}</span>
       <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-        {side && <span style={{ fontSize:11, fontWeight:700, color:t.fg, opacity:0.75, width:LVR_COL_WIDTH, textAlign:'right', display:'inline-block' }}>{side}</span>}
+        {side && <span style={{ fontSize:11, fontWeight:700, color:t.fg, opacity:0.75, width:LVR_COL_WIDTH, textAlign:'right', display:'inline-block', whiteSpace:'nowrap' }}>{side}</span>}
         <span style={{ fontSize: big?14:12.5, fontWeight:800, color:t.fg, width: side?AMOUNT_COL_WIDTH:'auto', textAlign:'right', display:'inline-block' }}>{value}</span>
       </div>
     </div>
@@ -887,7 +915,7 @@ function LoanAmountRow({ label, lvrBase, amountValue, lmiAddOn=0, onLvrCommit, t
     <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'8px 10px', margin:'4px 0', borderRadius:6, background:t.bg }}>
       <span style={{ fontSize:11.5, fontWeight:700, color:t.fg }}>{label}</span>
       <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'flex-end', gap:3, width:LVR_COL_WIDTH }}>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'flex-end', gap:3, width:LVR_COL_WIDTH, flexShrink:0 }}>
           <input
             type="number" placeholder="—"
             value={lvrFocused ? lvrEdit : displayLvr}
@@ -896,7 +924,7 @@ function LoanAmountRow({ label, lvrBase, amountValue, lmiAddOn=0, onLvrCommit, t
             onBlur={commitLvr}
             style={{ width:40, textAlign:'right', border:'none', borderBottom: lvrFocused?`1px solid ${t.fg}`:'1px solid transparent', background:'transparent', fontSize:12, fontWeight:700, color:t.fg, outline:'none', fontFamily:'inherit' }}
           />
-          <span style={{ fontSize:11, fontWeight:700, color:t.fg, opacity:0.75 }}>% LVR</span>
+          <span style={{ fontSize:11, fontWeight:700, color:t.fg, opacity:0.75, whiteSpace:'nowrap' }}>% LVR</span>
         </div>
         <input
           placeholder="—"
@@ -1040,7 +1068,6 @@ function StrategyTab({ deal, updateDeal }) {
   }
 
   const fundingTableTitle = dealType === 'Construction' ? 'Land & Construction Funding Table' : `${dealType} Funding Table`
-  const baseValueKey = dealType === 'Construction' ? 'estimatedValue' : dealType === 'Refinance' ? 'propertyValue' : 'purchasePrice'
   const baseValueLabel = dealType === 'Construction' ? 'Estimated Value' : dealType === 'Refinance' ? 'Property Value' : 'Purchase Price'
 
   const [subTab, setSubTab] = useState('funding')
@@ -1052,23 +1079,6 @@ function StrategyTab({ deal, updateDeal }) {
 
   return (
     <div>
-      <TabCard title="Transaction Type">
-        <div style={{ fontSize:12, color:'#7A8090' }}>
-          Category <strong style={{color:'#2A3545'}}>{deal.Categories || '—'}</strong> · Transaction Type <strong style={{color:'#2A3545'}}>{deal['Transaction Type'] || '—'}</strong> → showing the <strong style={{color:'#3D4F6B'}}>{dealType}</strong> funding table.
-        </div>
-        <div style={{ fontSize:11, color:'#9ca3af', marginTop:6 }}>Change Category / Transaction Type on the Loan Details tab to switch this.</div>
-        <div style={{ marginTop:10 }}>
-          <LiveRowCheckbox label="Include LMI in this deal?" checked={strat.lmiIncluded} onChange={v=>s('lmiIncluded', v)} />
-          {strat.lmiIncluded && (
-            <LiveRowCheckbox label="Is LMI to be capitalised into the loan?" checked={strat.lmiCapitalised !== false} onChange={v=>s('lmiCapitalised', v)} />
-          )}
-          <LiveRowCheckbox label="Also selling an existing property as part of this deal?" checked={strat.includeSaleProceeds} onChange={v=>s('includeSaleProceeds', v)} />
-          {dealType === 'Construction' && (
-            <LiveRowCheckbox label="Include construction funding portion (drawdown vs. fixed price contract)" checked={strat.includeConstructionFunding} onChange={v=>s('includeConstructionFunding', v)} />
-          )}
-        </div>
-      </TabCard>
-
       <div style={{ display:'flex', gap:20 }}>
         <SideTabs tabs={STRATEGY_SUB_TABS} active={subTab} onChange={setSubTab} />
 
@@ -1080,8 +1090,11 @@ function StrategyTab({ deal, updateDeal }) {
                   const val = key==='legals' ? calc.legals : key==='settlementAdj' ? calc.settlementAdj : strat[key]
                   return <LiveRowCurrency key={key} label={label} value={val} onCommit={v=>s(key, v)} pink={key==='purchasePrice'} />
                 })}
-                {dealType !== 'Purchase' && (
-                  <LiveRowCurrency label={baseValueLabel} value={strat[baseValueKey]} onCommit={v=>s(baseValueKey, v)} />
+                {dealType === 'Construction' && (
+                  <ComputedRow label={baseValueLabel} value={fmtM(calc.estimatedValue)} tone="navy" />
+                )}
+                {dealType === 'Refinance' && (
+                  <LiveRowCurrency label={baseValueLabel} value={strat.propertyValue} onCommit={v=>s('propertyValue', v)} />
                 )}
 
                 {calc.hasStampDuty && (
@@ -1189,6 +1202,23 @@ function StrategyTab({ deal, updateDeal }) {
                   </TabCard>
                 )}
               </div>
+
+              <TabCard title="Transaction Type">
+                <div style={{ fontSize:12, color:'#7A8090' }}>
+                  Category <strong style={{color:'#2A3545'}}>{deal.Categories || '—'}</strong> · Transaction Type <strong style={{color:'#2A3545'}}>{deal['Transaction Type'] || '—'}</strong> → showing the <strong style={{color:'#3D4F6B'}}>{dealType}</strong> funding table.
+                </div>
+                <div style={{ fontSize:11, color:'#9ca3af', marginTop:6 }}>Change Category / Transaction Type on the Loan Details tab to switch this.</div>
+                <div style={{ marginTop:10 }}>
+                  <LiveRowCheckbox label="Include LMI in this deal?" checked={strat.lmiIncluded} onChange={v=>s('lmiIncluded', v)} />
+                  {strat.lmiIncluded && (
+                    <LiveRowCheckbox label="Is LMI to be capitalised into the loan?" checked={strat.lmiCapitalised !== false} onChange={v=>s('lmiCapitalised', v)} />
+                  )}
+                  <LiveRowCheckbox label="Also selling an existing property as part of this deal?" checked={strat.includeSaleProceeds} onChange={v=>s('includeSaleProceeds', v)} />
+                  {dealType === 'Construction' && (
+                    <LiveRowCheckbox label="Include construction funding portion (drawdown vs. fixed price contract)" checked={strat.includeConstructionFunding} onChange={v=>s('includeConstructionFunding', v)} />
+                  )}
+                </div>
+              </TabCard>
             </div>
           )}
 
@@ -1286,14 +1316,22 @@ function StrategyTab({ deal, updateDeal }) {
 // Commercial (BANK RM), SMSF, Business Loan, Trade & Invoice Finance, Asset
 // Finance, Development) gets the full set, since those routinely involve
 // entity financials and servicing calculations.
-const SIMPLE_STRUCTURE_CATEGORIES = ['Residential']
-
 function StructureTab({ d, editing, set }) {
-  const showFinancialsServicing = !SIMPLE_STRUCTURE_CATEGORIES.includes(d.Categories)
+  const isResidential = d.Categories === 'Residential'
   const subs = [
     {id:'client',label:'Client Details'},
     {id:'security',label:'Security'},
-    ...(showFinancialsServicing ? [{id:'financials',label:'Financials'},{id:'servicing',label:'Servicing'}] : []),
+    ...(isResidential
+      ? [
+          {id:'livingExpenses',label:'Living Expenses'},
+          {id:'realEstate',label:'Assets — Real Estate'},
+          {id:'otherAssets',label:'Assets — Other'},
+          {id:'liabilities',label:'Liabilities'},
+          {id:'employment',label:'Employment'},
+          {id:'otherIncome',label:'Other Income'},
+        ]
+      : [{id:'financials',label:'Financials'},{id:'servicing',label:'Servicing'}]
+    ),
   ]
   const [sub, setSub] = useState('client')
   useEffect(() => { if (!subs.find(x=>x.id===sub)) setSub('client') }, [d.Categories]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -1319,6 +1357,67 @@ function StructureTab({ d, editing, set }) {
   const updFacility = (i,k,v) => s('facilities', facilities.map((r,idx)=>idx===i?{...r,[k]:v}:r))
   const rmFacility = (i) => s('facilities', facilities.filter((_,idx)=>idx!==i))
 
+  // Residential financial-position registers
+  const individuals = entities.filter(e => e.type === 'Individual' && e.name)
+  const OWNERSHIP_OPTIONS = ['Shared Equally', ...individuals.map(e => `100% ${e.name}`)]
+
+  const livingExpenses = struct.livingExpenses || []
+  const addLivingExpense = () => s('livingExpenses', [...livingExpenses, { type:'', ownership:'Shared Equally', frequency:'Monthly', amount:'' }])
+  const updLivingExpense = (i,k,v) => s('livingExpenses', livingExpenses.map((r,idx)=>idx===i?{...r,[k]:v}:r))
+  const rmLivingExpense = (i) => s('livingExpenses', livingExpenses.filter((_,idx)=>idx!==i))
+
+  const realEstateAssets = struct.realEstateAssets || []
+  const addRealEstateAsset = () => s('realEstateAssets', [...realEstateAssets, { address:'', purpose:'Owner Occupied', isSecurity:false, isPurchasing:false, value:'', loanBalance:'' }])
+  const updRealEstateAsset = (i,k,v) => s('realEstateAssets', realEstateAssets.map((r,idx)=>idx===i?{...r,[k]:v}:r))
+  const rmRealEstateAsset = (i) => s('realEstateAssets', realEstateAssets.filter((_,idx)=>idx!==i))
+
+  const otherAssets = struct.otherAssets || []
+  const addOtherAsset = () => s('otherAssets', [...otherAssets, { type:'', ownership:'Shared Equally', details:'', value:'', basis:'Applicant Estimate' }])
+  const updOtherAsset = (i,k,v) => s('otherAssets', otherAssets.map((r,idx)=>idx===i?{...r,[k]:v}:r))
+  const rmOtherAsset = (i) => s('otherAssets', otherAssets.filter((_,idx)=>idx!==i))
+
+  const liabilitiesReg = struct.liabilitiesReg || []
+  const addLiabilityReg = () => s('liabilitiesReg', [...liabilitiesReg, { type:'Mortgage Loan', institution:'', accountName:'', security:'', balance:'', limit:'', repayment:'', frequency:'Monthly' }])
+  const updLiabilityReg = (i,k,v) => s('liabilitiesReg', liabilitiesReg.map((r,idx)=>idx===i?{...r,[k]:v}:r))
+  const rmLiabilityReg = (i) => s('liabilitiesReg', liabilitiesReg.filter((_,idx)=>idx!==i))
+
+  const employment = struct.employment || {}
+  const empFor = (name) => employment[name] || []
+  const setEmpFor = (name, arr) => s('employment', { ...employment, [name]: arr })
+  const addEmployment = (name) => setEmpFor(name, [...empFor(name), { type:'Primary Employment', basis:'Full Time', incomeType:'PAYG', employer:'', abn:'', position:'', payType:'Private', startDate:'', onProbation:false, incomeLines:[] }])
+  const updEmployment = (name,i,k,v) => setEmpFor(name, empFor(name).map((r,idx)=>idx===i?{...r,[k]:v}:r))
+  const rmEmployment = (name,i) => setEmpFor(name, empFor(name).filter((_,idx)=>idx!==i))
+  const addIncomeLine = (name,i) => updEmployment(name,i,'incomeLines',[...(empFor(name)[i]?.incomeLines||[]), { type:'Salary', amount:'', frequency:'Annually' }])
+  const updIncomeLine = (name,i,li,k,v) => updEmployment(name,i,'incomeLines', empFor(name)[i].incomeLines.map((l,idx)=>idx===li?{...l,[k]:v}:l))
+  const rmIncomeLine = (name,i,li) => updEmployment(name,i,'incomeLines', empFor(name)[i].incomeLines.filter((_,idx)=>idx!==li))
+
+  const otherIncome = struct.otherIncome || []
+  const addOtherIncome = () => s('otherIncome', [...otherIncome, { type:'', ownership:'Shared Equally', frequency:'Monthly', amount:'' }])
+  const updOtherIncome = (i,k,v) => s('otherIncome', otherIncome.map((r,idx)=>idx===i?{...r,[k]:v}:r))
+  const rmOtherIncome = (i) => s('otherIncome', otherIncome.filter((_,idx)=>idx!==i))
+
+  // Splits a register's monthly-equivalent total across named individuals
+  // based on each row's Ownership field ("Shared Equally" or "100% Name").
+  function perApplicantTotals(rows) {
+    const totals = {}
+    individuals.forEach(e => { totals[e.name] = 0 })
+    rows.forEach(r => {
+      const monthly = toMonthly(r.amount, r.frequency)
+      const named = individuals.find(e => r.ownership === `100% ${e.name}`)
+      if (named) {
+        totals[named.name] = (totals[named.name]||0) + monthly
+      } else if (individuals.length) {
+        individuals.forEach(e => { totals[e.name] = (totals[e.name]||0) + monthly/individuals.length })
+      }
+    })
+    return totals
+  }
+  function registerTotalRow(rows) {
+    const grand = rows.reduce((sum,r) => sum + toMonthly(r.amount, r.frequency), 0)
+    const perApp = perApplicantTotals(rows)
+    return { grand, perApp }
+  }
+
   const years = ['Y1','Y2','Y3','YTD','Fcst']
   const dscr = servicing.ebitda && servicing.repayments ? (Number(servicing.ebitda)/Number(servicing.repayments)).toFixed(2) : '—'
   const icr = servicing.ebit && servicing.interestForCover ? (Number(servicing.ebit)/Number(servicing.interestForCover)).toFixed(2) : '—'
@@ -1328,8 +1427,8 @@ function StructureTab({ d, editing, set }) {
       <SideTabs tabs={subs} active={sub} onChange={setSub} />
 
       <div style={{ flex:1, minWidth:0 }}>
-        {!showFinancialsServicing && (
-          <div style={{ fontSize:11, color:'#9ca3af', marginBottom:16 }}>Financials & Servicing are hidden for Residential deals — change Category in Loan Details if this deal needs them.</div>
+        {isResidential && (
+          <div style={{ fontSize:11, color:'#9ca3af', marginBottom:16 }}>Residential deals capture financial position the way Mercury does — Living Expenses, Real Estate, Other Assets, Liabilities, Employment and Other Income — instead of trading-analysis Financials/Servicing.</div>
         )}
         {sub === 'client' && (
         <TabCard title="Entity & Individual Register" right={editing && <button onClick={addEntity} style={addBtnStyle}>+ Add entity</button>}>
@@ -1428,6 +1527,151 @@ function StructureTab({ d, editing, set }) {
           </TabCard>
           </>
         )}
+
+        {sub === 'livingExpenses' && (() => {
+          const { grand, perApp } = registerTotalRow(livingExpenses)
+          return (
+            <TabCard title="Living Expenses" right={<button onClick={addLivingExpense} style={addBtnStyle}>+ Add expense</button>}>
+              <MiniTable columns={['Type','Ownership','Frequency','Amount','']} rows={livingExpenses.map((r,i) => [
+                <LiveSelect small value={r.type} onCommit={v=>updLivingExpense(i,'type',v)} options={LIVING_EXPENSE_TYPES} />,
+                <LiveSelect small value={r.ownership} onCommit={v=>updLivingExpense(i,'ownership',v)} options={OWNERSHIP_OPTIONS} allowBlank={false} />,
+                <LiveSelect small value={r.frequency} onCommit={v=>updLivingExpense(i,'frequency',v)} options={FREQUENCIES} allowBlank={false} />,
+                <LiveNumber small value={r.amount} onCommit={v=>updLivingExpense(i,'amount',v)} />,
+                <button onClick={()=>rmLivingExpense(i)} style={rmBtnStyle}>✕</button>,
+              ])} empty="No living expenses added yet"/>
+              {livingExpenses.length > 0 && (
+                <div style={{ marginTop:12, paddingTop:10, borderTop:'1px solid #e8eaed' }}>
+                  {individuals.map(e => <div key={e.name} style={{fontSize:11.5,color:'#7A8090',textAlign:'right'}}>{e.name}: <strong style={{color:'#2A3545'}}>${(perApp[e.name]||0).toLocaleString(undefined,{maximumFractionDigits:2})}</strong> / month</div>)}
+                  <ComputedRow label="Total (All Applicants, monthly)" value={`$${grand.toLocaleString(undefined,{maximumFractionDigits:2})}`} tone="navy" big />
+                </div>
+              )}
+            </TabCard>
+          )
+        })()}
+
+        {sub === 'realEstate' && (() => {
+          const totalValue = realEstateAssets.reduce((sum,r)=>sum+(Number(r.value)||0),0)
+          const totalLoanBalance = realEstateAssets.reduce((sum,r)=>sum+(Number(r.loanBalance)||0),0)
+          return (
+            <TabCard title="Assets — Real Estate" right={<button onClick={addRealEstateAsset} style={addBtnStyle}>+ Add property</button>}>
+              <MiniTable columns={['Address','Purpose','Security','Purchasing','Value','Loan Balance','']} rows={realEstateAssets.map((r,i) => [
+                <LiveText small value={r.address} onCommit={v=>updRealEstateAsset(i,'address',v)} placeholder="Address" />,
+                <LiveSelect small value={r.purpose} onCommit={v=>updRealEstateAsset(i,'purpose',v)} options={REAL_ESTATE_PURPOSES} allowBlank={false} />,
+                <input type="checkbox" checked={!!r.isSecurity} onChange={e=>updRealEstateAsset(i,'isSecurity',e.target.checked)} />,
+                <input type="checkbox" checked={!!r.isPurchasing} onChange={e=>updRealEstateAsset(i,'isPurchasing',e.target.checked)} />,
+                <LiveNumber small value={r.value} onCommit={v=>updRealEstateAsset(i,'value',v)} />,
+                <LiveNumber small value={r.loanBalance} onCommit={v=>updRealEstateAsset(i,'loanBalance',v)} />,
+                <button onClick={()=>rmRealEstateAsset(i)} style={rmBtnStyle}>✕</button>,
+              ])} empty="No real estate assets added yet"/>
+              {realEstateAssets.length > 0 && (
+                <div style={{ marginTop:12, paddingTop:10, borderTop:'1px solid #e8eaed' }}>
+                  <ComputedRow label="Total Assets" value={fmtM(totalValue)} tone="navy" />
+                  <ComputedRow label="Total Loan Balance" value={fmtM(totalLoanBalance)} tone="yellow" />
+                </div>
+              )}
+            </TabCard>
+          )
+        })()}
+
+        {sub === 'otherAssets' && (() => {
+          const totalValue = otherAssets.reduce((sum,r)=>sum+(Number(r.value)||0),0)
+          return (
+            <TabCard title="Assets — Other" right={<button onClick={addOtherAsset} style={addBtnStyle}>+ Add asset</button>}>
+              <MiniTable columns={['Type','Ownership','Details','Value','Basis','']} rows={otherAssets.map((r,i) => [
+                <LiveSelect small value={r.type} onCommit={v=>updOtherAsset(i,'type',v)} options={OTHER_ASSET_TYPES} />,
+                <LiveSelect small value={r.ownership} onCommit={v=>updOtherAsset(i,'ownership',v)} options={OWNERSHIP_OPTIONS} allowBlank={false} />,
+                <LiveText small value={r.details} onCommit={v=>updOtherAsset(i,'details',v)} />,
+                <LiveNumber small value={r.value} onCommit={v=>updOtherAsset(i,'value',v)} />,
+                <LiveSelect small value={r.basis} onCommit={v=>updOtherAsset(i,'basis',v)} options={ASSET_BASIS} allowBlank={false} />,
+                <button onClick={()=>rmOtherAsset(i)} style={rmBtnStyle}>✕</button>,
+              ])} empty="No other assets added yet"/>
+              {otherAssets.length > 0 && <div style={{ marginTop:12, paddingTop:10, borderTop:'1px solid #e8eaed' }}><ComputedRow label="Total Value" value={fmtM(totalValue)} tone="navy" /></div>}
+            </TabCard>
+          )
+        })()}
+
+        {sub === 'liabilities' && (() => {
+          const totalBalance = liabilitiesReg.reduce((sum,r)=>sum+(Number(r.balance)||0),0)
+          return (
+            <TabCard title="Liabilities" right={<button onClick={addLiabilityReg} style={addBtnStyle}>+ Add liability</button>}>
+              <MiniTable columns={['Type','Institution','Account Name','Security','Balance','Limit','Repayment','']} rows={liabilitiesReg.map((r,i) => [
+                <LiveSelect small value={r.type} onCommit={v=>updLiabilityReg(i,'type',v)} options={LIABILITY_TYPES} allowBlank={false} />,
+                <LiveText small value={r.institution} onCommit={v=>updLiabilityReg(i,'institution',v)} />,
+                <LiveText small value={r.accountName} onCommit={v=>updLiabilityReg(i,'accountName',v)} />,
+                <LiveText small value={r.security} onCommit={v=>updLiabilityReg(i,'security',v)} placeholder="Address, if secured" />,
+                <LiveNumber small value={r.balance} onCommit={v=>updLiabilityReg(i,'balance',v)} />,
+                <LiveNumber small value={r.limit} onCommit={v=>updLiabilityReg(i,'limit',v)} />,
+                <div style={{display:'flex',gap:4,alignItems:'center'}}>
+                  <LiveNumber small value={r.repayment} onCommit={v=>updLiabilityReg(i,'repayment',v)} />
+                  <LiveSelect small value={r.frequency} onCommit={v=>updLiabilityReg(i,'frequency',v)} options={FREQUENCIES} allowBlank={false} />
+                  <button onClick={()=>rmLiabilityReg(i)} style={rmBtnStyle}>✕</button>
+                </div>,
+              ])} empty="No liabilities added yet"/>
+              {liabilitiesReg.length > 0 && <div style={{ marginTop:12, paddingTop:10, borderTop:'1px solid #e8eaed' }}><ComputedRow label="Total Balance" value={fmtM(totalBalance)} tone="yellow" /></div>}
+            </TabCard>
+          )
+        })()}
+
+        {sub === 'employment' && (
+          <div>
+            {individuals.length === 0 && <TabCard><div style={{fontSize:11.5,color:'#9ca3af'}}>Add individuals in Client Details first — employment is captured per applicant.</div></TabCard>}
+            {individuals.map(e => {
+              const records = empFor(e.name)
+              return (
+                <TabCard key={e.name} title={e.name} right={<button onClick={()=>addEmployment(e.name)} style={addBtnStyle}>+ Add employment</button>}>
+                  {records.length === 0 && <div style={{fontSize:11.5,color:'#9ca3af',padding:'6px 0'}}>No employment added yet</div>}
+                  {records.map((r,i) => (
+                    <div key={i} style={{ marginBottom:16, paddingBottom:14, borderBottom: i<records.length-1 ? '1px solid #e8eaed' : 'none' }}>
+                      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:8, marginBottom:8 }}>
+                        <LiveSelect small value={r.type} onCommit={v=>updEmployment(e.name,i,'type',v)} options={EMPLOYMENT_TYPES} allowBlank={false} />
+                        <LiveSelect small value={r.basis} onCommit={v=>updEmployment(e.name,i,'basis',v)} options={EMPLOYMENT_BASIS} allowBlank={false} />
+                        <LiveSelect small value={r.incomeType} onCommit={v=>updEmployment(e.name,i,'incomeType',v)} options={EMPLOYMENT_INCOME_TYPES} allowBlank={false} />
+                      </div>
+                      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:8 }}>
+                        <LiveText small value={r.employer} onCommit={v=>updEmployment(e.name,i,'employer',v)} placeholder="Employer name" />
+                        <LiveText small value={r.position} onCommit={v=>updEmployment(e.name,i,'position',v)} placeholder="Position" />
+                      </div>
+                      <datalist id={`income-line-types-${e.name}-${i}`}>{INCOME_LINE_TYPES.map(t=><option key={t} value={t}/>)}</datalist>
+                      {(r.incomeLines||[]).map((l,li) => (
+                        <div key={li} style={{ display:'flex', gap:8, alignItems:'center', padding:'4px 0' }}>
+                          <LiveText small value={l.type} onCommit={v=>updIncomeLine(e.name,i,li,'type',v)} list={`income-line-types-${e.name}-${i}`} />
+                          <LiveNumber small value={l.amount} onCommit={v=>updIncomeLine(e.name,i,li,'amount',v)} />
+                          <LiveSelect small value={l.frequency} onCommit={v=>updIncomeLine(e.name,i,li,'frequency',v)} options={FREQUENCIES} allowBlank={false} />
+                          <button onClick={()=>rmIncomeLine(e.name,i,li)} style={rmBtnStyle}>✕</button>
+                        </div>
+                      ))}
+                      <div style={{ display:'flex', justifyContent:'space-between', marginTop:8 }}>
+                        <button onClick={()=>addIncomeLine(e.name,i)} style={addBtnStyle}>+ Add income line</button>
+                        <button onClick={()=>rmEmployment(e.name,i)} style={rmBtnStyle}>Remove employment</button>
+                      </div>
+                    </div>
+                  ))}
+                </TabCard>
+              )
+            })}
+          </div>
+        )}
+
+        {sub === 'otherIncome' && (() => {
+          const { grand, perApp } = registerTotalRow(otherIncome)
+          return (
+            <TabCard title="Other Income" right={<button onClick={addOtherIncome} style={addBtnStyle}>+ Add income</button>}>
+              <MiniTable columns={['Type','Ownership','Frequency','Amount','']} rows={otherIncome.map((r,i) => [
+                <LiveSelect small value={r.type} onCommit={v=>updOtherIncome(i,'type',v)} options={OTHER_INCOME_TYPES} />,
+                <LiveSelect small value={r.ownership} onCommit={v=>updOtherIncome(i,'ownership',v)} options={OWNERSHIP_OPTIONS} allowBlank={false} />,
+                <LiveSelect small value={r.frequency} onCommit={v=>updOtherIncome(i,'frequency',v)} options={FREQUENCIES} allowBlank={false} />,
+                <LiveNumber small value={r.amount} onCommit={v=>updOtherIncome(i,'amount',v)} />,
+                <button onClick={()=>rmOtherIncome(i)} style={rmBtnStyle}>✕</button>,
+              ])} empty="No other income added yet"/>
+              {otherIncome.length > 0 && (
+                <div style={{ marginTop:12, paddingTop:10, borderTop:'1px solid #e8eaed' }}>
+                  {individuals.map(e => <div key={e.name} style={{fontSize:11.5,color:'#7A8090',textAlign:'right'}}>{e.name}: <strong style={{color:'#2A3545'}}>${(perApp[e.name]||0).toLocaleString(undefined,{maximumFractionDigits:2})}</strong> / month</div>)}
+                  <ComputedRow label="Total (All Applicants, monthly)" value={`$${grand.toLocaleString(undefined,{maximumFractionDigits:2})}`} tone="navy" big />
+                </div>
+              )}
+            </TabCard>
+          )
+        })()}
       </div>
     </div>
   )
