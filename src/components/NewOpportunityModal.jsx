@@ -2,8 +2,20 @@ import React, { useState, useEffect, useRef } from 'react'
 import { sbSaveDeals } from '../lib/supabase'
 
 const STAGES = ['1. Lead','2. Strategy','3. Pre-Lodged','4. Lodged','5. Conditional','6. Unconditional','7. Settled','8. Withdrawn']
-const CATEGORIES = ['Residential','Asset Finance','Commercial Loans','Business Loans','SMSF','Invoice Finance','Other']
-const TRANSACTION_TYPES = ['Purchase','Refinance','Top up','Pre-Approval','Business Loan','Other']
+// Kept in sync with the same taxonomy in src/pages/DealPage.jsx — Category
+// drives which Transaction Types are valid. If this list changes, update it
+// in both places (no shared constants file yet).
+const CATEGORIES = ['Residential','Commercial','Full Commercial (BANK RM)','SMSF','Business Loan','Trade & Invoice Finance','Asset Finance','Development']
+const CATEGORY_TRANSACTION_TYPES = {
+  'Residential': ['Purchase','Refinance','Pre-approval','Equity Release','Variation','Construction','FHO','Business Loan'],
+  'Commercial': ['Purchase','Refinance','Pre-approval','Equity Release','Variation','Construction','FHO','Business Loan'],
+  'Full Commercial (BANK RM)': ['New','Refinance','Variation','Equity Release','Business Loan','Maturity','Asset Finance','Trade & Working Capital'],
+  'SMSF': ['Purchase','Refinance','Pre-approval','Construction'],
+  'Business Loan': ['New','Refinance','Variation','Equity Release','Business Loan','Maturity','Asset Finance','Trade & Working Capital'],
+  'Trade & Invoice Finance': ['New','Refinance','Variation'],
+  'Asset Finance': ['Purchase','Refinance','Sale & Lease Back','Balloon/Maturity'],
+  'Development': ['New Development','Mezzanine','Variation','Refinance','Residual Stock'],
+}
 const LEAD_SOURCES = ['1. Accountant','2. Solicitor','3. Client','4. Direct','5. Real Estate','6. Friend','7. Social Media','8. Financial Planner','9. BNI','10. Other']
 
 const NAVY = '#3D4F6B'
@@ -289,16 +301,21 @@ export default function NewOpportunityModal({ onClose, onCreated, prefillClientN
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
             <div>
               <label style={lbl}>Category</label>
-              <select style={inp} value={category} onChange={e => setCategory(e.target.value)}>
+              <select style={inp} value={category} onChange={e => {
+                const v = e.target.value
+                const validTypes = CATEGORY_TRANSACTION_TYPES[v] || []
+                setCategory(v)
+                if (transType && !validTypes.includes(transType)) setTransType('')
+              }}>
                 <option value="">— Select —</option>
                 {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
             <div>
               <label style={lbl}>Transaction type</label>
-              <select style={inp} value={transType} onChange={e => setTransType(e.target.value)}>
-                <option value="">— Select —</option>
-                {TRANSACTION_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+              <select style={inp} value={transType} onChange={e => setTransType(e.target.value)} disabled={!category}>
+                <option value="">{category ? '— Select —' : 'Pick a category first'}</option>
+                {(CATEGORY_TRANSACTION_TYPES[category] || []).map(t => <option key={t} value={t}>{t}</option>)}
               </select>
             </div>
           </div>

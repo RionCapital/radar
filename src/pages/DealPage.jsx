@@ -5,8 +5,25 @@ import CRMTopbar from '../components/CRMTopbar'
 import ReferrerPicker from '../components/ReferrerPicker'
 
 const STAGES = ['1. Lead','2. Strategy','3. Pre-Lodged','4. Lodged','5. Conditional','6. Unconditional','7. Settled','8. Withdrawn']
-const CATEGORIES = ['Residential','Asset Finance','Commercial Loans','Business Loans','SMSF','Invoice Finance','Other']
-const TRANSACTION_TYPES = ['Purchase','Refinance','Top up','Pre-Approval','Business Loan','Other']
+// Category list and per-category Transaction Type options, per Cameron's
+// working spreadsheet (Category drives which Transaction Types are valid).
+// NOTE: this replaces the older, shorter category list. Two places still use
+// the old list and haven't been updated (flagged so nothing silently drifts):
+//  - src/components/NewOpportunityModal.jsx (new-deal creation form)
+//  - src/lib/settings.js DEFAULT_SETTINGS.commissionRates (keyed by the old
+//    category names — a deal saved with a new category name will fall back
+//    to the 0.50% default commission rate until those keys are updated too)
+const CATEGORIES = ['Residential','Commercial','Full Commercial (BANK RM)','SMSF','Business Loan','Trade & Invoice Finance','Asset Finance','Development']
+const CATEGORY_TRANSACTION_TYPES = {
+  'Residential': ['Purchase','Refinance','Pre-approval','Equity Release','Variation','Construction','FHO','Business Loan'],
+  'Commercial': ['Purchase','Refinance','Pre-approval','Equity Release','Variation','Construction','FHO','Business Loan'],
+  'Full Commercial (BANK RM)': ['New','Refinance','Variation','Equity Release','Business Loan','Maturity','Asset Finance','Trade & Working Capital'],
+  'SMSF': ['Purchase','Refinance','Pre-approval','Construction'],
+  'Business Loan': ['New','Refinance','Variation','Equity Release','Business Loan','Maturity','Asset Finance','Trade & Working Capital'],
+  'Trade & Invoice Finance': ['New','Refinance','Variation'],
+  'Asset Finance': ['Purchase','Refinance','Sale & Lease Back','Balloon/Maturity'],
+  'Development': ['New Development','Mezzanine','Variation','Refinance','Residual Stock'],
+}
 const LEAD_SOURCES = ['1. Accountant','2. Solicitor','3. Client','4. Direct','5. Real Estate','6. Friend','7. Social Media','8. Financial Planner','9. BNI','10. Other']
 
 const STAGE_COLORS = {
@@ -308,12 +325,18 @@ const FACILITY_TYPES = ['Home Loan','Term Loan','Line of Credit','Overdraft','Ba
 const ENTITY_TYPES = ['Company','Sole Trader','Partnership','Trust','Individual']
 const ENTITY_POSITIONS = ['Borrower','Co-Borrower','Guarantor','Cash Flow']
 
+// Keyed by Category (not Transaction Type) — Cameron confirmed Category is
+// the right driver here. 'Other' is the fallback for a deal with no Category
+// set yet.
 const ATTACHMENT_TEMPLATES = {
-  'Purchase': ['Contract of Sale','ID — Driver\'s Licence / Passport','3 months bank statements','Payslips (2 recent)','Evidence of deposit / savings','Rates notice (if applicable)'],
-  'Refinance': ['Current loan statement','ID — Driver\'s Licence / Passport','3 months bank statements','Rates notice','Discharge authority'],
-  'Top up': ['Current loan statement','Purpose of funds evidence','3 months bank statements','Updated valuation (if required)'],
-  'Pre-Approval': ['ID — Driver\'s Licence / Passport','Payslips (2 recent)','3 months bank statements'],
-  'Business Loan': ['2 years financials (P&L + BS)','ATO Portal / ITRs','Business bank statements (6 mths)','Security/GSA details','ASIC extract','Trust deed (if applicable)'],
+  'Residential': ['ID — Driver\'s Licence / Passport','Payslips (2 recent)','3 months bank statements','Contract of Sale (if purchasing)','Current loan statement (if refinancing)','Evidence of deposit / savings','Rates notice'],
+  'Commercial': ['ID — Driver\'s Licence / Passport','2 years financials (P&L + BS)','Contract of Sale / current facility statement','Business bank statements (6 mths)','ASIC extract','Lease agreement / tenancy schedule (if applicable)'],
+  'Full Commercial (BANK RM)': ['Group structure chart','2–3 years financials (all entities)','Security register / GSA details','ASIC extracts (all entities)','Trust deed(s) (if applicable)','Existing facility statements across the relationship'],
+  'SMSF': ['SMSF trust deed','Fund financials','Member statements','ID — Trustees','Contract of Sale (if purchasing)','Current loan statement (if refinancing)'],
+  'Business Loan': ['2 years financials (P&L + BS)','ATO Portal / ITRs','Business bank statements (6 mths)','ASIC extract','Security / GSA details'],
+  'Trade & Invoice Finance': ['Debtor ledger / aged receivables','2 years financials','Business bank statements (6 mths)','ASIC extract','Trade references'],
+  'Asset Finance': ['Asset invoice / quote','ID — Driver\'s Licence / Passport','ABN / entity details','Recent BAS','Insurance details'],
+  'Development': ['Feasibility study','Development approval (DA)','Fixed price building contract','QS report','Land title / Contract of Sale','2–3 years financials','Presales evidence (if applicable)'],
   'Other': ['ID — Driver\'s Licence / Passport','Supporting documents as advised'],
 }
 
@@ -450,38 +473,122 @@ function StageTracker({ status, onChange }) {
   )
 }
 
+// ReadRow-styled but directly editable — label left, value right-aligned,
+// no visible input box until focused. This is the layout Cameron wants back
+// (label/value stacked rows) while keeping the no-edit-button editing model.
+const rowWrap = { display:'flex', justifyContent:'space-between', alignItems:'center', padding:'7px 0', borderBottom:'0.5px solid #f0f0f0', gap:10 }
+const rowLabel = { fontSize:11, color:'#7A8090', flexShrink:0 }
+function rowValueStyle(focused, pink) {
+  return {
+    border:'none', borderBottom: focused ? '1px solid #EB99C2' : '1px solid transparent',
+    background:'transparent', textAlign:'right', fontSize:11, fontWeight: pink?700:500,
+    color: pink ? '#EB99C2' : '#2A3545', outline:'none', width:'60%', padding:'2px 0',
+    fontFamily:'inherit', cursor:'text',
+  }
+}
+
+function LiveRow({ label, value, onCommit, placeholder='—', pink, list }) {
+  const [val, setVal] = useState(value ?? '')
+  const [focused, setFocused] = useState(false)
+  useEffect(() => { if (!focused) setVal(value ?? '') }, [value, focused])
+  return (
+    <div style={rowWrap}>
+      <span style={rowLabel}>{label}</span>
+      <input
+        value={val}
+        placeholder={placeholder}
+        list={list}
+        onFocus={()=>setFocused(true)}
+        onChange={e=>setVal(e.target.value)}
+        onBlur={()=>{ setFocused(false); if ((val||'') !== (value||'')) onCommit(val) }}
+        style={rowValueStyle(focused, pink)}
+      />
+    </div>
+  )
+}
+
+function LiveRowCurrency({ label, value, onCommit, pink }) {
+  const [editVal, setEditVal] = useState('')
+  const [focused, setFocused] = useState(false)
+  const display = focused ? editVal : (value ? `$${Number(value).toLocaleString()}` : '')
+  return (
+    <div style={rowWrap}>
+      <span style={rowLabel}>{label}</span>
+      <input
+        value={display}
+        placeholder="—"
+        onFocus={()=>{ setFocused(true); setEditVal(value ?? '') }}
+        onChange={e=>setEditVal(e.target.value.replace(/[^0-9.]/g,''))}
+        onBlur={()=>{
+          setFocused(false)
+          const num = editVal === '' ? '' : Number(editVal)
+          if (num !== (value ?? '')) onCommit(num===''?null:num)
+        }}
+        style={rowValueStyle(focused, pink)}
+      />
+    </div>
+  )
+}
+
+function LiveRowSelect({ label, value, onCommit, options, placeholder='—', disabled }) {
+  return (
+    <div style={rowWrap}>
+      <span style={rowLabel}>{label}</span>
+      <select
+        value={value || ''}
+        disabled={disabled}
+        onChange={e=>onCommit(e.target.value)}
+        style={{ ...rowValueStyle(false, false), appearance:'none', WebkitAppearance:'none', cursor: disabled ? 'not-allowed' : 'pointer', color: disabled ? '#c7cad1' : '#2A3545' }}
+      >
+        <option value="">{placeholder}</option>
+        {options.map(o => <option key={o} value={o}>{o}</option>)}
+      </select>
+    </div>
+  )
+}
+
+function LiveRowDate({ label, value, onCommit }) {
+  return (
+    <div style={rowWrap}>
+      <span style={rowLabel}>{label}</span>
+      <input type="date" value={value?.slice(0,10)||''} onChange={e=>onCommit(e.target.value)} style={rowValueStyle(false,false)} />
+    </div>
+  )
+}
+
 function LoanDetailsTab({ d, editing, draft, set, deal, deals, setDeals, clients, updateDeal }) {
   const fmtAmt = v => v ? `$${Number(v).toLocaleString()}` : '—'
+  const validTxnTypes = CATEGORY_TRANSACTION_TYPES[deal.Categories] || []
   return (
     <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
       <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
         <TabCard title="Deal details">
           <datalist id="lender-suggestions">{LENDER_SUGGESTIONS.map(l=><option key={l} value={l}/>)}</datalist>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
-            <Field label="Status"><LiveSelect value={deal.Status} onCommit={v=>updateDeal({Status:v})} options={STAGES} allowBlank={false} /></Field>
-            <Field label="Amount ($)"><LiveNumber value={deal.Amount} onCommit={v=>updateDeal({Amount: v===''?null:v})} placeholder="e.g. 500000" /></Field>
-            <Field label="Category"><LiveSelect value={deal.Categories} onCommit={v=>updateDeal({Categories:v})} options={CATEGORIES} /></Field>
-            <Field label="Transaction type"><LiveSelect value={deal['Transaction Type']} onCommit={v=>updateDeal({'Transaction Type':v})} options={TRANSACTION_TYPES} /></Field>
-            <Field label="Lender"><LiveText value={deal.Lender} onCommit={v=>updateDeal({Lender:v})} placeholder="Type or pick a lender" list="lender-suggestions" /></Field>
-            <Field label="Lead source"><LiveSelect value={deal['Lead Source']} onCommit={v=>updateDeal({'Lead Source':v})} options={LEAD_SOURCES} /></Field>
-            <Field label="Total security ($)"><LiveNumber value={deal['Total Security']} onCommit={v=>updateDeal({'Total Security': v===''?null:v})} /></Field>
-            <Field label="Internal reference"><LiveText value={deal['Internal Reference']} onCommit={v=>updateDeal({'Internal Reference':v})} /></Field>
-          </div>
+          <LiveRowCurrency label="Amount" value={deal.Amount} onCommit={v=>updateDeal({Amount:v})} pink />
+          <LiveRowSelect label="Category" value={deal.Categories} onCommit={v=>{
+            const validTypes = CATEGORY_TRANSACTION_TYPES[v] || []
+            const patch = { Categories: v }
+            if (deal['Transaction Type'] && !validTypes.includes(deal['Transaction Type'])) patch['Transaction Type'] = ''
+            updateDeal(patch)
+          }} options={CATEGORIES} />
+          <LiveRowSelect label="Transaction type" value={deal['Transaction Type']} onCommit={v=>updateDeal({'Transaction Type':v})} options={validTxnTypes} disabled={!deal.Categories} placeholder={deal.Categories ? '—' : 'Pick a category first'} />
+          <LiveRow label="Lender" value={deal.Lender} onCommit={v=>updateDeal({Lender:v})} list="lender-suggestions" />
+          <LiveRowSelect label="Lead source" value={deal['Lead Source']} onCommit={v=>updateDeal({'Lead Source':v})} options={LEAD_SOURCES} />
+          <LiveRowCurrency label="Total security" value={deal['Total Security']} onCommit={v=>updateDeal({'Total Security':v})} />
+          <LiveRow label="Internal reference" value={deal['Internal Reference']} onCommit={v=>updateDeal({'Internal Reference':v})} />
           {(deal['_referrers']||[]).length > 0 && (
             <div style={{ marginTop:10, fontSize:11, color:'#7A8090' }}>Referral partner: <strong style={{color:'#2A3545'}}>{(deal['_referrers']||[]).map(r=>r.name).join(', ')}</strong></div>
           )}
         </TabCard>
 
         <TabCard title="Key dates">
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
-            <Field label="Settlement date"><LiveDate value={deal['Date Settled']} onCommit={v=>updateDeal({'Date Settled':v})} /></Field>
-            <Field label="Finance due date"><LiveDate value={deal['Finance Due Date']} onCommit={v=>updateDeal({ 'Finance Due Date': v, 'Month of Settlement': v ? v.slice(0,7) : deal['Month of Settlement'] })} /></Field>
-            <Field label="Deposit due date"><LiveDate value={deal['Deposit Due Date']} onCommit={v=>updateDeal({'Deposit Due Date':v})} /></Field>
-            <Field label="Fixed rate expiry"><LiveDate value={deal['Fixed Rate Expiry']} onCommit={v=>updateDeal({'Fixed Rate Expiry':v})} /></Field>
-            <Field label="IO expiry"><LiveDate value={deal['Interest Only Expiry']} onCommit={v=>updateDeal({'Interest Only Expiry':v})} /></Field>
-            <Field label="Discharge date"><LiveDate value={deal['Discharge Date']} onCommit={v=>updateDeal({'Discharge Date':v})} /></Field>
-          </div>
-          {deal['Discharge Reason'] && <div style={{ marginTop:10, fontSize:11, color:'#7A8090' }}>Discharge reason: <span style={{color:'#2A3545'}}>{deal['Discharge Reason']}</span></div>}
+          <LiveRowDate label="Settlement date" value={deal['Date Settled']} onCommit={v=>updateDeal({'Date Settled':v})} />
+          <LiveRowDate label="Finance due date" value={deal['Finance Due Date']} onCommit={v=>updateDeal({ 'Finance Due Date': v, 'Month of Settlement': v ? v.slice(0,7) : deal['Month of Settlement'] })} />
+          <LiveRowDate label="Deposit due date" value={deal['Deposit Due Date']} onCommit={v=>updateDeal({'Deposit Due Date':v})} />
+          <LiveRowDate label="Fixed rate expiry" value={deal['Fixed Rate Expiry']} onCommit={v=>updateDeal({'Fixed Rate Expiry':v})} />
+          <LiveRowDate label="IO expiry" value={deal['Interest Only Expiry']} onCommit={v=>updateDeal({'Interest Only Expiry':v})} />
+          <LiveRowDate label="Discharge date" value={deal['Discharge Date']} onCommit={v=>updateDeal({'Discharge Date':v})} />
+          <LiveRow label="Discharge reason" value={deal['Discharge Reason']} onCommit={v=>updateDeal({'Discharge Reason':v})} />
         </TabCard>
       </div>
 
@@ -751,8 +858,22 @@ function StrategyTab({ deal, updateDeal }) {
   )
 }
 
+// Residential deals don't need business trading analysis / debt servicing —
+// keep Structure simple for them. Every other category (Commercial, Full
+// Commercial (BANK RM), SMSF, Business Loan, Trade & Invoice Finance, Asset
+// Finance, Development) gets the full set, since those routinely involve
+// entity financials and servicing calculations.
+const SIMPLE_STRUCTURE_CATEGORIES = ['Residential']
+
 function StructureTab({ d, editing, set }) {
+  const showFinancialsServicing = !SIMPLE_STRUCTURE_CATEGORIES.includes(d.Categories)
+  const subs = [
+    {id:'client',label:'Client Details'},
+    {id:'security',label:'Security'},
+    ...(showFinancialsServicing ? [{id:'financials',label:'Financials'},{id:'servicing',label:'Servicing'}] : []),
+  ]
   const [sub, setSub] = useState('client')
+  useEffect(() => { if (!subs.find(x=>x.id===sub)) setSub('client') }, [d.Categories]) // eslint-disable-line react-hooks/exhaustive-deps
   const struct = d._structure || {}
   const s = (k, v) => set('_structure', { ...struct, [k]: v })
   const entities = struct.entities || []
@@ -762,8 +883,6 @@ function StructureTab({ d, editing, set }) {
   const setFin = (year, k, v) => s('financials', { ...fin, [year]: { ...(fin[year]||{}), [k]: v } })
   const servicing = struct.servicing || {}
   const setServicing = (k, v) => s('servicing', { ...servicing, [k]: v })
-
-  const subs = [ {id:'client',label:'Client Details'}, {id:'security',label:'Security'}, {id:'financials',label:'Financials'}, {id:'servicing',label:'Servicing'} ]
 
   const addEntity = () => s('entities', [...entities, { name:'', type:'Company', position:'Borrower', shortName:'' }])
   const updEntity = (i,k,v) => s('entities', entities.map((r,idx)=>idx===i?{...r,[k]:v}:r))
@@ -783,7 +902,7 @@ function StructureTab({ d, editing, set }) {
 
   return (
     <div>
-      <div style={{ display:'flex', gap:6, marginBottom:16 }}>
+      <div style={{ display:'flex', gap:6, marginBottom:8 }}>
         {subs.map(x => (
           <button key={x.id} onClick={()=>setSub(x.id)} style={{
             padding:'6px 14px', fontSize:12, fontWeight:600, borderRadius:6, cursor:'pointer',
@@ -793,7 +912,9 @@ function StructureTab({ d, editing, set }) {
           }}>{x.label}</button>
         ))}
       </div>
-
+      {!showFinancialsServicing && (
+        <div style={{ fontSize:11, color:'#9ca3af', marginBottom:16 }}>Financials & Servicing are hidden for Residential deals — change Category in Loan Details if this deal needs them.</div>
+      )}
       {sub === 'client' && (
         <TabCard title="Entity & Individual Register" right={editing && <button onClick={addEntity} style={addBtnStyle}>+ Add entity</button>}>
           <MiniTable columns={['Entity / Individual','Entity Type','Position','Short Name', editing?'':undefined].filter(Boolean)} rows={entities.map((r,i) => editing ? [
@@ -897,19 +1018,13 @@ function StructureTab({ d, editing, set }) {
 
 function AttachmentsTab({ deal, deals, setDeals, editing, d, set }) {
   const att = d._attachments || {}
-  const txnType = att.type || d['Transaction Type'] || 'Purchase'
-  const items = ATTACHMENT_TEMPLATES[txnType] || ATTACHMENT_TEMPLATES['Other']
+  const category = deal.Categories || ''
+  const items = ATTACHMENT_TEMPLATES[category] || ATTACHMENT_TEMPLATES['Other']
   const checked = att.checked || {}
 
   // Checklist toggling saves straight away, same pattern as Contacts/Referrer — no need to enter edit mode just to tick a box.
   function toggle(item) {
-    const updatedAtt = { ...att, type: txnType, checked: { ...checked, [item]: !checked[item] } }
-    const updated = deals.map(x => x['Transaction Name'] === deal['Transaction Name'] ? { ...x, _attachments: updatedAtt } : x)
-    setDeals(updated); saveDeals(updated)
-    if (editing) set('_attachments', updatedAtt)
-  }
-  function changeType(newType) {
-    const updatedAtt = { ...att, type: newType }
+    const updatedAtt = { ...att, checked: { ...checked, [item]: !checked[item] } }
     const updated = deals.map(x => x['Transaction Name'] === deal['Transaction Name'] ? { ...x, _attachments: updatedAtt } : x)
     setDeals(updated); saveDeals(updated)
     if (editing) set('_attachments', updatedAtt)
@@ -917,20 +1032,11 @@ function AttachmentsTab({ deal, deals, setDeals, editing, d, set }) {
 
   return (
     <div>
-      <TabCard title="Transaction Type">
-        <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
-          {Object.keys(ATTACHMENT_TEMPLATES).map(t => (
-            <button key={t} onClick={()=>changeType(t)} style={{
-              padding:'6px 14px', borderRadius:20, fontSize:12, fontWeight:600, cursor:'pointer',
-              border:`1.5px solid ${txnType===t?'#EB99C2':'#e8eaed'}`,
-              background: txnType===t ? '#fdf0f6' : '#fff',
-              color: txnType===t ? '#9b2c6e' : '#2A3545',
-            }}>{t}</button>
-          ))}
-        </div>
-      </TabCard>
-
-      <TabCard title={`Required Documents — ${txnType}`} right={<Pill tone="slate">Auto-read: coming soon</Pill>}>
+      <TabCard title="Required Documents" right={<Pill tone="slate">Auto-read: coming soon</Pill>}>
+        {category
+          ? <div style={{ fontSize:11, color:'#7A8090', marginBottom:10 }}>Checklist for <strong style={{color:'#2A3545'}}>{category}</strong> — set in Loan Details. Change the Category there if this isn't the right list.</div>
+          : <div style={{ fontSize:11, color:'#9ca3af', marginBottom:10 }}>No Category set yet — showing the general checklist. Set a Category in Loan Details for the right one.</div>
+        }
         {items.map((item, i) => (
           <div key={i} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'9px 4px', borderBottom: i<items.length-1 ? '0.5px solid #f0f0f0' : 'none' }}>
             <label style={{ display:'flex', alignItems:'center', gap:10, cursor:'pointer', flex:1 }}>
