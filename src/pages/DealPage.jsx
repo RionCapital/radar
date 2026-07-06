@@ -392,6 +392,10 @@ function MiniTable({ columns, rows, empty='No rows yet' }) {
 
 const LENDER_SUGGESTIONS = ['Pepper Money','Bankwest','Resimac','Redzed','Think Tank','Liberty Financial','Bluestone','La Trobe Financial','Firstmac','Prospa','MyState','Suncorp','ING','Macquarie Bank','HSBC','CBA','Westpac','NAB','ANZ','Latitude Financial','ORDE Financial','Better Choice','Granite Home Loans']
 const CONTRIBUTION_TYPES = ['Additional Savings','Gift','Inheritance','Proceeds of Sale','Liquidated Assets (Shares)','Other']
+const REPAYMENT_FREQUENCIES = ['Weekly','Fortnightly','Monthly','Annually']
+// Multipliers convert the standard monthly PMT figure to the chosen
+// frequency (e.g. weekly = monthly * 12 months / 52 weeks).
+const REPAYMENT_FREQUENCY_MULT = { Weekly: 12/52, Fortnightly: 12/26, Monthly: 1, Annually: 12 }
 
 // Always-editable inputs that commit on blur (text/number) or immediately
 // (select/date) rather than requiring the page's Edit-deal/Save flow. Local
@@ -529,7 +533,7 @@ function LiveRowCurrency({ label, value, onCommit, pink }) {
   )
 }
 
-function LiveRowSelect({ label, value, onCommit, options, placeholder='—', disabled }) {
+function LiveRowSelect({ label, value, onCommit, options, placeholder='—', disabled, allowBlank=true }) {
   return (
     <div style={rowWrap}>
       <span style={rowLabel}>{label}</span>
@@ -539,7 +543,7 @@ function LiveRowSelect({ label, value, onCommit, options, placeholder='—', dis
         onChange={e=>onCommit(e.target.value)}
         style={{ ...rowValueStyle(false, false), appearance:'none', WebkitAppearance:'none', cursor: disabled ? 'not-allowed' : 'pointer', color: disabled ? '#c7cad1' : '#2A3545' }}
       >
-        <option value="">{placeholder}</option>
+        {allowBlank && <option value="">{placeholder}</option>}
         {options.map(o => <option key={o} value={o}>{o}</option>)}
       </select>
     </div>
@@ -733,9 +737,17 @@ function calcFunding(strat, dealType) {
   const lmi = lmiIncluded ? n(strat.lmi) : 0
 
   const fields = STRATEGY_COST_FIELDS[dealType] || STRATEGY_COST_FIELDS['Purchase']
+  const hasStampDuty = fields.some(([k])=>k==='stampDuty')
+  // Auto-calculated from the state's duty scale and the purchase price —
+  // shown as the actual Stamp Duty figure until the person types over it,
+  // same "default until touched" pattern as Legals/Settlement Adjustments.
+  const stampDutyEstimate = hasStampDuty ? calcStampDuty(strat.state||'NSW', strat.purchasePrice) : 0
+  const stampDuty = strat.stampDuty ?? stampDutyEstimate
+
   const totalCosts = fields.reduce((sum,[key]) => {
     if (key==='legals') return sum + n(legals)
     if (key==='settlementAdj') return sum + n(settlementAdj)
+    if (key==='stampDuty') return sum + n(stampDuty)
     return sum + n(strat[key])
   }, 0) + lmi
 
@@ -759,6 +771,7 @@ function calcFunding(strat, dealType) {
   const totalLVR = lvrBase ? (loanFromLender / lvrBase) : 0
   const showBaseLoan = capitaliseLMI && lmi > 0
   const baseLoan = loanFromLender - (capitaliseLMI ? lmi : 0)
+  const baseLoanLVR = (showBaseLoan && lvrBase) ? (baseLoan / lvrBase) : 0
 
   // Sale fees are entered as a percentage of the sale price (Cameron's
   // request) rather than a flat dollar figure.
@@ -775,14 +788,14 @@ function calcFunding(strat, dealType) {
   // Optional secondary calc — only for Construction deals with the toggle on.
   let constructionCalc = null
   if (dealType === 'Construction' && strat.includeConstructionFunding) {
-    const additionalPurchaseCosts = n(legals) + n(strat.stampDuty) + n(settlementAdj) + lmi
+    const additionalPurchaseCosts = n(legals) + n(stampDuty) + n(settlementAdj) + lmi
     const less20PercentLand = 0.2 * n(strat.purchasePrice)
     const constructionFundsAvailable = n(strat.constructionLoanPortionRequested) + netSaleProceeds + n(strat.savingsOffset) - less20PercentLand - additionalPurchaseCosts
     const constructionSurplusDeficit = constructionFundsAvailable - n(strat.fixedPriceContract)
     constructionCalc = { additionalPurchaseCosts, less20PercentLand, constructionFundsAvailable, constructionSurplusDeficit }
   }
 
-  return { fields, legals, settlementAdj, lmiIncluded, lmi, lvrBase, totalCosts, loanFromLender, totalLVR, capitaliseLMI, showBaseLoan, baseLoan, saleFeesAmount, netSaleProceeds, totalFundsAvailable, surplusDeficit, constructionCalc }
+  return { fields, legals, settlementAdj, hasStampDuty, stampDuty, stampDutyEstimate, lmiIncluded, lmi, lvrBase, totalCosts, loanFromLender, totalLVR, capitaliseLMI, showBaseLoan, baseLoan, baseLoanLVR, saleFeesAmount, netSaleProceeds, totalFundsAvailable, surplusDeficit, constructionCalc }
 }
 
 function fmtM(v) { return v==='' || v===undefined || v===null || isNaN(v) ? '—' : `$${Math.round(Number(v)).toLocaleString()}` }
@@ -988,9 +1001,6 @@ function StrategyTab({ deal, updateDeal }) {
   const fundingTableTitle = dealType === 'Construction' ? 'Land & Construction Funding Table' : `${dealType} Funding Table`
   const baseValueKey = dealType === 'Construction' ? 'estimatedValue' : dealType === 'Refinance' ? 'propertyValue' : 'purchasePrice'
   const baseValueLabel = dealType === 'Construction' ? 'Estimated Value' : dealType === 'Refinance' ? 'Property Value' : 'Purchase Price'
-  const showsStampDuty = calc.fields.some(([k])=>k==='stampDuty')
-  const dutyEstimateBase = dealType === 'Construction' ? strat.purchasePrice : strat.purchasePrice
-  const estimatedStampDuty = showsStampDuty ? calcStampDuty(strat.state||'NSW', dutyEstimateBase) : 0
 
   return (
     <div>
@@ -1021,7 +1031,7 @@ function StrategyTab({ deal, updateDeal }) {
             <LiveRowCurrency label={baseValueLabel} value={strat[baseValueKey]} onCommit={v=>s(baseValueKey, v)} />
           )}
 
-          {showsStampDuty && (
+          {calc.hasStampDuty && (
             <>
               <div style={rowWrap}>
                 <span style={rowLabel}>State (for stamp duty estimate)</span>
@@ -1029,11 +1039,11 @@ function StrategyTab({ deal, updateDeal }) {
                   {STAMP_DUTY_STATES.map(st=><option key={st} value={st}>{st}</option>)}
                 </select>
               </div>
-              <LiveRowCurrency label="Stamp Duty (OSR est.)" value={strat.stampDuty} onCommit={v=>s('stampDuty', v)} />
-              {estimatedStampDuty > 0 && (
+              <LiveRowCurrency label="Stamp Duty (OSR est.)" value={calc.stampDuty} onCommit={v=>s('stampDuty', v)} />
+              {strat.stampDuty != null && strat.stampDuty !== calc.stampDutyEstimate && calc.stampDutyEstimate > 0 && (
                 <div style={{ display:'flex', justifyContent:'flex-end', alignItems:'center', gap:8, margin:'-4px 0 8px' }}>
-                  <span style={{ fontSize:10.5, color:'#9ca3af' }}>Estimated ({strat.state||'NSW'}): {fmtM(estimatedStampDuty)}</span>
-                  <button onClick={()=>s('stampDuty', estimatedStampDuty)} style={{...addBtnStyle, padding:'2px 8px', fontSize:10}}>Apply</button>
+                  <span style={{ fontSize:10.5, color:'#9ca3af' }}>Estimated ({strat.state||'NSW'}): {fmtM(calc.stampDutyEstimate)}</span>
+                  <button onClick={()=>s('stampDuty', calc.stampDutyEstimate)} style={{...addBtnStyle, padding:'2px 8px', fontSize:10}}>Apply</button>
                 </div>
               )}
             </>
@@ -1050,7 +1060,7 @@ function StrategyTab({ deal, updateDeal }) {
             lvrBase={calc.lvrBase}
             lmiAddOn={calc.capitaliseLMI ? calc.lmi : 0}
           />
-          {calc.showBaseLoan && <ComputedRow label="Base Loan (excl. capitalised LMI)" value={fmtM(calc.baseLoan)} tone="yellow" />}
+          {calc.showBaseLoan && <ComputedRow label="Base Loan (excl. capitalised LMI)" value={fmtM(calc.baseLoan)} tone="yellow" side={calc.lvrBase ? `${(calc.baseLoanLVR*100).toFixed(1)}% LVR` : null} />}
 
           <div style={{ marginTop:10, paddingTop:10, borderTop:'1px solid #e8eaed' }}>
             <LiveRowCurrency label="Equity" value={strat.equity} onCommit={v=>s('equity', v)} />
@@ -1085,15 +1095,19 @@ function StrategyTab({ deal, updateDeal }) {
             <LiveRowCurrency label="Amount" value={strat.repayAmount} onCommit={v=>s('repayAmount', v)} />
             <LiveRowNumber label="Term" value={strat.repayTerm} onCommit={v=>s('repayTerm', v)} suffix="yrs" />
             <LiveRowNumber label="Interest Rate" value={strat.repayRate} onCommit={v=>s('repayRate', v)} suffix="%" step="0.01" />
+            <LiveRowSelect label="Repayment Frequency" value={strat.repayFrequency||'Monthly'} onCommit={v=>s('repayFrequency', v)} options={REPAYMENT_FREQUENCIES} allowBlank={false} />
             {(() => {
               const amt = Number(strat.repayAmount)||0, yrs = Number(strat.repayTerm)||0, rate = (Number(strat.repayRate)||0)/100
               const nMo = yrs*12, r = rate/12
               const pi = amt && nMo && r ? (amt*r)/(1-Math.pow(1+r,-nMo)) : 0
               const io = amt && rate ? (amt*rate)/12 : 0
+              const freq = strat.repayFrequency || 'Monthly'
+              const mult = REPAYMENT_FREQUENCY_MULT[freq]
+              const freqLabel = freq.toLowerCase()
               return (
                 <div style={{ marginTop:10, paddingTop:10, borderTop:'1px solid #e8eaed' }}>
-                  <ComputedRow label="P&I Repayment (monthly)" value={pi ? `$${Math.round(pi).toLocaleString()}` : '—'} tone="navy" />
-                  <ComputedRow label="IO Repayment (monthly)" value={io ? `$${Math.round(io).toLocaleString()}` : '—'} tone="navy" />
+                  <ComputedRow label={`P&I Repayment (${freqLabel})`} value={pi ? `$${Math.round(pi*mult).toLocaleString()}` : '—'} tone="navy" />
+                  <ComputedRow label={`IO Repayment (${freqLabel})`} value={io ? `$${Math.round(io*mult).toLocaleString()}` : '—'} tone="navy" />
                 </div>
               )
             })()}
