@@ -646,16 +646,98 @@ const TRANSACTION_TYPE_TO_DEALTYPE = {
 }
 function deriveDealType(transactionType) { return TRANSACTION_TYPE_TO_DEALTYPE[transactionType] || 'Purchase' }
 
+// General/standard transfer duty rates by state — estimates only. These do
+// NOT apply first-home-buyer, pensioner, off-the-plan, or foreign-purchaser
+// surcharge concessions, since those depend on client-specific eligibility.
+// Treat as a starting estimate and verify against the relevant state revenue
+// office for the final figure. NT uses its official quadratic formula rather
+// than a bracket table; every other state is a standard marginal-rate scale.
+const STAMP_DUTY_STATES = ['NSW','VIC','QLD','SA','WA','TAS','ACT','NT']
+function calcStampDuty(state, price) {
+  const p = Number(price) || 0
+  if (!p) return 0
+  const r = v => Math.round(v)
+  switch (state) {
+    case 'NSW':
+      if (p<=16000) return r(p*0.0125)
+      if (p<=35000) return r(200+(p-16000)*0.015)
+      if (p<=93000) return r(485+(p-35000)*0.0175)
+      if (p<=351000) return r(1500+(p-93000)*0.035)
+      if (p<=1168000) return r(10530+(p-351000)*0.045)
+      if (p<=3504000) return r(47295+(p-1168000)*0.055)
+      return r(175745+(p-3504000)*0.07)
+    case 'VIC':
+      if (p<=25000) return r(p*0.014)
+      if (p<=130000) return r(350+(p-25000)*0.024)
+      if (p<=960000) return r(2870+(p-130000)*0.06)
+      if (p<=2000000) return r(p*0.055)
+      return r(110000+(p-2000000)*0.065)
+    case 'QLD':
+      if (p<=5000) return 0
+      if (p<=75000) return r((p-5000)*0.015)
+      if (p<=540000) return r(1050+(p-75000)*0.035)
+      if (p<=1000000) return r(17325+(p-540000)*0.045)
+      return r(38025+(p-1000000)*0.0575)
+    case 'SA':
+      if (p<=12000) return r(p*0.01)
+      if (p<=30000) return r(120+(p-12000)*0.02)
+      if (p<=50000) return r(480+(p-30000)*0.03)
+      if (p<=100000) return r(1080+(p-50000)*0.035)
+      if (p<=200000) return r(2830+(p-100000)*0.04)
+      if (p<=250000) return r(6830+(p-200000)*0.0425)
+      if (p<=300000) return r(8955+(p-250000)*0.0475)
+      if (p<=500000) return r(11330+(p-300000)*0.05)
+      return r(21330+(p-500000)*0.055)
+    case 'WA':
+      if (p<=120000) return r(p*0.019)
+      if (p<=150000) return r(2280+(p-120000)*0.0285)
+      if (p<=360000) return r(3135+(p-150000)*0.038)
+      if (p<=725000) return r(11115+(p-360000)*0.0475)
+      return r(28453.75+(p-725000)*0.0515)
+    case 'TAS':
+      if (p<=3000) return 50
+      if (p<=25000) return Math.max(50, r(p*0.0175))
+      if (p<=75000) return r(385+(p-25000)*0.0225)
+      if (p<=200000) return r(1510+(p-75000)*0.035)
+      if (p<=375000) return r(5935+(p-200000)*0.04)
+      if (p<=725000) return r(12935+(p-375000)*0.0425)
+      return r(27810+(p-725000)*0.045)
+    case 'ACT':
+      if (p<=260000) return r(p*0.006)
+      if (p<=300000) return r(1560+(p-260000)*0.022)
+      if (p<=500000) return r(2440+(p-300000)*0.034)
+      if (p<=750000) return r(9240+(p-500000)*0.0432)
+      if (p<=1000000) return r(20040+(p-750000)*0.059)
+      if (p<=1455000) return r(34790+(p-1000000)*0.064)
+      return r(p*0.0454)
+    case 'NT': {
+      const V = p/1000
+      if (p<=525000) return r(0.06571441*V*V + 15*V)
+      return r(p*0.0495)
+    }
+    default: return 0
+  }
+}
+
 const STRATEGY_COST_FIELDS = {
-  'Purchase':     [['purchasePrice','Purchase Price'],['legals','Legals'],['stampDuty','Stamp Duty (OSR est.)'],['settlementAdj','Settlement Adjustments'],['lmi','LMI Est.']],
-  'Construction': [['purchasePrice','Land Purchase'],['constructionCost','Construction'],['legals','Legals'],['stampDuty','Stamp Duty (OSR est.)'],['settlementAdj','Settlement Adjustments'],['lmi','LMI Est.']],
-  'Refinance':    [['refinancePayout','Refinance / Payout Amount'],['legals','Discharge / Legal Fees'],['settlementAdj','Settlement Adjustments'],['lmi','LMI Est.']],
+  'Purchase':     [['purchasePrice','Purchase Price'],['legals','Legals'],['stampDuty','Stamp Duty (OSR est.)'],['settlementAdj','Settlement Adjustments']],
+  'Construction': [['purchasePrice','Land Purchase'],['constructionCost','Construction'],['legals','Legals'],['stampDuty','Stamp Duty (OSR est.)'],['settlementAdj','Settlement Adjustments']],
+  'Refinance':    [['refinancePayout','Refinance / Payout Amount'],['legals','Discharge / Legal Fees'],['settlementAdj','Settlement Adjustments']],
 }
 
 function calcFunding(strat, dealType) {
   const n = v => Number(v) || 0
+  const legals = strat.legals ?? 2500
+  const settlementAdj = strat.settlementAdj ?? 1500
+  const lmiIncluded = !!strat.lmiIncluded
+  const lmi = lmiIncluded ? n(strat.lmi) : 0
+
   const fields = STRATEGY_COST_FIELDS[dealType] || STRATEGY_COST_FIELDS['Purchase']
-  const totalCosts = fields.reduce((sum,[key]) => sum + n(strat[key]), 0)
+  const totalCosts = fields.reduce((sum,[key]) => {
+    if (key==='legals') return sum + n(legals)
+    if (key==='settlementAdj') return sum + n(settlementAdj)
+    return sum + n(strat[key])
+  }, 0) + lmi
 
   // LVR is calculated against the property's value, not its cost — for a
   // purchase those are the same figure, but Construction uses a distinct
@@ -666,20 +748,24 @@ function calcFunding(strat, dealType) {
     : n(strat.purchasePrice)
   const lvrPct = n(strat.baseLvr) / 100
 
-  // LMI capitalised into the loan (default) vs paid in cash. Capitalising
-  // adds it to both the loan and the costs, so it's cost-neutral to the
-  // funding gap; paying cash means it still counts as a cost but has to be
-  // covered by contributions instead. Base Loan (the LVR-only portion,
-  // excluding the capitalised LMI) is only meaningful — and only shown —
-  // when LMI is actually being capitalised.
-  const capitaliseLMI = strat.lmiCapitalised !== false
-  const loanFromLender = lvrBase * lvrPct + (capitaliseLMI ? n(strat.lmi) : 0)
+  // LMI capitalised into the loan (default, when LMI is included at all) vs
+  // paid in cash. Capitalising adds it to both the loan and the costs, so
+  // it's cost-neutral to the funding gap; paying cash means it still counts
+  // as a cost but has to be covered by contributions instead. Base Loan (the
+  // LVR-only portion, excluding the capitalised LMI) is only meaningful —
+  // and only shown — when LMI is actually being capitalised.
+  const capitaliseLMI = lmiIncluded && strat.lmiCapitalised !== false
+  const loanFromLender = lvrBase * lvrPct + (capitaliseLMI ? lmi : 0)
   const totalLVR = lvrBase ? (loanFromLender / lvrBase) : 0
-  const showBaseLoan = capitaliseLMI && n(strat.lmi) > 0
-  const baseLoan = loanFromLender - (capitaliseLMI ? n(strat.lmi) : 0)
+  const showBaseLoan = capitaliseLMI && lmi > 0
+  const baseLoan = loanFromLender - (capitaliseLMI ? lmi : 0)
 
+  // Sale fees are entered as a percentage of the sale price (Cameron's
+  // request) rather than a flat dollar figure.
+  const saleFeesPercent = n(strat.sale?.feesPercent)
+  const saleFeesAmount = strat.includeSaleProceeds ? (n(strat.sale?.estSalePrice) * saleFeesPercent / 100) : 0
   const netSaleProceeds = strat.includeSaleProceeds
-    ? (n(strat.sale?.estSalePrice) - n(strat.sale?.existingLoanPayout) - n(strat.sale?.saleFees))
+    ? (n(strat.sale?.estSalePrice) - n(strat.sale?.existingLoanPayout) - saleFeesAmount)
     : 0
 
   const contributionsTotal = (strat.contributions||[]).reduce((sum,c)=>sum+n(c.amount),0)
@@ -687,19 +773,16 @@ function calcFunding(strat, dealType) {
   const surplusDeficit = totalFundsAvailable - totalCosts
 
   // Optional secondary calc — only for Construction deals with the toggle on.
-  // Models whether the construction-stage drawdown covers the fixed price
-  // contract once the required land equity buffer and other purchase costs
-  // are netted off.
   let constructionCalc = null
   if (dealType === 'Construction' && strat.includeConstructionFunding) {
-    const additionalPurchaseCosts = n(strat.legals) + n(strat.stampDuty) + n(strat.settlementAdj) + n(strat.lmi)
+    const additionalPurchaseCosts = n(legals) + n(strat.stampDuty) + n(settlementAdj) + lmi
     const less20PercentLand = 0.2 * n(strat.purchasePrice)
     const constructionFundsAvailable = n(strat.constructionLoanPortionRequested) + netSaleProceeds + n(strat.savingsOffset) - less20PercentLand - additionalPurchaseCosts
     const constructionSurplusDeficit = constructionFundsAvailable - n(strat.fixedPriceContract)
     constructionCalc = { additionalPurchaseCosts, less20PercentLand, constructionFundsAvailable, constructionSurplusDeficit }
   }
 
-  return { fields, lvrBase, totalCosts, loanFromLender, totalLVR, capitaliseLMI, showBaseLoan, baseLoan, netSaleProceeds, totalFundsAvailable, surplusDeficit, constructionCalc }
+  return { fields, legals, settlementAdj, lmiIncluded, lmi, lvrBase, totalCosts, loanFromLender, totalLVR, capitaliseLMI, showBaseLoan, baseLoan, saleFeesAmount, netSaleProceeds, totalFundsAvailable, surplusDeficit, constructionCalc }
 }
 
 function fmtM(v) { return v==='' || v===undefined || v===null || isNaN(v) ? '—' : `$${Math.round(Number(v)).toLocaleString()}` }
@@ -708,7 +791,7 @@ function fmtM(v) { return v==='' || v===undefined || v===null || isNaN(v) ? '—
 // wants visually called out (Total Costs, Loan From Lender, Total Funds
 // Available in navy; Surplus/Deficit in green or red; Base Loan in the
 // spreadsheet's yellow).
-function ComputedRow({ label, value, tone='navy', big }) {
+function ComputedRow({ label, value, tone='navy', big, side }) {
   const tones = {
     navy:  { bg:'#EEF2F6', fg:'#3D4F6B' },
     green: { bg:'#F0FDF4', fg:'#16a34a' },
@@ -719,7 +802,10 @@ function ComputedRow({ label, value, tone='navy', big }) {
   return (
     <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'8px 10px', margin:'4px 0', borderRadius:6, background:t.bg }}>
       <span style={{ fontSize:11.5, fontWeight:700, color:t.fg }}>{label}</span>
-      <span style={{ fontSize: big?14:12.5, fontWeight:800, color:t.fg }}>{value}</span>
+      <div style={{ display:'flex', alignItems:'center', gap:14 }}>
+        {side && <span style={{ fontSize:11, fontWeight:700, color:t.fg, opacity:0.75 }}>{side}</span>}
+        <span style={{ fontSize: big?14:12.5, fontWeight:800, color:t.fg }}>{value}</span>
+      </div>
     </div>
   )
 }
@@ -747,10 +833,10 @@ function LiveRowNumber({ label, value, onCommit, suffix, step }) {
 
 function LiveRowCheckbox({ label, checked, onChange }) {
   return (
-    <div style={rowWrap}>
-      <span style={rowLabel}>{label}</span>
+    <label style={{ display:'flex', alignItems:'center', gap:8, padding:'6px 0', cursor:'pointer' }}>
       <input type="checkbox" checked={!!checked} onChange={e=>onChange(e.target.checked)} />
-    </div>
+      <span style={{ fontSize:11.5, color:'#2A3545' }}>{label}</span>
+    </label>
   )
 }
 
@@ -801,6 +887,9 @@ function StrategyTab({ deal, updateDeal }) {
   const fundingTableTitle = dealType === 'Construction' ? 'Land & Construction Funding Table' : `${dealType} Funding Table`
   const baseValueKey = dealType === 'Construction' ? 'estimatedValue' : dealType === 'Refinance' ? 'propertyValue' : 'purchasePrice'
   const baseValueLabel = dealType === 'Construction' ? 'Estimated Value' : dealType === 'Refinance' ? 'Property Value' : 'Purchase Price'
+  const showsStampDuty = calc.fields.some(([k])=>k==='stampDuty')
+  const dutyEstimateBase = dealType === 'Construction' ? strat.purchasePrice : strat.purchasePrice
+  const estimatedStampDuty = showsStampDuty ? calcStampDuty(strat.state||'NSW', dutyEstimateBase) : 0
 
   return (
     <div>
@@ -809,28 +898,51 @@ function StrategyTab({ deal, updateDeal }) {
           Category <strong style={{color:'#2A3545'}}>{deal.Categories || '—'}</strong> · Transaction Type <strong style={{color:'#2A3545'}}>{deal['Transaction Type'] || '—'}</strong> → showing the <strong style={{color:'#3D4F6B'}}>{dealType}</strong> funding table.
         </div>
         <div style={{ fontSize:11, color:'#9ca3af', marginTop:6 }}>Change Category / Transaction Type on the Loan Details tab to switch this.</div>
-        <LiveRowCheckbox label="Also selling an existing property as part of this deal?" checked={strat.includeSaleProceeds} onChange={v=>s('includeSaleProceeds', v)} />
-        {dealType === 'Construction' && (
-          <LiveRowCheckbox label="Include construction funding portion (drawdown vs. fixed price contract)" checked={strat.includeConstructionFunding} onChange={v=>s('includeConstructionFunding', v)} />
-        )}
+        <div style={{ marginTop:10 }}>
+          <LiveRowCheckbox label="Include LMI in this deal?" checked={strat.lmiIncluded} onChange={v=>s('lmiIncluded', v)} />
+          {strat.lmiIncluded && (
+            <LiveRowCheckbox label="Is LMI to be capitalised into the loan?" checked={strat.lmiCapitalised !== false} onChange={v=>s('lmiCapitalised', v)} />
+          )}
+          <LiveRowCheckbox label="Also selling an existing property as part of this deal?" checked={strat.includeSaleProceeds} onChange={v=>s('includeSaleProceeds', v)} />
+          {dealType === 'Construction' && (
+            <LiveRowCheckbox label="Include construction funding portion (drawdown vs. fixed price contract)" checked={strat.includeConstructionFunding} onChange={v=>s('includeConstructionFunding', v)} />
+          )}
+        </div>
       </TabCard>
 
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
         <TabCard title={fundingTableTitle}>
-          {calc.fields.map(([key,label]) => (
-            <LiveRowCurrency key={key} label={label} value={strat[key]} onCommit={v=>s(key, v)} pink={key==='purchasePrice'} />
-          ))}
+          {calc.fields.filter(([k])=>k!=='stampDuty').map(([key,label]) => {
+            const val = key==='legals' ? calc.legals : key==='settlementAdj' ? calc.settlementAdj : strat[key]
+            return <LiveRowCurrency key={key} label={label} value={val} onCommit={v=>s(key, v)} pink={key==='purchasePrice'} />
+          })}
           {dealType !== 'Purchase' && (
             <LiveRowCurrency label={baseValueLabel} value={strat[baseValueKey]} onCommit={v=>s(baseValueKey, v)} />
           )}
-          <LiveRowNumber label="Base LVR" value={strat.baseLvr} onCommit={v=>s('baseLvr', v)} suffix="%" step="0.1" />
-          {Number(strat.lmi) > 0 && (
-            <LiveRowCheckbox label="Capitalise LMI into the loan" checked={calc.capitaliseLMI} onChange={v=>s('lmiCapitalised', v)} />
+
+          {showsStampDuty && (
+            <>
+              <div style={rowWrap}>
+                <span style={rowLabel}>State (for stamp duty estimate)</span>
+                <select value={strat.state||'NSW'} onChange={e=>s('state', e.target.value)} style={{ ...rowValueStyle(false,false), width:'40%' }}>
+                  {STAMP_DUTY_STATES.map(st=><option key={st} value={st}>{st}</option>)}
+                </select>
+              </div>
+              <LiveRowCurrency label="Stamp Duty (OSR est.)" value={strat.stampDuty} onCommit={v=>s('stampDuty', v)} />
+              {estimatedStampDuty > 0 && (
+                <div style={{ display:'flex', justifyContent:'flex-end', alignItems:'center', gap:8, margin:'-4px 0 8px' }}>
+                  <span style={{ fontSize:10.5, color:'#9ca3af' }}>Estimated ({strat.state||'NSW'}): {fmtM(estimatedStampDuty)}</span>
+                  <button onClick={()=>s('stampDuty', estimatedStampDuty)} style={{...addBtnStyle, padding:'2px 8px', fontSize:10}}>Apply</button>
+                </div>
+              )}
+            </>
           )}
 
+          <LiveRowNumber label={strat.lmiIncluded ? 'Base LVR' : 'LVR'} value={strat.baseLvr} onCommit={v=>s('baseLvr', v)} suffix="%" step="0.1" />
+          {strat.lmiIncluded && <LiveRowCurrency label="LMI Est." value={strat.lmi} onCommit={v=>s('lmi', v)} />}
+
           <ComputedRow label="Total Costs" value={fmtM(calc.totalCosts)} tone="navy" />
-          <ComputedRow label="Loan From Lender" value={fmtM(calc.loanFromLender)} tone="navy" />
-          <ComputedRow label="Total LVR" value={calc.lvrBase ? `${(calc.totalLVR*100).toFixed(1)}%` : '—'} tone="navy" />
+          <ComputedRow label="Loan From Lender" value={fmtM(calc.loanFromLender)} tone="navy" side={calc.lvrBase ? `${(calc.totalLVR*100).toFixed(1)}% LVR` : null} />
           {calc.showBaseLoan && <ComputedRow label="Base Loan (excl. capitalised LMI)" value={fmtM(calc.baseLoan)} tone="yellow" />}
 
           <div style={{ marginTop:10, paddingTop:10, borderTop:'1px solid #e8eaed' }}>
@@ -879,8 +991,9 @@ function StrategyTab({ deal, updateDeal }) {
           {strat.includeSaleProceeds && (
             <TabCard title="Estimated Proceeds From Sale">
               <LiveRowCurrency label="Estimated Sale Price" value={strat.sale?.estSalePrice} onCommit={v=>setSale('estSalePrice', v)} />
+              <LiveRowNumber label="Sale Fees" value={strat.sale?.feesPercent} onCommit={v=>setSale('feesPercent', v)} suffix="%" step="0.1" />
               <LiveRowCurrency label="Existing Loan Payout" value={strat.sale?.existingLoanPayout} onCommit={v=>setSale('existingLoanPayout', v)} />
-              <LiveRowCurrency label="Sale Fees" value={strat.sale?.saleFees} onCommit={v=>setSale('saleFees', v)} />
+              <ComputedRow label="Sale Fees ($)" value={fmtM(calc.saleFeesAmount)} tone="navy" />
               <ComputedRow label="Estimated Proceeds from Sale" value={fmtM(calc.netSaleProceeds)} tone="yellow" />
               <div style={{ fontSize:11, color:'#9ca3af', marginTop:6 }}>Flows automatically into the funding table's contributions.</div>
             </TabCard>
