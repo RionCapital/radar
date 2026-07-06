@@ -391,7 +391,7 @@ function MiniTable({ columns, rows, empty='No rows yet' }) {
 }
 
 const LENDER_SUGGESTIONS = ['Pepper Money','Bankwest','Resimac','Redzed','Think Tank','Liberty Financial','Bluestone','La Trobe Financial','Firstmac','Prospa','MyState','Suncorp','ING','Macquarie Bank','HSBC','CBA','Westpac','NAB','ANZ','Latitude Financial','ORDE Financial','Better Choice','Granite Home Loans']
-const CONTRIBUTION_TYPES = ['Additional Savings','Gift','Proceeds of Sale','Liquidated Assets (Shares)','Other']
+const CONTRIBUTION_TYPES = ['Additional Savings','Gift','Inheritance','Proceeds of Sale','Liquidated Assets (Shares)','Other']
 
 // Always-editable inputs that commit on blur (text/number) or immediately
 // (select/date) rather than requiring the page's Edit-deal/Save flow. Local
@@ -870,6 +870,47 @@ function LoanAmountRow({ label, lvrValue, onLvrCommit, amountValue, lvrBase, lmi
   )
 }
 
+// Matches the look of Equity/Savings above it — label and amount both look
+// like plain text until focused. Only difference is the label itself is
+// editable here (with a dropdown of common contribution types), since each
+// contribution needs its own description rather than a fixed one.
+function ContributionRow({ label, onLabelCommit, amount, onAmountCommit, onRemove, listId }) {
+  const [labelVal, setLabelVal] = useState(label ?? '')
+  const [labelFocused, setLabelFocused] = useState(false)
+  const [amtEdit, setAmtEdit] = useState('')
+  const [amtFocused, setAmtFocused] = useState(false)
+  useEffect(() => { if (!labelFocused) setLabelVal(label ?? '') }, [label, labelFocused])
+
+  return (
+    <div style={rowWrap}>
+      <input
+        value={labelFocused ? labelVal : (label || '')}
+        placeholder="e.g. Gift, Inheritance, Sale of shares…"
+        list={listId}
+        onFocus={()=>{ setLabelFocused(true); setLabelVal(label || '') }}
+        onChange={e=>setLabelVal(e.target.value)}
+        onBlur={()=>{ setLabelFocused(false); if ((labelVal||'') !== (label||'')) onLabelCommit(labelVal) }}
+        style={{ border:'none', borderBottom: labelFocused ? '1px solid #EB99C2' : '1px solid transparent', background:'transparent', fontSize:11, color:'#7A8090', outline:'none', flex:1, padding:'2px 0', fontFamily:'inherit' }}
+      />
+      <div style={{ display:'flex', alignItems:'center', gap:8, flexShrink:0 }}>
+        <input
+          value={amtFocused ? amtEdit : (amount ? `$${Number(amount).toLocaleString()}` : '')}
+          placeholder="—"
+          onFocus={()=>{ setAmtFocused(true); setAmtEdit(amount ?? '') }}
+          onChange={e=>setAmtEdit(e.target.value.replace(/[^0-9.]/g,''))}
+          onBlur={()=>{
+            setAmtFocused(false)
+            const num = amtEdit === '' ? '' : Number(amtEdit)
+            if (num !== (amount ?? '')) onAmountCommit(num === '' ? null : num)
+          }}
+          style={rowValueStyle(amtFocused, false)}
+        />
+        <button onClick={onRemove} style={rmBtnStyle}>✕</button>
+      </div>
+    </div>
+  )
+}
+
 function LiveRowNumber({ label, value, onCommit, suffix, step }) {
   const [val, setVal] = useState(value ?? '')
   const [focused, setFocused] = useState(false)
@@ -1020,11 +1061,15 @@ function StrategyTab({ deal, updateDeal }) {
           <div style={{ marginTop:10 }}>
             <datalist id="contribution-types">{CONTRIBUTION_TYPES.map(t=><option key={t} value={t}/>)}</datalist>
             {contributions.map((c,i) => (
-              <div key={i} style={{ display:'flex', alignItems:'center', gap:8, padding:'6px 0', borderBottom:'0.5px solid #f0f0f0' }}>
-                <LiveText small value={c.label} onCommit={v=>updContribution(i,'label',v)} placeholder="e.g. Gift, Liquidated Assets…" list="contribution-types" />
-                <LiveNumber small value={c.amount} onCommit={v=>updContribution(i,'amount',v)} />
-                <button onClick={()=>rmContribution(i)} style={rmBtnStyle}>✕</button>
-              </div>
+              <ContributionRow
+                key={i}
+                label={c.label}
+                onLabelCommit={v=>updContribution(i,'label',v)}
+                amount={c.amount}
+                onAmountCommit={v=>updContribution(i,'amount',v)}
+                onRemove={()=>rmContribution(i)}
+                listId="contribution-types"
+              />
             ))}
             <button onClick={addContribution} style={{...addBtnStyle, marginTop: contributions.length ? 8 : 0}}>+ Add contribution</button>
           </div>
