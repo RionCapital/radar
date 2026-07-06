@@ -481,6 +481,10 @@ function StageTracker({ status, onChange }) {
 // (label/value stacked rows) while keeping the no-edit-button editing model.
 const rowWrap = { display:'flex', justifyContent:'space-between', alignItems:'center', padding:'7px 0', borderBottom:'0.5px solid #f0f0f0', gap:10 }
 const rowLabel = { fontSize:11, color:'#7A8090', flexShrink:0 }
+// Shared so every dollar figure and every LVR% in the funding table sits in
+// the same column, regardless of which row component renders it.
+const AMOUNT_COL_WIDTH = 130
+const LVR_COL_WIDTH = 74
 function rowValueStyle(focused, pink) {
   return {
     border:'none', borderBottom: focused ? '1px solid #EB99C2' : '1px solid transparent',
@@ -527,7 +531,7 @@ function LiveRowCurrency({ label, value, onCommit, pink }) {
           const num = editVal === '' ? '' : Number(editVal)
           if (num !== (value ?? '')) onCommit(num===''?null:num)
         }}
-        style={rowValueStyle(focused, pink)}
+        style={{ ...rowValueStyle(focused, pink), width:AMOUNT_COL_WIDTH, flexShrink:0 }}
       />
     </div>
   )
@@ -815,20 +819,23 @@ function ComputedRow({ label, value, tone='navy', big, side }) {
   return (
     <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'8px 10px', margin:'4px 0', borderRadius:6, background:t.bg }}>
       <span style={{ fontSize:11.5, fontWeight:700, color:t.fg }}>{label}</span>
-      <div style={{ display:'flex', alignItems:'center', gap:14 }}>
-        {side && <span style={{ fontSize:11, fontWeight:700, color:t.fg, opacity:0.75 }}>{side}</span>}
-        <span style={{ fontSize: big?14:12.5, fontWeight:800, color:t.fg }}>{value}</span>
+      <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+        {side && <span style={{ fontSize:11, fontWeight:700, color:t.fg, opacity:0.75, width:LVR_COL_WIDTH, textAlign:'right', display:'inline-block' }}>{side}</span>}
+        <span style={{ fontSize: big?14:12.5, fontWeight:800, color:t.fg, width: side?AMOUNT_COL_WIDTH:'auto', textAlign:'right', display:'inline-block' }}>{value}</span>
       </div>
     </div>
   )
 }
 
-// Loan From Lender, two-way editable: change the LVR% and the loan amount
-// recalculates; write over the loan amount directly and the LVR% is solved
-// backwards from it instead. Both ends write to the same underlying baseLvr
-// field — the amount is never stored separately, just derived and, if
-// edited directly, converted back into an equivalent LVR%.
-function LoanAmountRow({ label, lvrValue, onLvrCommit, amountValue, lvrBase, lmiAddOn=0, tone='navy' }) {
+// Loan From Lender, two-way editable. The LVR% shown here is the TOTAL LVR
+// (i.e. including any capitalised LMI) — Cameron's example: 79% base LVR
+// plus LMI capitalised on a $1m value shows as 80.5% here, while Base Loan
+// underneath still shows the pre-LMI 79%. Editing either side keeps them in
+// sync: change the LVR% and the loan amount recalculates; write over the
+// loan amount and the (total) LVR% is solved backwards from it. Both
+// directions convert back to the underlying stored baseLvr field internally
+// — the amount and the total-LVR% are never stored themselves, just derived.
+function LoanAmountRow({ label, lvrBase, amountValue, lmiAddOn=0, onLvrCommit, tone='navy' }) {
   const tones = {
     navy:  { bg:'#EEF2F6', fg:'#3D4F6B' },
     green: { bg:'#F0FDF4', fg:'#16a34a' },
@@ -836,37 +843,40 @@ function LoanAmountRow({ label, lvrValue, onLvrCommit, amountValue, lvrBase, lmi
     yellow:{ bg:'#FEF9E7', fg:'#92600A' },
   }
   const t = tones[tone] || tones.navy
-  const [lvrEdit, setLvrEdit] = useState(lvrValue ?? '')
+  const displayLvr = lvrBase ? Math.round((amountValue/lvrBase*100)*10)/10 : ''
+  const [lvrEdit, setLvrEdit] = useState(displayLvr)
   const [lvrFocused, setLvrFocused] = useState(false)
   const [amtEdit, setAmtEdit] = useState('')
   const [amtFocused, setAmtFocused] = useState(false)
-  useEffect(() => { if (!lvrFocused) setLvrEdit(lvrValue ?? '') }, [lvrValue, lvrFocused])
+  useEffect(() => { if (!lvrFocused) setLvrEdit(displayLvr) }, [displayLvr, lvrFocused]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function commitLvr() {
     setLvrFocused(false)
     const num = lvrEdit === '' ? '' : Number(lvrEdit)
-    if (num !== (lvrValue ?? '')) onLvrCommit(num)
+    if (num === '' || !lvrBase) return
+    const impliedBaseLvr = Math.round((num - (lmiAddOn / lvrBase * 100)) * 100) / 100
+    onLvrCommit(impliedBaseLvr)
   }
   function commitAmount() {
     setAmtFocused(false)
     const num = amtEdit === '' ? '' : Number(amtEdit)
     if (num === '' || !lvrBase) return
-    const impliedLvr = Math.round((((num - lmiAddOn) / lvrBase) * 100) * 100) / 100
-    onLvrCommit(impliedLvr)
+    const impliedBaseLvr = Math.round((((num - lmiAddOn) / lvrBase) * 100) * 100) / 100
+    onLvrCommit(impliedBaseLvr)
   }
 
   return (
     <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'8px 10px', margin:'4px 0', borderRadius:6, background:t.bg }}>
       <span style={{ fontSize:11.5, fontWeight:700, color:t.fg }}>{label}</span>
       <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-        <div style={{ display:'flex', alignItems:'center', gap:3 }}>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'flex-end', gap:3, width:LVR_COL_WIDTH }}>
           <input
             type="number" placeholder="—"
-            value={lvrFocused ? lvrEdit : (lvrValue ?? '')}
-            onFocus={()=>{ setLvrFocused(true); setLvrEdit(lvrValue ?? '') }}
+            value={lvrFocused ? lvrEdit : displayLvr}
+            onFocus={()=>{ setLvrFocused(true); setLvrEdit(displayLvr) }}
             onChange={e=>setLvrEdit(e.target.value)}
             onBlur={commitLvr}
-            style={{ width:48, textAlign:'right', border:'none', borderBottom: lvrFocused?`1px solid ${t.fg}`:'1px solid transparent', background:'transparent', fontSize:12, fontWeight:700, color:t.fg, outline:'none', fontFamily:'inherit' }}
+            style={{ width:40, textAlign:'right', border:'none', borderBottom: lvrFocused?`1px solid ${t.fg}`:'1px solid transparent', background:'transparent', fontSize:12, fontWeight:700, color:t.fg, outline:'none', fontFamily:'inherit' }}
           />
           <span style={{ fontSize:11, fontWeight:700, color:t.fg, opacity:0.75 }}>% LVR</span>
         </div>
@@ -876,7 +886,7 @@ function LoanAmountRow({ label, lvrValue, onLvrCommit, amountValue, lvrBase, lmi
           onFocus={()=>{ setAmtFocused(true); setAmtEdit(amountValue ? String(Math.round(amountValue)) : '') }}
           onChange={e=>setAmtEdit(e.target.value.replace(/[^0-9.]/g,''))}
           onBlur={commitAmount}
-          style={{ width:110, textAlign:'right', border:'none', borderBottom: amtFocused?`1px solid ${t.fg}`:'1px solid transparent', background:'transparent', fontSize:13, fontWeight:800, color:t.fg, outline:'none', fontFamily:'inherit' }}
+          style={{ width:AMOUNT_COL_WIDTH, textAlign:'right', border:'none', borderBottom: amtFocused?`1px solid ${t.fg}`:'1px solid transparent', background:'transparent', fontSize:13, fontWeight:800, color:t.fg, outline:'none', fontFamily:'inherit' }}
         />
       </div>
     </div>
@@ -896,30 +906,30 @@ function ContributionRow({ label, onLabelCommit, amount, onAmountCommit, onRemov
 
   return (
     <div style={rowWrap}>
-      <input
-        value={labelFocused ? labelVal : (label || '')}
-        placeholder="e.g. Gift, Inheritance, Sale of shares…"
-        list={listId}
-        onFocus={()=>{ setLabelFocused(true); setLabelVal(label || '') }}
-        onChange={e=>setLabelVal(e.target.value)}
-        onBlur={()=>{ setLabelFocused(false); if ((labelVal||'') !== (label||'')) onLabelCommit(labelVal) }}
-        style={{ border:'none', borderBottom: labelFocused ? '1px solid #EB99C2' : '1px solid transparent', background:'transparent', fontSize:11, color:'#7A8090', outline:'none', flex:1, padding:'2px 0', fontFamily:'inherit' }}
-      />
-      <div style={{ display:'flex', alignItems:'center', gap:8, flexShrink:0 }}>
+      <div style={{ display:'flex', alignItems:'center', gap:8, flex:1 }}>
         <input
-          value={amtFocused ? amtEdit : (amount ? `$${Number(amount).toLocaleString()}` : '')}
-          placeholder="—"
-          onFocus={()=>{ setAmtFocused(true); setAmtEdit(amount ?? '') }}
-          onChange={e=>setAmtEdit(e.target.value.replace(/[^0-9.]/g,''))}
-          onBlur={()=>{
-            setAmtFocused(false)
-            const num = amtEdit === '' ? '' : Number(amtEdit)
-            if (num !== (amount ?? '')) onAmountCommit(num === '' ? null : num)
-          }}
-          style={rowValueStyle(amtFocused, false)}
+          value={labelFocused ? labelVal : (label || '')}
+          placeholder="e.g. Gift, Inheritance, Sale of shares…"
+          list={listId}
+          onFocus={()=>{ setLabelFocused(true); setLabelVal(label || '') }}
+          onChange={e=>setLabelVal(e.target.value)}
+          onBlur={()=>{ setLabelFocused(false); if ((labelVal||'') !== (label||'')) onLabelCommit(labelVal) }}
+          style={{ border:'none', borderBottom: labelFocused ? '1px solid #EB99C2' : '1px solid transparent', background:'transparent', fontSize:11, color:'#7A8090', outline:'none', flex:1, padding:'2px 0', fontFamily:'inherit' }}
         />
         <button onClick={onRemove} style={rmBtnStyle}>✕</button>
       </div>
+      <input
+        value={amtFocused ? amtEdit : (amount ? `$${Number(amount).toLocaleString()}` : '')}
+        placeholder="—"
+        onFocus={()=>{ setAmtFocused(true); setAmtEdit(amount ?? '') }}
+        onChange={e=>setAmtEdit(e.target.value.replace(/[^0-9.]/g,''))}
+        onBlur={()=>{
+          setAmtFocused(false)
+          const num = amtEdit === '' ? '' : Number(amtEdit)
+          if (num !== (amount ?? '')) onAmountCommit(num === '' ? null : num)
+        }}
+        style={{ ...rowValueStyle(amtFocused, false), width:AMOUNT_COL_WIDTH, flexShrink:0 }}
+      />
     </div>
   )
 }
@@ -961,6 +971,16 @@ function StrategyTab({ deal, updateDeal }) {
 
   const dealType = deriveDealType(deal['Transaction Type'])
   const calc = calcFunding(strat, dealType)
+
+  // Loan From Lender is the deal's real facility amount, so it keeps the
+  // top-level Deal Amount in sync — the same field shown on Loan Details, in
+  // the header, and on the CRM dashboard/pipeline. Unlike Legals/Stamp Duty
+  // this isn't a one-off default: it tracks continuously, since the two
+  // numbers should always be the same thing.
+  useEffect(() => {
+    const rounded = Math.round(calc.loanFromLender)
+    if (rounded > 0 && rounded !== deal.Amount) updateDeal({ Amount: rounded })
+  }, [calc.loanFromLender]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const equityRows = strat.equityRows || []
   const addEquityRow = () => s('equityRows', [...equityRows, { property:'', lender:'', lvr:'', valuation:'', debt:'' }])
@@ -1054,7 +1074,6 @@ function StrategyTab({ deal, updateDeal }) {
           <ComputedRow label="Total Costs" value={fmtM(calc.totalCosts)} tone="navy" />
           <LoanAmountRow
             label="Loan From Lender"
-            lvrValue={strat.baseLvr}
             onLvrCommit={v=>s('baseLvr', v)}
             amountValue={calc.loanFromLender}
             lvrBase={calc.lvrBase}
@@ -1092,12 +1111,12 @@ function StrategyTab({ deal, updateDeal }) {
 
         <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
           <TabCard title="Repayment Calculator">
-            <LiveRowCurrency label="Amount" value={strat.repayAmount} onCommit={v=>s('repayAmount', v)} />
+            <LiveRowCurrency label="Amount" value={strat.repayAmount ?? (calc.loanFromLender || '')} onCommit={v=>s('repayAmount', v)} />
             <LiveRowNumber label="Term" value={strat.repayTerm} onCommit={v=>s('repayTerm', v)} suffix="yrs" />
             <LiveRowNumber label="Interest Rate" value={strat.repayRate} onCommit={v=>s('repayRate', v)} suffix="%" step="0.01" />
             <LiveRowSelect label="Repayment Frequency" value={strat.repayFrequency||'Monthly'} onCommit={v=>s('repayFrequency', v)} options={REPAYMENT_FREQUENCIES} allowBlank={false} />
             {(() => {
-              const amt = Number(strat.repayAmount)||0, yrs = Number(strat.repayTerm)||0, rate = (Number(strat.repayRate)||0)/100
+              const amt = Number(strat.repayAmount ?? calc.loanFromLender)||0, yrs = Number(strat.repayTerm)||0, rate = (Number(strat.repayRate)||0)/100
               const nMo = yrs*12, r = rate/12
               const pi = amt && nMo && r ? (amt*r)/(1-Math.pow(1+r,-nMo)) : 0
               const io = amt && rate ? (amt*rate)/12 : 0
