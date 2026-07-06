@@ -810,6 +810,66 @@ function ComputedRow({ label, value, tone='navy', big, side }) {
   )
 }
 
+// Loan From Lender, two-way editable: change the LVR% and the loan amount
+// recalculates; write over the loan amount directly and the LVR% is solved
+// backwards from it instead. Both ends write to the same underlying baseLvr
+// field — the amount is never stored separately, just derived and, if
+// edited directly, converted back into an equivalent LVR%.
+function LoanAmountRow({ label, lvrValue, onLvrCommit, amountValue, lvrBase, lmiAddOn=0, tone='navy' }) {
+  const tones = {
+    navy:  { bg:'#EEF2F6', fg:'#3D4F6B' },
+    green: { bg:'#F0FDF4', fg:'#16a34a' },
+    red:   { bg:'#FEF2F2', fg:'#dc2626' },
+    yellow:{ bg:'#FEF9E7', fg:'#92600A' },
+  }
+  const t = tones[tone] || tones.navy
+  const [lvrEdit, setLvrEdit] = useState(lvrValue ?? '')
+  const [lvrFocused, setLvrFocused] = useState(false)
+  const [amtEdit, setAmtEdit] = useState('')
+  const [amtFocused, setAmtFocused] = useState(false)
+  useEffect(() => { if (!lvrFocused) setLvrEdit(lvrValue ?? '') }, [lvrValue, lvrFocused])
+
+  function commitLvr() {
+    setLvrFocused(false)
+    const num = lvrEdit === '' ? '' : Number(lvrEdit)
+    if (num !== (lvrValue ?? '')) onLvrCommit(num)
+  }
+  function commitAmount() {
+    setAmtFocused(false)
+    const num = amtEdit === '' ? '' : Number(amtEdit)
+    if (num === '' || !lvrBase) return
+    const impliedLvr = Math.round((((num - lmiAddOn) / lvrBase) * 100) * 100) / 100
+    onLvrCommit(impliedLvr)
+  }
+
+  return (
+    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'8px 10px', margin:'4px 0', borderRadius:6, background:t.bg }}>
+      <span style={{ fontSize:11.5, fontWeight:700, color:t.fg }}>{label}</span>
+      <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:3 }}>
+          <input
+            type="number" placeholder="—"
+            value={lvrFocused ? lvrEdit : (lvrValue ?? '')}
+            onFocus={()=>{ setLvrFocused(true); setLvrEdit(lvrValue ?? '') }}
+            onChange={e=>setLvrEdit(e.target.value)}
+            onBlur={commitLvr}
+            style={{ width:48, textAlign:'right', border:'none', borderBottom: lvrFocused?`1px solid ${t.fg}`:'1px solid transparent', background:'transparent', fontSize:12, fontWeight:700, color:t.fg, outline:'none', fontFamily:'inherit' }}
+          />
+          <span style={{ fontSize:11, fontWeight:700, color:t.fg, opacity:0.75 }}>% LVR</span>
+        </div>
+        <input
+          placeholder="—"
+          value={amtFocused ? amtEdit : (amountValue ? `$${Math.round(amountValue).toLocaleString()}` : '—')}
+          onFocus={()=>{ setAmtFocused(true); setAmtEdit(amountValue ? String(Math.round(amountValue)) : '') }}
+          onChange={e=>setAmtEdit(e.target.value.replace(/[^0-9.]/g,''))}
+          onBlur={commitAmount}
+          style={{ width:110, textAlign:'right', border:'none', borderBottom: amtFocused?`1px solid ${t.fg}`:'1px solid transparent', background:'transparent', fontSize:13, fontWeight:800, color:t.fg, outline:'none', fontFamily:'inherit' }}
+        />
+      </div>
+    </div>
+  )
+}
+
 function LiveRowNumber({ label, value, onCommit, suffix, step }) {
   const [val, setVal] = useState(value ?? '')
   const [focused, setFocused] = useState(false)
@@ -938,11 +998,17 @@ function StrategyTab({ deal, updateDeal }) {
             </>
           )}
 
-          <LiveRowNumber label={strat.lmiIncluded ? 'Base LVR' : 'LVR'} value={strat.baseLvr} onCommit={v=>s('baseLvr', v)} suffix="%" step="0.1" />
           {strat.lmiIncluded && <LiveRowCurrency label="LMI Est." value={strat.lmi} onCommit={v=>s('lmi', v)} />}
 
           <ComputedRow label="Total Costs" value={fmtM(calc.totalCosts)} tone="navy" />
-          <ComputedRow label="Loan From Lender" value={fmtM(calc.loanFromLender)} tone="navy" side={calc.lvrBase ? `${(calc.totalLVR*100).toFixed(1)}% LVR` : null} />
+          <LoanAmountRow
+            label="Loan From Lender"
+            lvrValue={strat.baseLvr}
+            onLvrCommit={v=>s('baseLvr', v)}
+            amountValue={calc.loanFromLender}
+            lvrBase={calc.lvrBase}
+            lmiAddOn={calc.capitaliseLMI ? calc.lmi : 0}
+          />
           {calc.showBaseLoan && <ComputedRow label="Base Loan (excl. capitalised LMI)" value={fmtM(calc.baseLoan)} tone="yellow" />}
 
           <div style={{ marginTop:10, paddingTop:10, borderTop:'1px solid #e8eaed' }}>
