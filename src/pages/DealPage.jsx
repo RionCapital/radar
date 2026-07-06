@@ -392,7 +392,6 @@ function MiniTable({ columns, rows, empty='No rows yet' }) {
 
 const LENDER_SUGGESTIONS = ['Pepper Money','Bankwest','Resimac','Redzed','Think Tank','Liberty Financial','Bluestone','La Trobe Financial','Firstmac','Prospa','MyState','Suncorp','ING','Macquarie Bank','HSBC','CBA','Westpac','NAB','ANZ','Latitude Financial','ORDE Financial','Better Choice','Granite Home Loans']
 const CONTRIBUTION_TYPES = ['Additional Savings','Gift','Proceeds of Sale','Liquidated Assets (Shares)','Other']
-const STRATEGY_DEAL_TYPES = ['Purchase','Refinance','Construction','Sale & Purchase']
 
 // Always-editable inputs that commit on blur (text/number) or immediately
 // (select/date) rather than requiring the page's Edit-deal/Save flow. Local
@@ -632,11 +631,25 @@ function LoanDetailsTab({ d, editing, draft, set, deal, deals, setDeals, clients
   )
 }
 
+// Strategy no longer has its own independent Transaction Type selector —
+// Cameron wants it driven entirely by Category + Transaction Type set on the
+// Loan Details tab. This maps each Transaction Type value to which of the
+// three funding-table shapes applies. Not every value maps perfectly (e.g.
+// "Business Loan" as a transaction type isn't really property-shaped) — it
+// falls back to the Purchase shape, which is the least assumption-heavy
+// default.
+const TRANSACTION_TYPE_TO_DEALTYPE = {
+  'Purchase':'Purchase', 'FHO':'Purchase', 'Pre-approval':'Purchase', 'New':'Purchase', 'New Development':'Construction',
+  'Refinance':'Refinance', 'Equity Release':'Refinance', 'Variation':'Refinance', 'Maturity':'Refinance', 'Residual Stock':'Refinance', 'Balloon/Maturity':'Refinance',
+  'Construction':'Construction', 'Mezzanine':'Construction',
+  'Business Loan':'Purchase', 'Asset Finance':'Purchase', 'Trade & Working Capital':'Purchase', 'Sale & Lease Back':'Purchase',
+}
+function deriveDealType(transactionType) { return TRANSACTION_TYPE_TO_DEALTYPE[transactionType] || 'Purchase' }
+
 const STRATEGY_COST_FIELDS = {
-  'Purchase':        [['purchasePrice','Purchase Price'],['legals','Legals'],['stampDuty','Stamp Duty (OSR est.)'],['settlementAdj','Settlement Adjustments'],['lmi','LMI Est.']],
-  'Construction':    [['purchasePrice','Land Purchase'],['constructionCost','Construction Contract'],['legals','Legals'],['stampDuty','Stamp Duty (OSR est.)'],['settlementAdj','Settlement Adjustments'],['lmi','LMI Est.']],
-  'Refinance':       [['refinancePayout','Refinance / Payout Amount'],['legals','Discharge / Legal Fees'],['settlementAdj','Settlement Adjustments'],['lmi','LMI Est.']],
-  'Sale & Purchase': [['purchasePrice','Purchase Price'],['legals','Legals'],['stampDuty','Stamp Duty (OSR est.)'],['settlementAdj','Settlement Adjustments'],['lmi','LMI Est.']],
+  'Purchase':     [['purchasePrice','Purchase Price'],['legals','Legals'],['stampDuty','Stamp Duty (OSR est.)'],['settlementAdj','Settlement Adjustments'],['lmi','LMI Est.']],
+  'Construction': [['purchasePrice','Land Purchase'],['constructionCost','Construction'],['legals','Legals'],['stampDuty','Stamp Duty (OSR est.)'],['settlementAdj','Settlement Adjustments'],['lmi','LMI Est.']],
+  'Refinance':    [['refinancePayout','Refinance / Payout Amount'],['legals','Discharge / Legal Fees'],['settlementAdj','Settlement Adjustments'],['lmi','LMI Est.']],
 }
 
 function calcFunding(strat, dealType) {
@@ -644,32 +657,109 @@ function calcFunding(strat, dealType) {
   const fields = STRATEGY_COST_FIELDS[dealType] || STRATEGY_COST_FIELDS['Purchase']
   const totalCosts = fields.reduce((sum,[key]) => sum + n(strat[key]), 0)
 
-  const lvrBase = dealType === 'Construction' ? (n(strat.purchasePrice) + n(strat.constructionCost))
+  // LVR is calculated against the property's value, not its cost — for a
+  // purchase those are the same figure, but Construction uses a distinct
+  // Estimated Value (post-completion) and Refinance uses Property Value
+  // (not the payout amount being refinanced).
+  const lvrBase = dealType === 'Construction' ? n(strat.estimatedValue)
     : dealType === 'Refinance' ? n(strat.propertyValue)
     : n(strat.purchasePrice)
   const lvrPct = n(strat.baseLvr) / 100
-  const loanFromLender = lvrBase * lvrPct + n(strat.lmi)
-  const totalLVR = lvrBase ? (loanFromLender / lvrBase) : 0
-  const baseLoan = loanFromLender - n(strat.lmi)
 
-  const showSale = dealType === 'Construction' || dealType === 'Sale & Purchase'
-  const netSaleProceeds = showSale ? (n(strat.sale?.estSalePrice) - n(strat.sale?.existingLoanPayout) - n(strat.sale?.saleFees)) : 0
+  // LMI capitalised into the loan (default) vs paid in cash. Capitalising
+  // adds it to both the loan and the costs, so it's cost-neutral to the
+  // funding gap; paying cash means it still counts as a cost but has to be
+  // covered by contributions instead. Base Loan (the LVR-only portion,
+  // excluding the capitalised LMI) is only meaningful — and only shown —
+  // when LMI is actually being capitalised.
+  const capitaliseLMI = strat.lmiCapitalised !== false
+  const loanFromLender = lvrBase * lvrPct + (capitaliseLMI ? n(strat.lmi) : 0)
+  const totalLVR = lvrBase ? (loanFromLender / lvrBase) : 0
+  const showBaseLoan = capitaliseLMI && n(strat.lmi) > 0
+  const baseLoan = loanFromLender - (capitaliseLMI ? n(strat.lmi) : 0)
+
+  const netSaleProceeds = strat.includeSaleProceeds
+    ? (n(strat.sale?.estSalePrice) - n(strat.sale?.existingLoanPayout) - n(strat.sale?.saleFees))
+    : 0
 
   const contributionsTotal = (strat.contributions||[]).reduce((sum,c)=>sum+n(c.amount),0)
   const totalFundsAvailable = loanFromLender + n(strat.equity) + n(strat.savings) + contributionsTotal + netSaleProceeds
   const surplusDeficit = totalFundsAvailable - totalCosts
 
-  return { fields, lvrBase, totalCosts, loanFromLender, totalLVR, baseLoan, showSale, netSaleProceeds, totalFundsAvailable, surplusDeficit }
+  // Optional secondary calc — only for Construction deals with the toggle on.
+  // Models whether the construction-stage drawdown covers the fixed price
+  // contract once the required land equity buffer and other purchase costs
+  // are netted off.
+  let constructionCalc = null
+  if (dealType === 'Construction' && strat.includeConstructionFunding) {
+    const additionalPurchaseCosts = n(strat.legals) + n(strat.stampDuty) + n(strat.settlementAdj) + n(strat.lmi)
+    const less20PercentLand = 0.2 * n(strat.purchasePrice)
+    const constructionFundsAvailable = n(strat.constructionLoanPortionRequested) + netSaleProceeds + n(strat.savingsOffset) - less20PercentLand - additionalPurchaseCosts
+    const constructionSurplusDeficit = constructionFundsAvailable - n(strat.fixedPriceContract)
+    constructionCalc = { additionalPurchaseCosts, less20PercentLand, constructionFundsAvailable, constructionSurplusDeficit }
+  }
+
+  return { fields, lvrBase, totalCosts, loanFromLender, totalLVR, capitaliseLMI, showBaseLoan, baseLoan, netSaleProceeds, totalFundsAvailable, surplusDeficit, constructionCalc }
 }
 
 function fmtM(v) { return v==='' || v===undefined || v===null || isNaN(v) ? '—' : `$${Math.round(Number(v)).toLocaleString()}` }
+
+// A highlighted, non-editable summary row — used for the figures Cameron
+// wants visually called out (Total Costs, Loan From Lender, Total Funds
+// Available in navy; Surplus/Deficit in green or red; Base Loan in the
+// spreadsheet's yellow).
+function ComputedRow({ label, value, tone='navy', big }) {
+  const tones = {
+    navy:  { bg:'#EEF2F6', fg:'#3D4F6B' },
+    green: { bg:'#F0FDF4', fg:'#16a34a' },
+    red:   { bg:'#FEF2F2', fg:'#dc2626' },
+    yellow:{ bg:'#FEF9E7', fg:'#92600A' },
+  }
+  const t = tones[tone] || tones.navy
+  return (
+    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'8px 10px', margin:'4px 0', borderRadius:6, background:t.bg }}>
+      <span style={{ fontSize:11.5, fontWeight:700, color:t.fg }}>{label}</span>
+      <span style={{ fontSize: big?14:12.5, fontWeight:800, color:t.fg }}>{value}</span>
+    </div>
+  )
+}
+
+function LiveRowNumber({ label, value, onCommit, suffix, step }) {
+  const [val, setVal] = useState(value ?? '')
+  const [focused, setFocused] = useState(false)
+  useEffect(() => { if (!focused) setVal(value ?? '') }, [value, focused])
+  return (
+    <div style={rowWrap}>
+      <span style={rowLabel}>{label}</span>
+      <div style={{ display:'flex', alignItems:'center', gap:4, width:'60%', justifyContent:'flex-end' }}>
+        <input
+          type="number" step={step} value={val} placeholder="—"
+          onFocus={()=>setFocused(true)}
+          onChange={e=>setVal(e.target.value)}
+          onBlur={()=>{ setFocused(false); const num = val===''?'':Number(val); if (num !== (value ?? '')) onCommit(num) }}
+          style={{ ...rowValueStyle(focused, false), width:'auto', flex:1 }}
+        />
+        {suffix && <span style={{ fontSize:11, color:'#7A8090' }}>{suffix}</span>}
+      </div>
+    </div>
+  )
+}
+
+function LiveRowCheckbox({ label, checked, onChange }) {
+  return (
+    <div style={rowWrap}>
+      <span style={rowLabel}>{label}</span>
+      <input type="checkbox" checked={!!checked} onChange={e=>onChange(e.target.checked)} />
+    </div>
+  )
+}
 
 function StrategyTab({ deal, updateDeal }) {
   const strat = deal._strategy || {}
   const s = (k, v) => updateDeal({ _strategy: { ...strat, [k]: v } })
   const setSale = (k, v) => updateDeal({ _strategy: { ...strat, sale: { ...(strat.sale||{}), [k]: v } } })
 
-  const dealType = strat.dealType || (strat.isConstruction ? 'Construction' : 'Purchase')
+  const dealType = deriveDealType(deal['Transaction Type'])
   const calc = calcFunding(strat, dealType)
 
   const equityRows = strat.equityRows || []
@@ -708,85 +798,106 @@ function StrategyTab({ deal, updateDeal }) {
     return { totalBaseLoan, totalRepayment, weightedRate }
   }
 
+  const fundingTableTitle = dealType === 'Construction' ? 'Land & Construction Funding Table' : `${dealType} Funding Table`
+  const baseValueKey = dealType === 'Construction' ? 'estimatedValue' : dealType === 'Refinance' ? 'propertyValue' : 'purchasePrice'
+  const baseValueLabel = dealType === 'Construction' ? 'Estimated Value' : dealType === 'Refinance' ? 'Property Value' : 'Purchase Price'
+
   return (
     <div>
       <TabCard title="Transaction Type">
-        <div style={{ maxWidth:280 }}>
-          <LiveSelect value={dealType} onCommit={v=>s('dealType', v)} options={STRATEGY_DEAL_TYPES} allowBlank={false} />
+        <div style={{ fontSize:12, color:'#7A8090' }}>
+          Category <strong style={{color:'#2A3545'}}>{deal.Categories || '—'}</strong> · Transaction Type <strong style={{color:'#2A3545'}}>{deal['Transaction Type'] || '—'}</strong> → showing the <strong style={{color:'#3D4F6B'}}>{dealType}</strong> funding table.
         </div>
-        <div style={{ fontSize:11, color:'#9ca3af', marginTop:8 }}>Determines which funding fields and calculators show below.</div>
+        <div style={{ fontSize:11, color:'#9ca3af', marginTop:6 }}>Change Category / Transaction Type on the Loan Details tab to switch this.</div>
+        <LiveRowCheckbox label="Also selling an existing property as part of this deal?" checked={strat.includeSaleProceeds} onChange={v=>s('includeSaleProceeds', v)} />
+        {dealType === 'Construction' && (
+          <LiveRowCheckbox label="Include construction funding portion (drawdown vs. fixed price contract)" checked={strat.includeConstructionFunding} onChange={v=>s('includeConstructionFunding', v)} />
+        )}
       </TabCard>
 
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
-        <TabCard title={dealType === 'Construction' ? 'Land & Construction Funding Table' : `${dealType} Funding Table`}>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:12 }}>
-            {calc.fields.map(([key,label]) => (
-              <Field key={key} label={`${label} ($)`}><LiveNumber value={strat[key]} onCommit={v=>s(key, v)} /></Field>
-            ))}
-            {dealType === 'Refinance' && <Field label="Property Value ($)"><LiveNumber value={strat.propertyValue} onCommit={v=>s('propertyValue', v)} /></Field>}
-            <Field label="Base LVR (%)"><LiveNumber value={strat.baseLvr} onCommit={v=>s('baseLvr', v)} step="0.1" /></Field>
+        <TabCard title={fundingTableTitle}>
+          {calc.fields.map(([key,label]) => (
+            <LiveRowCurrency key={key} label={label} value={strat[key]} onCommit={v=>s(key, v)} pink={key==='purchasePrice'} />
+          ))}
+          {dealType !== 'Purchase' && (
+            <LiveRowCurrency label={baseValueLabel} value={strat[baseValueKey]} onCommit={v=>s(baseValueKey, v)} />
+          )}
+          <LiveRowNumber label="Base LVR" value={strat.baseLvr} onCommit={v=>s('baseLvr', v)} suffix="%" step="0.1" />
+          {Number(strat.lmi) > 0 && (
+            <LiveRowCheckbox label="Capitalise LMI into the loan" checked={calc.capitaliseLMI} onChange={v=>s('lmiCapitalised', v)} />
+          )}
+
+          <ComputedRow label="Total Costs" value={fmtM(calc.totalCosts)} tone="navy" />
+          <ComputedRow label="Loan From Lender" value={fmtM(calc.loanFromLender)} tone="navy" />
+          <ComputedRow label="Total LVR" value={calc.lvrBase ? `${(calc.totalLVR*100).toFixed(1)}%` : '—'} tone="navy" />
+          {calc.showBaseLoan && <ComputedRow label="Base Loan (excl. capitalised LMI)" value={fmtM(calc.baseLoan)} tone="yellow" />}
+
+          <div style={{ marginTop:10, paddingTop:10, borderTop:'1px solid #e8eaed' }}>
+            <LiveRowCurrency label="Equity" value={strat.equity} onCommit={v=>s('equity', v)} />
+            <LiveRowCurrency label="Savings" value={strat.savings} onCommit={v=>s('savings', v)} />
+            {strat.includeSaleProceeds && <ComputedRow label="Proceeds from Sale of Property" value={fmtM(calc.netSaleProceeds)} tone="navy" />}
           </div>
-          <MiniTable columns={['Summary','Amount']} rows={[
-            ['Total Costs', fmtM(calc.totalCosts)],
-            ['Loan From Lender', fmtM(calc.loanFromLender)],
-            ['Total LVR', calc.lvrBase ? `${(calc.totalLVR*100).toFixed(1)}%` : '—'],
-            ['Base Loan', fmtM(calc.baseLoan)],
-          ]}/>
+
+          <div style={{ marginTop:10 }}>
+            <datalist id="contribution-types">{CONTRIBUTION_TYPES.map(t=><option key={t} value={t}/>)}</datalist>
+            <MiniTable columns={['Other contribution', 'Amount', '']} rows={contributions.map((c,i) => [
+              <LiveText small value={c.label} onCommit={v=>updContribution(i,'label',v)} placeholder="e.g. Gift, Liquidated Assets…" list="contribution-types" />,
+              <LiveNumber small value={c.amount} onCommit={v=>updContribution(i,'amount',v)} />,
+              <button onClick={()=>rmContribution(i)} style={rmBtnStyle}>✕</button>,
+            ])} empty="No extra contributions"/>
+            <button onClick={addContribution} style={{...addBtnStyle, marginTop:8}}>+ Add contribution</button>
+          </div>
+
+          <div style={{ marginTop:12, paddingTop:10, borderTop:'1px solid #e8eaed' }}>
+            <ComputedRow label="Total Funds Available" value={fmtM(calc.totalFundsAvailable)} tone="navy" big />
+            <ComputedRow label="Surplus / (Deficit)" value={fmtM(calc.surplusDeficit)} tone={calc.surplusDeficit < 0 ? 'red' : 'green'} big />
+          </div>
         </TabCard>
 
-        <TabCard title="Repayment Calculator">
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:10, marginBottom:12 }}>
-            <Field label="Amount ($)"><LiveNumber value={strat.repayAmount} onCommit={v=>s('repayAmount', v)} /></Field>
-            <Field label="Term (yrs)"><LiveNumber value={strat.repayTerm} onCommit={v=>s('repayTerm', v)} /></Field>
-            <Field label="Rate (%)"><LiveNumber value={strat.repayRate} onCommit={v=>s('repayRate', v)} step="0.01" /></Field>
-          </div>
-          {(() => {
-            const amt = Number(strat.repayAmount)||0, yrs = Number(strat.repayTerm)||0, rate = (Number(strat.repayRate)||0)/100
-            const nMo = yrs*12, r = rate/12
-            const pi = amt && nMo && r ? (amt*r)/(1-Math.pow(1+r,-nMo)) : 0
-            const io = amt && rate ? (amt*rate)/12 : 0
-            return (
-              <MiniTable columns={['Repayment Type','Monthly']} rows={[
-                ['Principal & Interest', pi ? `$${Math.round(pi).toLocaleString()}` : '—'],
-                ['Interest Only', io ? `$${Math.round(io).toLocaleString()}` : '—'],
-              ]}/>
-            )
-          })()}
-        </TabCard>
+        <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+          <TabCard title="Repayment Calculator">
+            <LiveRowCurrency label="Amount" value={strat.repayAmount} onCommit={v=>s('repayAmount', v)} />
+            <LiveRowNumber label="Term" value={strat.repayTerm} onCommit={v=>s('repayTerm', v)} suffix="yrs" />
+            <LiveRowNumber label="Interest Rate" value={strat.repayRate} onCommit={v=>s('repayRate', v)} suffix="%" step="0.01" />
+            {(() => {
+              const amt = Number(strat.repayAmount)||0, yrs = Number(strat.repayTerm)||0, rate = (Number(strat.repayRate)||0)/100
+              const nMo = yrs*12, r = rate/12
+              const pi = amt && nMo && r ? (amt*r)/(1-Math.pow(1+r,-nMo)) : 0
+              const io = amt && rate ? (amt*rate)/12 : 0
+              return (
+                <div style={{ marginTop:10, paddingTop:10, borderTop:'1px solid #e8eaed' }}>
+                  <ComputedRow label="P&I Repayment (monthly)" value={pi ? `$${Math.round(pi).toLocaleString()}` : '—'} tone="navy" />
+                  <ComputedRow label="IO Repayment (monthly)" value={io ? `$${Math.round(io).toLocaleString()}` : '—'} tone="navy" />
+                </div>
+              )
+            })()}
+          </TabCard>
+
+          {strat.includeSaleProceeds && (
+            <TabCard title="Estimated Proceeds From Sale">
+              <LiveRowCurrency label="Estimated Sale Price" value={strat.sale?.estSalePrice} onCommit={v=>setSale('estSalePrice', v)} />
+              <LiveRowCurrency label="Existing Loan Payout" value={strat.sale?.existingLoanPayout} onCommit={v=>setSale('existingLoanPayout', v)} />
+              <LiveRowCurrency label="Sale Fees" value={strat.sale?.saleFees} onCommit={v=>setSale('saleFees', v)} />
+              <ComputedRow label="Estimated Proceeds from Sale" value={fmtM(calc.netSaleProceeds)} tone="yellow" />
+              <div style={{ fontSize:11, color:'#9ca3af', marginTop:6 }}>Flows automatically into the funding table's contributions.</div>
+            </TabCard>
+          )}
+
+          {dealType === 'Construction' && strat.includeConstructionFunding && calc.constructionCalc && (
+            <TabCard title="Funding Available for Construction">
+              <LiveRowCurrency label="Fixed Price Contract" value={strat.fixedPriceContract} onCommit={v=>s('fixedPriceContract', v)} />
+              <LiveRowCurrency label="Portion — Construction Loan (this request)" value={strat.constructionLoanPortionRequested} onCommit={v=>s('constructionLoanPortionRequested', v)} />
+              {strat.includeSaleProceeds && <ComputedRow label="Proceeds from Sale" value={fmtM(calc.netSaleProceeds)} tone="navy" />}
+              <LiveRowCurrency label="Savings (Offset Accounts)" value={strat.savingsOffset} onCommit={v=>s('savingsOffset', v)} />
+              <ComputedRow label="Less 20% of Land" value={fmtM(-calc.constructionCalc.less20PercentLand)} tone="red" />
+              <ComputedRow label="Less Additional Purchase Costs" value={fmtM(-calc.constructionCalc.additionalPurchaseCosts)} tone="red" />
+              <ComputedRow label="Total Funds Available" value={fmtM(calc.constructionCalc.constructionFundsAvailable)} tone="navy" big />
+              <ComputedRow label="Surplus / (Deficit)" value={fmtM(calc.constructionCalc.constructionSurplusDeficit)} tone={calc.constructionCalc.constructionSurplusDeficit < 0 ? 'red' : 'green'} big />
+            </TabCard>
+          )}
+        </div>
       </div>
-
-      {calc.showSale && (
-        <TabCard title="Sale of Existing Property">
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:10, marginBottom:10 }}>
-            <Field label="Estimated sale price ($)"><LiveNumber value={strat.sale?.estSalePrice} onCommit={v=>setSale('estSalePrice', v)} /></Field>
-            <Field label="Existing loan payout ($)"><LiveNumber value={strat.sale?.existingLoanPayout} onCommit={v=>setSale('existingLoanPayout', v)} /></Field>
-            <Field label="Sale fees ($)"><LiveNumber value={strat.sale?.saleFees} onCommit={v=>setSale('saleFees', v)} /></Field>
-          </div>
-          <div style={{ fontSize:12.5, color:'#2A3545' }}>Net proceeds available: <strong style={{color:'#3D4F6B'}}>{fmtM(calc.netSaleProceeds)}</strong> <span style={{color:'#9ca3af', fontWeight:400}}>— flows automatically into Total Funds Available below</span></div>
-        </TabCard>
-      )}
-
-      <TabCard title="Funding Sources & Contributions" right={<button onClick={addContribution} style={addBtnStyle}>+ Add contribution</button>}>
-        <datalist id="contribution-types">{CONTRIBUTION_TYPES.map(t=><option key={t} value={t}/>)}</datalist>
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:12 }}>
-          <Field label="Equity ($)"><LiveNumber value={strat.equity} onCommit={v=>s('equity', v)} /></Field>
-          <Field label="Savings ($)"><LiveNumber value={strat.savings} onCommit={v=>s('savings', v)} /></Field>
-        </div>
-        <MiniTable columns={['Contribution', 'Amount', '']} rows={contributions.map((c,i) => [
-          <LiveText small value={c.label} onCommit={v=>updContribution(i,'label',v)} placeholder="e.g. Gift, Proceeds of Sale…" list="contribution-types" />,
-          <LiveNumber small value={c.amount} onCommit={v=>updContribution(i,'amount',v)} />,
-          <button onClick={()=>rmContribution(i)} style={rmBtnStyle}>✕</button>,
-        ])} empty="No extra contributions added"/>
-        {calc.showSale && calc.netSaleProceeds !== 0 && (
-          <div style={{ fontSize:11.5, color:'#7A8090', marginTop:8 }}>+ Proceeds of Sale (net): <strong style={{color:'#2A3545'}}>{fmtM(calc.netSaleProceeds)}</strong> (from Sale of Existing Property card above)</div>
-        )}
-        <div style={{ marginTop:14, paddingTop:12, borderTop:'1px solid #e8eaed' }}>
-          <MiniTable columns={['','Amount']} rows={[
-            ['Total Funds Available', fmtM(calc.totalFundsAvailable)],
-            ['Surplus / (Deficit)', <span style={{ color: calc.surplusDeficit < 0 ? '#dc2626' : '#22c55e', fontWeight:700 }}>{fmtM(calc.surplusDeficit)}</span>],
-          ]}/>
-        </div>
-      </TabCard>
 
       <TabCard title="Equity Table — Existing Security" right={<button onClick={addEquityRow} style={addBtnStyle}>+ Add property</button>}>
         <MiniTable columns={['Property','Lender','LVR %','Valuation','LV','Debt','Equity','']} rows={equityRows.map((r,i) => {
