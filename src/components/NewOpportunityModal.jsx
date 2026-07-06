@@ -29,11 +29,17 @@ const inp = {
 const lbl = { fontSize: 10, fontWeight: 600, color: '#64748b', textTransform: 'uppercase',
   letterSpacing: '0.05em', marginBottom: 3, display: 'block' }
 
-// Load clients from localStorage
+// Load clients from localStorage. Client data is saved by lib/data.js as a
+// wrapped { data: [...], savedAt } object (not a raw array) — this was
+// reading the wrapped object directly and handing it to clients.filter(),
+// which throws "clients.filter is not a function" (minified to "r.filter is
+// not a function" in production) the moment this modal opens.
 function loadClients() {
   try {
     const s = localStorage.getItem('rion-radar-clients-v13')
-    return s ? JSON.parse(s) : []
+    if (!s) return []
+    const parsed = JSON.parse(s)
+    return Array.isArray(parsed) ? parsed : (parsed.data || [])
   } catch { return [] }
 }
 
