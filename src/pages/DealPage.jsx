@@ -841,12 +841,14 @@ function StrategyTab({ deal, updateDeal }) {
 
           <div style={{ marginTop:10 }}>
             <datalist id="contribution-types">{CONTRIBUTION_TYPES.map(t=><option key={t} value={t}/>)}</datalist>
-            <MiniTable columns={['Other contribution', 'Amount', '']} rows={contributions.map((c,i) => [
-              <LiveText small value={c.label} onCommit={v=>updContribution(i,'label',v)} placeholder="e.g. Gift, Liquidated Assets…" list="contribution-types" />,
-              <LiveNumber small value={c.amount} onCommit={v=>updContribution(i,'amount',v)} />,
-              <button onClick={()=>rmContribution(i)} style={rmBtnStyle}>✕</button>,
-            ])} empty="No extra contributions"/>
-            <button onClick={addContribution} style={{...addBtnStyle, marginTop:8}}>+ Add contribution</button>
+            {contributions.map((c,i) => (
+              <div key={i} style={{ display:'flex', alignItems:'center', gap:8, padding:'6px 0', borderBottom:'0.5px solid #f0f0f0' }}>
+                <LiveText small value={c.label} onCommit={v=>updContribution(i,'label',v)} placeholder="e.g. Gift, Liquidated Assets…" list="contribution-types" />
+                <LiveNumber small value={c.amount} onCommit={v=>updContribution(i,'amount',v)} />
+                <button onClick={()=>rmContribution(i)} style={rmBtnStyle}>✕</button>
+              </div>
+            ))}
+            <button onClick={addContribution} style={{...addBtnStyle, marginTop: contributions.length ? 8 : 0}}>+ Add contribution</button>
           </div>
 
           <div style={{ marginTop:12, paddingTop:10, borderTop:'1px solid #e8eaed' }}>
