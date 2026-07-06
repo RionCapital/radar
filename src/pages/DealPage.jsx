@@ -367,7 +367,59 @@ function MiniTable({ columns, rows, empty='No rows yet' }) {
   )
 }
 
-function StageTracker({ status, editing, onChange }) {
+const LENDER_SUGGESTIONS = ['Pepper Money','Bankwest','Resimac','Redzed','Think Tank','Liberty Financial','Bluestone','La Trobe Financial','Firstmac','Prospa','MyState','Suncorp','ING','Macquarie Bank','HSBC','CBA','Westpac','NAB','ANZ','Latitude Financial','ORDE Financial','Better Choice','Granite Home Loans']
+const CONTRIBUTION_TYPES = ['Additional Savings','Gift','Proceeds of Sale','Liquidated Assets (Shares)','Other']
+const STRATEGY_DEAL_TYPES = ['Purchase','Refinance','Construction','Sale & Purchase']
+
+// Always-editable inputs that commit on blur (text/number) or immediately
+// (select/date) rather than requiring the page's Edit-deal/Save flow. Local
+// state buffers keystrokes so we're not writing to Supabase on every
+// character typed — only once the field is done being edited.
+function LiveText({ value, onCommit, placeholder, list, small }) {
+  const [val, setVal] = useState(value ?? '')
+  useEffect(() => { setVal(value ?? '') }, [value])
+  return (
+    <input
+      style={small ? rowInp : inp}
+      value={val}
+      placeholder={placeholder}
+      list={list}
+      onChange={e=>setVal(e.target.value)}
+      onBlur={()=>{ if ((val||'') !== (value||'')) onCommit(val) }}
+    />
+  )
+}
+function LiveNumber({ value, onCommit, placeholder, step, small }) {
+  const [val, setVal] = useState(value ?? '')
+  useEffect(() => { setVal(value ?? '') }, [value])
+  return (
+    <input
+      style={small ? rowInp : inp}
+      type="number"
+      step={step}
+      value={val}
+      placeholder={placeholder}
+      onChange={e=>setVal(e.target.value)}
+      onBlur={()=>{
+        const num = val === '' ? '' : Number(val)
+        if (num !== (value ?? '')) onCommit(num)
+      }}
+    />
+  )
+}
+function LiveSelect({ value, onCommit, options, placeholder='— Select —', allowBlank=true, small }) {
+  return (
+    <select style={small ? rowInp : inp} value={value||''} onChange={e=>onCommit(e.target.value)}>
+      {allowBlank && <option value="">{placeholder}</option>}
+      {options.map(o => <option key={o} value={o}>{o}</option>)}
+    </select>
+  )
+}
+function LiveDate({ value, onCommit }) {
+  return <input style={inp} type="date" value={value?.slice(0,10)||''} onChange={e=>onCommit(e.target.value)} />
+}
+
+function StageTracker({ status, onChange }) {
   const isWithdrawn = status === '8. Withdrawn'
   const idx = TRACKER_STAGES.indexOf(isWithdrawn ? '1. Lead' : status)
   return (
@@ -376,8 +428,9 @@ function StageTracker({ status, editing, onChange }) {
         {TRACKER_STAGES.map((s, i) => (
           <div key={s} style={{ display:'flex', alignItems:'center', flex: i === TRACKER_STAGES.length-1 ? '0 0 auto' : 1 }}>
             <div
-              onClick={() => editing && onChange(s)}
-              style={{ display:'flex', flexDirection:'column', alignItems:'center', cursor: editing ? 'pointer' : 'default' }}
+              onClick={() => onChange(s)}
+              title={`Move to ${s.replace(/^\d+\.\s*/,'')}`}
+              style={{ display:'flex', flexDirection:'column', alignItems:'center', cursor:'pointer' }}
             >
               <div style={{
                 width:14, height:14, borderRadius:'50%',
@@ -392,67 +445,43 @@ function StageTracker({ status, editing, onChange }) {
         ))}
         {isWithdrawn && <span style={{ marginLeft:16, marginBottom:20 }}><Pill tone="slate">Withdrawn</Pill></span>}
       </div>
-      {editing && <div style={{ fontSize:10, color:'#9ca3af', paddingBottom:10 }}>Click a stage to move this deal — or set "8. Withdrawn" from Status in Loan Details.</div>}
+      <div style={{ fontSize:10, color:'#9ca3af', paddingBottom:10 }}>Click any stage to move this deal straight there — set "8. Withdrawn" from Status in Loan Details.</div>
     </div>
   )
 }
 
-function LoanDetailsTab({ d, editing, draft, set, deal, deals, setDeals, clients }) {
+function LoanDetailsTab({ d, editing, draft, set, deal, deals, setDeals, clients, updateDeal }) {
   const fmtAmt = v => v ? `$${Number(v).toLocaleString()}` : '—'
   return (
     <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
       <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
         <TabCard title="Deal details">
-          {editing ? (
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
-              <Field label="Status"><select style={inp} value={d.Status} onChange={e=>set('Status',e.target.value)}>{STAGES.map(s=><option key={s} value={s}>{s}</option>)}</select></Field>
-              <Field label="Amount ($)"><input style={inp} type="number" value={d.Amount||''} onChange={e=>set('Amount',e.target.value?Number(e.target.value):null)}/></Field>
-              <Field label="Category"><select style={inp} value={d.Categories||''} onChange={e=>set('Categories',e.target.value)}><option value="">— Select —</option>{CATEGORIES.map(c=><option key={c} value={c}>{c}</option>)}</select></Field>
-              <Field label="Transaction type"><select style={inp} value={d['Transaction Type']||''} onChange={e=>set('Transaction Type',e.target.value)}><option value="">— Select —</option>{TRANSACTION_TYPES.map(t=><option key={t} value={t}>{t}</option>)}</select></Field>
-              <Field label="Lender"><input style={inp} value={d.Lender||''} onChange={e=>set('Lender',e.target.value)}/></Field>
-              <Field label="Lead source"><select style={inp} value={d['Lead Source']||''} onChange={e=>set('Lead Source',e.target.value)}><option value="">— Select —</option>{LEAD_SOURCES.map(l=><option key={l} value={l}>{l}</option>)}</select></Field>
-              <Field label="Total security ($)"><input style={inp} type="number" value={d['Total Security']||''} onChange={e=>set('Total Security',e.target.value?Number(e.target.value):null)}/></Field>
-              <Field label="Internal reference"><input style={inp} value={d['Internal Reference']||''} onChange={e=>set('Internal Reference',e.target.value)}/></Field>
-            </div>
-          ) : (
-            <>
-              <ReadRow label="Amount" value={<span style={{color:'#EB99C2',fontWeight:600}}>{fmtAmt(d.Amount)}</span>}/>
-              <ReadRow label="Category" value={d.Categories}/>
-              <ReadRow label="Transaction type" value={d['Transaction Type']}/>
-              <ReadRow label="Lender" value={d.Lender}/>
-              <ReadRow label="Lead source" value={d['Lead Source']}/>
-              {(d['_referrers']||[]).length > 0 && <ReadRow label="Referral partner" value={(d['_referrers']||[]).map(r=>r.name).join(', ')}/>}
-              <ReadRow label="Total security" value={fmtAmt(d['Total Security'])}/>
-              <ReadRow label="Internal reference" value={d['Internal Reference']}/>
-            </>
+          <datalist id="lender-suggestions">{LENDER_SUGGESTIONS.map(l=><option key={l} value={l}/>)}</datalist>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+            <Field label="Status"><LiveSelect value={deal.Status} onCommit={v=>updateDeal({Status:v})} options={STAGES} allowBlank={false} /></Field>
+            <Field label="Amount ($)"><LiveNumber value={deal.Amount} onCommit={v=>updateDeal({Amount: v===''?null:v})} placeholder="e.g. 500000" /></Field>
+            <Field label="Category"><LiveSelect value={deal.Categories} onCommit={v=>updateDeal({Categories:v})} options={CATEGORIES} /></Field>
+            <Field label="Transaction type"><LiveSelect value={deal['Transaction Type']} onCommit={v=>updateDeal({'Transaction Type':v})} options={TRANSACTION_TYPES} /></Field>
+            <Field label="Lender"><LiveText value={deal.Lender} onCommit={v=>updateDeal({Lender:v})} placeholder="Type or pick a lender" list="lender-suggestions" /></Field>
+            <Field label="Lead source"><LiveSelect value={deal['Lead Source']} onCommit={v=>updateDeal({'Lead Source':v})} options={LEAD_SOURCES} /></Field>
+            <Field label="Total security ($)"><LiveNumber value={deal['Total Security']} onCommit={v=>updateDeal({'Total Security': v===''?null:v})} /></Field>
+            <Field label="Internal reference"><LiveText value={deal['Internal Reference']} onCommit={v=>updateDeal({'Internal Reference':v})} /></Field>
+          </div>
+          {(deal['_referrers']||[]).length > 0 && (
+            <div style={{ marginTop:10, fontSize:11, color:'#7A8090' }}>Referral partner: <strong style={{color:'#2A3545'}}>{(deal['_referrers']||[]).map(r=>r.name).join(', ')}</strong></div>
           )}
         </TabCard>
 
         <TabCard title="Key dates">
-          {editing ? (
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
-              <Field label="Settlement date"><input style={inp} type="date" value={d['Date Settled']?.slice(0,10)||''} onChange={e=>set('Date Settled',e.target.value)}/></Field>
-              <Field label="Finance due date"><input style={inp} type="date" value={d['Finance Due Date']?.slice(0,10)||''} onChange={e=>{
-                const val = e.target.value
-                set('Finance Due Date', val)
-                set('Month of Settlement', val ? val.slice(0,7) : draft?.['Month of Settlement'])
-              }}/></Field>
-              <Field label="Deposit due date"><input style={inp} type="date" value={d['Deposit Due Date']?.slice(0,10)||''} onChange={e=>set('Deposit Due Date',e.target.value)}/></Field>
-              <Field label="Fixed rate expiry"><input style={inp} type="date" value={d['Fixed Rate Expiry']?.slice(0,10)||''} onChange={e=>set('Fixed Rate Expiry',e.target.value)}/></Field>
-              <Field label="IO expiry"><input style={inp} type="date" value={d['Interest Only Expiry']?.slice(0,10)||''} onChange={e=>set('Interest Only Expiry',e.target.value)}/></Field>
-              <Field label="Discharge date"><input style={inp} type="date" value={d['Discharge Date']?.slice(0,10)||''} onChange={e=>set('Discharge Date',e.target.value)}/></Field>
-            </div>
-          ) : (
-            <>
-              <ReadRow label="Settlement date" value={d['Date Settled']?.slice(0,10)}/>
-              <ReadRow label="Finance due date" value={d['Finance Due Date']?.slice(0,10)}/>
-              <ReadRow label="Deposit due date" value={d['Deposit Due Date']?.slice(0,10)}/>
-              <ReadRow label="Fixed rate expiry" value={d['Fixed Rate Expiry']?.slice(0,10)}/>
-              <ReadRow label="IO expiry" value={d['Interest Only Expiry']?.slice(0,10)}/>
-              <ReadRow label="Discharge date" value={d['Discharge Date']?.slice(0,10)}/>
-              <ReadRow label="Discharge reason" value={d['Discharge Reason']}/>
-            </>
-          )}
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+            <Field label="Settlement date"><LiveDate value={deal['Date Settled']} onCommit={v=>updateDeal({'Date Settled':v})} /></Field>
+            <Field label="Finance due date"><LiveDate value={deal['Finance Due Date']} onCommit={v=>updateDeal({ 'Finance Due Date': v, 'Month of Settlement': v ? v.slice(0,7) : deal['Month of Settlement'] })} /></Field>
+            <Field label="Deposit due date"><LiveDate value={deal['Deposit Due Date']} onCommit={v=>updateDeal({'Deposit Due Date':v})} /></Field>
+            <Field label="Fixed rate expiry"><LiveDate value={deal['Fixed Rate Expiry']} onCommit={v=>updateDeal({'Fixed Rate Expiry':v})} /></Field>
+            <Field label="IO expiry"><LiveDate value={deal['Interest Only Expiry']} onCommit={v=>updateDeal({'Interest Only Expiry':v})} /></Field>
+            <Field label="Discharge date"><LiveDate value={deal['Discharge Date']} onCommit={v=>updateDeal({'Discharge Date':v})} /></Field>
+          </div>
+          {deal['Discharge Reason'] && <div style={{ marginTop:10, fontSize:11, color:'#7A8090' }}>Discharge reason: <span style={{color:'#2A3545'}}>{deal['Discharge Reason']}</span></div>}
         </TabCard>
       </div>
 
@@ -496,72 +525,118 @@ function LoanDetailsTab({ d, editing, draft, set, deal, deals, setDeals, clients
   )
 }
 
-function StrategyTab({ d, editing, set }) {
-  const strat = d._strategy || {}
-  const s = (k, v) => set('_strategy', { ...strat, [k]: v })
-  const equityRows = strat.equityRows || []
-  const compRows = strat.comparisonRows || []
+const STRATEGY_COST_FIELDS = {
+  'Purchase':        [['purchasePrice','Purchase Price'],['legals','Legals'],['stampDuty','Stamp Duty (OSR est.)'],['settlementAdj','Settlement Adjustments'],['lmi','LMI Est.']],
+  'Construction':    [['purchasePrice','Land Purchase'],['constructionCost','Construction Contract'],['legals','Legals'],['stampDuty','Stamp Duty (OSR est.)'],['settlementAdj','Settlement Adjustments'],['lmi','LMI Est.']],
+  'Refinance':       [['refinancePayout','Refinance / Payout Amount'],['legals','Discharge / Legal Fees'],['settlementAdj','Settlement Adjustments'],['lmi','LMI Est.']],
+  'Sale & Purchase': [['purchasePrice','Purchase Price'],['legals','Legals'],['stampDuty','Stamp Duty (OSR est.)'],['settlementAdj','Settlement Adjustments'],['lmi','LMI Est.']],
+}
 
-  const addEquityRow = () => s('equityRows', [...equityRows, { property:'', lender:'', lvr:'', valuation:'', debt:'', equity:'' }])
+function calcFunding(strat, dealType) {
+  const n = v => Number(v) || 0
+  const fields = STRATEGY_COST_FIELDS[dealType] || STRATEGY_COST_FIELDS['Purchase']
+  const totalCosts = fields.reduce((sum,[key]) => sum + n(strat[key]), 0)
+
+  const lvrBase = dealType === 'Construction' ? (n(strat.purchasePrice) + n(strat.constructionCost))
+    : dealType === 'Refinance' ? n(strat.propertyValue)
+    : n(strat.purchasePrice)
+  const lvrPct = n(strat.baseLvr) / 100
+  const loanFromLender = lvrBase * lvrPct + n(strat.lmi)
+  const totalLVR = lvrBase ? (loanFromLender / lvrBase) : 0
+  const baseLoan = loanFromLender - n(strat.lmi)
+
+  const showSale = dealType === 'Construction' || dealType === 'Sale & Purchase'
+  const netSaleProceeds = showSale ? (n(strat.sale?.estSalePrice) - n(strat.sale?.existingLoanPayout) - n(strat.sale?.saleFees)) : 0
+
+  const contributionsTotal = (strat.contributions||[]).reduce((sum,c)=>sum+n(c.amount),0)
+  const totalFundsAvailable = loanFromLender + n(strat.equity) + n(strat.savings) + contributionsTotal + netSaleProceeds
+  const surplusDeficit = totalFundsAvailable - totalCosts
+
+  return { fields, lvrBase, totalCosts, loanFromLender, totalLVR, baseLoan, showSale, netSaleProceeds, totalFundsAvailable, surplusDeficit }
+}
+
+function fmtM(v) { return v==='' || v===undefined || v===null || isNaN(v) ? '—' : `$${Math.round(Number(v)).toLocaleString()}` }
+
+function StrategyTab({ deal, updateDeal }) {
+  const strat = deal._strategy || {}
+  const s = (k, v) => updateDeal({ _strategy: { ...strat, [k]: v } })
+  const setSale = (k, v) => updateDeal({ _strategy: { ...strat, sale: { ...(strat.sale||{}), [k]: v } } })
+
+  const dealType = strat.dealType || (strat.isConstruction ? 'Construction' : 'Purchase')
+  const calc = calcFunding(strat, dealType)
+
+  const equityRows = strat.equityRows || []
+  const addEquityRow = () => s('equityRows', [...equityRows, { property:'', lender:'', lvr:'', valuation:'', debt:'' }])
   const updEquityRow = (i, k, v) => s('equityRows', equityRows.map((r,idx)=> idx===i ? {...r,[k]:v} : r))
   const rmEquityRow = (i) => s('equityRows', equityRows.filter((_,idx)=>idx!==i))
 
-  const addCompRow = () => s('comparisonRows', [...compRows, { lender:'', purpose:'', type:'P&I', term:'', baseLoan:'', lmi:'', totalLoan:'', repayment:'', rate:'' }])
-  const updCompRow = (i, k, v) => s('comparisonRows', compRows.map((r,idx)=> idx===i ? {...r,[k]:v} : r))
-  const rmCompRow = (i) => s('comparisonRows', compRows.filter((_,idx)=>idx!==i))
+  const contributions = strat.contributions || []
+  const addContribution = () => s('contributions', [...contributions, { label:'', amount:'' }])
+  const updContribution = (i, k, v) => s('contributions', contributions.map((r,idx)=> idx===i ? {...r,[k]:v} : r))
+  const rmContribution = (i) => s('contributions', contributions.filter((_,idx)=>idx!==i))
 
-  const fmtM = v => v==='' || v==null || isNaN(v) ? '—' : `$${Number(v).toLocaleString()}`
+  const scenarios = strat.comparisonScenarios || []
+  const addScenario = () => s('comparisonScenarios', [...scenarios, { id: Date.now(), label:'', rows: [{ property:'Home', purpose:'OO', type:'P&I', term:30, baseLoan:'', lmi:'', rate:'' }] }])
+  const updScenario = (i, patch) => s('comparisonScenarios', scenarios.map((sc,idx)=> idx===i ? {...sc,...patch} : sc))
+  const rmScenario = (i) => s('comparisonScenarios', scenarios.filter((_,idx)=>idx!==i))
+  const addScenarioRow = (i) => updScenario(i, { rows: [...scenarios[i].rows, { property:'Home', purpose:'OO', type:'P&I', term:30, baseLoan:'', lmi:'', rate:'' }] })
+  const updScenarioRow = (i, ri, k, v) => updScenario(i, { rows: scenarios[i].rows.map((r,idx)=> idx===ri ? {...r,[k]:v} : r) })
+  const rmScenarioRow = (i, ri) => updScenario(i, { rows: scenarios[i].rows.filter((_,idx)=>idx!==ri) })
+
+  function rowRepayment(r) {
+    const n = v => Number(v)||0
+    const total = n(r.baseLoan) + n(r.lmi)
+    const rate = n(r.rate)/100
+    const termMo = n(r.term)*12
+    if (!rate || !termMo) return 0
+    if (r.type === 'IO') return (n(r.baseLoan) * rate) / 12
+    const rm = rate/12
+    return (total * rm) / (1 - Math.pow(1+rm, -termMo))
+  }
+  function scenarioTotals(sc) {
+    const n = v => Number(v)||0
+    const totalBaseLoan = sc.rows.reduce((sum,r)=>sum+n(r.baseLoan),0)
+    const totalRepayment = sc.rows.reduce((sum,r)=>sum+rowRepayment(r),0)
+    const weightedRate = totalBaseLoan ? sc.rows.reduce((sum,r)=>sum+n(r.rate)*n(r.baseLoan),0)/totalBaseLoan : 0
+    return { totalBaseLoan, totalRepayment, weightedRate }
+  }
 
   return (
     <div>
-      {editing && (
-        <TabCard>
-          <label style={{ fontSize:12, color:'#7A8090', display:'flex', alignItems:'center', gap:6, cursor:'pointer' }}>
-            <input type="checkbox" checked={!!strat.isConstruction} onChange={e=>s('isConstruction', e.target.checked)} />
-            Construction / land + build deal
-          </label>
-        </TabCard>
-      )}
+      <TabCard title="Transaction Type">
+        <div style={{ maxWidth:280 }}>
+          <LiveSelect value={dealType} onCommit={v=>s('dealType', v)} options={STRATEGY_DEAL_TYPES} allowBlank={false} />
+        </div>
+        <div style={{ fontSize:11, color:'#9ca3af', marginTop:8 }}>Determines which funding fields and calculators show below.</div>
+      </TabCard>
 
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
-        <TabCard title={strat.isConstruction ? 'Land & Construction Funding' : 'Property Purchase Funding'}>
-          {editing ? (
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
-              <Field label={strat.isConstruction ? 'Land purchase ($)' : 'Purchase price ($)'}><input style={inp} type="number" value={strat.purchasePrice||''} onChange={e=>s('purchasePrice', e.target.value?Number(e.target.value):'')}/></Field>
-              {strat.isConstruction && <Field label="Construction contract ($)"><input style={inp} type="number" value={strat.constructionCost||''} onChange={e=>s('constructionCost', e.target.value?Number(e.target.value):'')}/></Field>}
-              <Field label="Legals ($)"><input style={inp} type="number" value={strat.legals||''} onChange={e=>s('legals', e.target.value?Number(e.target.value):'')}/></Field>
-              <Field label="Stamp duty est. ($)"><input style={inp} type="number" value={strat.stampDuty||''} onChange={e=>s('stampDuty', e.target.value?Number(e.target.value):'')}/></Field>
-              <Field label="Settlement adjustments ($)"><input style={inp} type="number" value={strat.settlementAdj||''} onChange={e=>s('settlementAdj', e.target.value?Number(e.target.value):'')}/></Field>
-              <Field label="LMI est. ($)"><input style={inp} type="number" value={strat.lmi||''} onChange={e=>s('lmi', e.target.value?Number(e.target.value):'')}/></Field>
-              <Field label="Loan from lender ($)"><input style={inp} type="number" value={strat.loanFromLender||''} onChange={e=>s('loanFromLender', e.target.value?Number(e.target.value):'')}/></Field>
-              <Field label="Base LVR (%)"><input style={inp} type="number" value={strat.baseLvr||''} onChange={e=>s('baseLvr', e.target.value?Number(e.target.value):'')}/></Field>
-            </div>
-          ) : (
-            <MiniTable columns={['Item','Amount']} rows={[
-              [strat.isConstruction ? 'Land Purchase' : 'Purchase Price', fmtM(strat.purchasePrice)],
-              ...(strat.isConstruction ? [['Construction Contract', fmtM(strat.constructionCost)]] : []),
-              ['Legals', fmtM(strat.legals)],
-              ['Stamp Duty (OSR est.)', fmtM(strat.stampDuty)],
-              ['Settlement Adjustments', fmtM(strat.settlementAdj)],
-              ['LMI Est.', fmtM(strat.lmi)],
-              ['Loan From Lender', fmtM(strat.loanFromLender)],
-              ['Base LVR', strat.baseLvr ? `${strat.baseLvr}%` : '—'],
-            ]}/>
-          )}
+        <TabCard title={dealType === 'Construction' ? 'Land & Construction Funding Table' : `${dealType} Funding Table`}>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:12 }}>
+            {calc.fields.map(([key,label]) => (
+              <Field key={key} label={`${label} ($)`}><LiveNumber value={strat[key]} onCommit={v=>s(key, v)} /></Field>
+            ))}
+            {dealType === 'Refinance' && <Field label="Property Value ($)"><LiveNumber value={strat.propertyValue} onCommit={v=>s('propertyValue', v)} /></Field>}
+            <Field label="Base LVR (%)"><LiveNumber value={strat.baseLvr} onCommit={v=>s('baseLvr', v)} step="0.1" /></Field>
+          </div>
+          <MiniTable columns={['Summary','Amount']} rows={[
+            ['Total Costs', fmtM(calc.totalCosts)],
+            ['Loan From Lender', fmtM(calc.loanFromLender)],
+            ['Total LVR', calc.lvrBase ? `${(calc.totalLVR*100).toFixed(1)}%` : '—'],
+            ['Base Loan', fmtM(calc.baseLoan)],
+          ]}/>
         </TabCard>
 
         <TabCard title="Repayment Calculator">
-          {editing ? (
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:10 }}>
-              <Field label="Amount ($)"><input style={inp} type="number" value={strat.repayAmount||''} onChange={e=>s('repayAmount', e.target.value?Number(e.target.value):'')}/></Field>
-              <Field label="Term (yrs)"><input style={inp} type="number" value={strat.repayTerm||''} onChange={e=>s('repayTerm', e.target.value?Number(e.target.value):'')}/></Field>
-              <Field label="Rate (%)"><input style={inp} type="number" step="0.01" value={strat.repayRate||''} onChange={e=>s('repayRate', e.target.value?Number(e.target.value):'')}/></Field>
-            </div>
-          ) : null}
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:10, marginBottom:12 }}>
+            <Field label="Amount ($)"><LiveNumber value={strat.repayAmount} onCommit={v=>s('repayAmount', v)} /></Field>
+            <Field label="Term (yrs)"><LiveNumber value={strat.repayTerm} onCommit={v=>s('repayTerm', v)} /></Field>
+            <Field label="Rate (%)"><LiveNumber value={strat.repayRate} onCommit={v=>s('repayRate', v)} step="0.01" /></Field>
+          </div>
           {(() => {
             const amt = Number(strat.repayAmount)||0, yrs = Number(strat.repayTerm)||0, rate = (Number(strat.repayRate)||0)/100
-            const n = yrs*12, r = rate/12
-            const pi = amt && n && r ? (amt*r)/(1-Math.pow(1+r,-n)) : 0
+            const nMo = yrs*12, r = rate/12
+            const pi = amt && nMo && r ? (amt*r)/(1-Math.pow(1+r,-nMo)) : 0
             const io = amt && rate ? (amt*rate)/12 : 0
             return (
               <MiniTable columns={['Repayment Type','Monthly']} rows={[
@@ -573,40 +648,104 @@ function StrategyTab({ d, editing, set }) {
         </TabCard>
       </div>
 
-      <TabCard title="Equity Table — Existing Security" right={editing && <button onClick={addEquityRow} style={addBtnStyle}>+ Add property</button>}>
-        <MiniTable columns={['Property','Lender','LVR','Valuation','Debt','Equity', editing?'':undefined].filter(Boolean)} rows={equityRows.map((r,i) => editing ? [
-          <input style={rowInp} value={r.property} onChange={e=>updEquityRow(i,'property',e.target.value)}/>,
-          <input style={rowInp} value={r.lender} onChange={e=>updEquityRow(i,'lender',e.target.value)}/>,
-          <input style={rowInp} value={r.lvr} onChange={e=>updEquityRow(i,'lvr',e.target.value)}/>,
-          <input style={rowInp} value={r.valuation} onChange={e=>updEquityRow(i,'valuation',e.target.value)}/>,
-          <input style={rowInp} value={r.debt} onChange={e=>updEquityRow(i,'debt',e.target.value)}/>,
-          <div style={{display:'flex',gap:6,alignItems:'center'}}><input style={rowInp} value={r.equity} onChange={e=>updEquityRow(i,'equity',e.target.value)}/><button onClick={()=>rmEquityRow(i)} style={rmBtnStyle}>✕</button></div>,
-        ] : [r.property,r.lender,r.lvr,fmtM(r.valuation),fmtM(r.debt),fmtM(r.equity)])}/>
-      </TabCard>
-
-      <TabCard title="Comparison Table — Lender Options" right={editing && <button onClick={addCompRow} style={addBtnStyle}>+ Add option</button>}>
-        <MiniTable columns={['Lender','Purpose','Type','Term','Base Loan','LMI','Repayment','Rate']} rows={compRows.map((r,i) => editing ? [
-          <input style={rowInp} value={r.lender} onChange={e=>updCompRow(i,'lender',e.target.value)}/>,
-          <input style={rowInp} value={r.purpose} onChange={e=>updCompRow(i,'purpose',e.target.value)}/>,
-          <select style={rowInp} value={r.type} onChange={e=>updCompRow(i,'type',e.target.value)}><option>P&I</option><option>IO</option></select>,
-          <input style={rowInp} value={r.term} onChange={e=>updCompRow(i,'term',e.target.value)}/>,
-          <input style={rowInp} value={r.baseLoan} onChange={e=>updCompRow(i,'baseLoan',e.target.value)}/>,
-          <input style={rowInp} value={r.lmi} onChange={e=>updCompRow(i,'lmi',e.target.value)}/>,
-          <input style={rowInp} value={r.repayment} onChange={e=>updCompRow(i,'repayment',e.target.value)}/>,
-          <div style={{display:'flex',gap:6,alignItems:'center'}}><input style={rowInp} value={r.rate} onChange={e=>updCompRow(i,'rate',e.target.value)}/><button onClick={()=>rmCompRow(i)} style={rmBtnStyle}>✕</button></div>,
-        ] : [r.lender,r.purpose,r.type,r.term,fmtM(r.baseLoan),fmtM(r.lmi),fmtM(r.repayment),r.rate?`${r.rate}%`:'—'])}/>
-      </TabCard>
-
-      {strat.isConstruction && (
-        <TabCard title="Drawdown & Sale Proceeds">
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
-            <Field label="Estimated sales price ($)"><input style={inp} type="number" disabled={!editing} value={strat.salesPrice||''} onChange={e=>s('salesPrice', e.target.value?Number(e.target.value):'')}/></Field>
-            <Field label="Existing loan payout ($)"><input style={inp} type="number" disabled={!editing} value={strat.loanPayout||''} onChange={e=>s('loanPayout', e.target.value?Number(e.target.value):'')}/></Field>
-            <Field label="Construction loan portion ($)"><input style={inp} type="number" disabled={!editing} value={strat.constructionLoanPortion||''} onChange={e=>s('constructionLoanPortion', e.target.value?Number(e.target.value):'')}/></Field>
-            <Field label="Savings / offset contribution ($)"><input style={inp} type="number" disabled={!editing} value={strat.savingsContribution||''} onChange={e=>s('savingsContribution', e.target.value?Number(e.target.value):'')}/></Field>
+      {calc.showSale && (
+        <TabCard title="Sale of Existing Property">
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:10, marginBottom:10 }}>
+            <Field label="Estimated sale price ($)"><LiveNumber value={strat.sale?.estSalePrice} onCommit={v=>setSale('estSalePrice', v)} /></Field>
+            <Field label="Existing loan payout ($)"><LiveNumber value={strat.sale?.existingLoanPayout} onCommit={v=>setSale('existingLoanPayout', v)} /></Field>
+            <Field label="Sale fees ($)"><LiveNumber value={strat.sale?.saleFees} onCommit={v=>setSale('saleFees', v)} /></Field>
           </div>
+          <div style={{ fontSize:12.5, color:'#2A3545' }}>Net proceeds available: <strong style={{color:'#3D4F6B'}}>{fmtM(calc.netSaleProceeds)}</strong> <span style={{color:'#9ca3af', fontWeight:400}}>— flows automatically into Total Funds Available below</span></div>
         </TabCard>
       )}
+
+      <TabCard title="Funding Sources & Contributions" right={<button onClick={addContribution} style={addBtnStyle}>+ Add contribution</button>}>
+        <datalist id="contribution-types">{CONTRIBUTION_TYPES.map(t=><option key={t} value={t}/>)}</datalist>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:12 }}>
+          <Field label="Equity ($)"><LiveNumber value={strat.equity} onCommit={v=>s('equity', v)} /></Field>
+          <Field label="Savings ($)"><LiveNumber value={strat.savings} onCommit={v=>s('savings', v)} /></Field>
+        </div>
+        <MiniTable columns={['Contribution', 'Amount', '']} rows={contributions.map((c,i) => [
+          <LiveText small value={c.label} onCommit={v=>updContribution(i,'label',v)} placeholder="e.g. Gift, Proceeds of Sale…" list="contribution-types" />,
+          <LiveNumber small value={c.amount} onCommit={v=>updContribution(i,'amount',v)} />,
+          <button onClick={()=>rmContribution(i)} style={rmBtnStyle}>✕</button>,
+        ])} empty="No extra contributions added"/>
+        {calc.showSale && calc.netSaleProceeds !== 0 && (
+          <div style={{ fontSize:11.5, color:'#7A8090', marginTop:8 }}>+ Proceeds of Sale (net): <strong style={{color:'#2A3545'}}>{fmtM(calc.netSaleProceeds)}</strong> (from Sale of Existing Property card above)</div>
+        )}
+        <div style={{ marginTop:14, paddingTop:12, borderTop:'1px solid #e8eaed' }}>
+          <MiniTable columns={['','Amount']} rows={[
+            ['Total Funds Available', fmtM(calc.totalFundsAvailable)],
+            ['Surplus / (Deficit)', <span style={{ color: calc.surplusDeficit < 0 ? '#dc2626' : '#22c55e', fontWeight:700 }}>{fmtM(calc.surplusDeficit)}</span>],
+          ]}/>
+        </div>
+      </TabCard>
+
+      <TabCard title="Equity Table — Existing Security" right={<button onClick={addEquityRow} style={addBtnStyle}>+ Add property</button>}>
+        <MiniTable columns={['Property','Lender','LVR %','Valuation','LV','Debt','Equity','']} rows={equityRows.map((r,i) => {
+          const lv = (Number(r.valuation)||0) * (Number(r.lvr)||0) / 100
+          const equity = lv - (Number(r.debt)||0)
+          return [
+            <LiveText small value={r.property} onCommit={v=>updEquityRow(i,'property',v)}/>,
+            <LiveText small value={r.lender} onCommit={v=>updEquityRow(i,'lender',v)}/>,
+            <LiveNumber small value={r.lvr} onCommit={v=>updEquityRow(i,'lvr',v)}/>,
+            <LiveNumber small value={r.valuation} onCommit={v=>updEquityRow(i,'valuation',v)}/>,
+            fmtM(lv),
+            <LiveNumber small value={r.debt} onCommit={v=>updEquityRow(i,'debt',v)}/>,
+            fmtM(equity),
+            <button onClick={()=>rmEquityRow(i)} style={rmBtnStyle}>✕</button>,
+          ]
+        })} empty="No existing security added yet"/>
+      </TabCard>
+
+      <TabCard title="Comparison Tables — Lender Options" right={
+        <div style={{ display:'flex', gap:10, alignItems:'center' }}>
+          <label style={{ fontSize:11, color:'#7A8090', display:'flex', alignItems:'center', gap:5, cursor:'pointer' }}>
+            <input type="checkbox" checked={!!strat.showLMI} onChange={e=>s('showLMI', e.target.checked)} /> Show LMI column
+          </label>
+          <button onClick={addScenario} style={addBtnStyle}>+ Add comparison table</button>
+        </div>
+      }>
+        {scenarios.length === 0 && <div style={{ fontSize:11.5, color:'#9ca3af', padding:'10px 0' }}>No comparisons yet — add one for each lender or structuring option (e.g. a split loan across two facilities).</div>}
+        {scenarios.map((sc, i) => {
+          const totals = scenarioTotals(sc)
+          const cols = ['Property','Purpose','Type','Term','Base Loan', ...(strat.showLMI ? ['LMI'] : []), 'Rate','Repayment','']
+          return (
+            <div key={sc.id||i} style={{ marginBottom:18, paddingBottom:14, borderBottom: i<scenarios.length-1 ? '1px solid #e8eaed' : 'none' }}>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}>
+                <LiveText value={sc.label} onCommit={v=>updScenario(i,{label:v})} placeholder="Comparison name (e.g. Pepper Money, or Split Structure A)" />
+                <div style={{ display:'flex', gap:6, marginLeft:10 }}>
+                  <button onClick={()=>addScenarioRow(i)} style={addBtnStyle}>+ Add row</button>
+                  <button onClick={()=>rmScenario(i)} style={rmBtnStyle}>Remove table</button>
+                </div>
+              </div>
+              <MiniTable columns={cols} rows={[
+                ...sc.rows.map((r, ri) => {
+                  const repay = rowRepayment(r)
+                  const base = [
+                    <LiveText small value={r.property} onCommit={v=>updScenarioRow(i,ri,'property',v)} placeholder="Home / Inv" />,
+                    <LiveText small value={r.purpose} onCommit={v=>updScenarioRow(i,ri,'purpose',v)} placeholder="OO / Inv" />,
+                    <LiveSelect small value={r.type} onCommit={v=>updScenarioRow(i,ri,'type',v)} options={['P&I','IO']} allowBlank={false} />,
+                    <LiveNumber small value={r.term} onCommit={v=>updScenarioRow(i,ri,'term',v)} />,
+                    <LiveNumber small value={r.baseLoan} onCommit={v=>updScenarioRow(i,ri,'baseLoan',v)} />,
+                  ]
+                  if (strat.showLMI) base.push(<LiveNumber small value={r.lmi} onCommit={v=>updScenarioRow(i,ri,'lmi',v)} />)
+                  base.push(<LiveNumber small value={r.rate} onCommit={v=>updScenarioRow(i,ri,'rate',v)} step="0.01" />)
+                  base.push(repay ? `$${Math.round(repay).toLocaleString()}` : '—')
+                  base.push(<button onClick={()=>rmScenarioRow(i,ri)} style={rmBtnStyle}>✕</button>)
+                  return base
+                }),
+              ]} empty="No rows yet"/>
+              <div style={{ display:'flex', gap:24, marginTop:8, paddingLeft:4 }}>
+                <div style={{ fontSize:11.5, color:'#7A8090' }}>Total Base Loan: <strong style={{color:'#2A3545'}}>{fmtM(totals.totalBaseLoan)}</strong></div>
+                <div style={{ fontSize:11.5, color:'#7A8090' }}>Total Repayment: <strong style={{color:'#2A3545'}}>{totals.totalRepayment ? `$${Math.round(totals.totalRepayment).toLocaleString()}` : '—'}</strong></div>
+                <div style={{ fontSize:11.5, color:'#7A8090' }}>Weighted Avg Rate: <strong style={{color:'#2A3545'}}>{totals.weightedRate ? `${totals.weightedRate.toFixed(2)}%` : '—'}</strong></div>
+              </div>
+            </div>
+          )
+        })}
+      </TabCard>
+
       <div style={{ fontSize:11, color:'#9ca3af' }}>Stamp duty is a manual estimate for now — flagged for a proper state-based OSR calculator in a later pass.</div>
     </div>
   )
@@ -955,6 +1094,18 @@ export default function DealPage({ onUpdateDeals, clients = [] }) {
   function startEdit() { setDraft({...deal}); setEditing(true); setSaved(false) }
   function cancelEdit() { setEditing(false); setDraft(null) }
   function set(k, v) { setDraft(d => ({...d, [k]:v})) }
+  // Direct-save helper for fields that no longer need the Edit-deal/Save flow
+  // (stage tracker, Loan Details, Strategy). Commits straight to deals +
+  // Supabase immediately, and also keeps draft in sync so nothing looks like
+  // it reverted if the person happens to be mid-edit on Structure/Notes at
+  // the same time.
+  function updateDeal(patch) {
+    const updated = deals.map(x => x['Transaction Name'] === decodedName ? { ...x, ...patch } : x)
+    setDeals(updated)
+    saveDeals(updated)
+    if (onUpdateDeals) onUpdateDeals(updated)
+    if (editing) setDraft(dr => ({ ...dr, ...patch }))
+  }
   function saveEdit() {
     const finalDraft = {...draft}
     // Always sync Month of Settlement from Finance Due Date on save
@@ -1010,7 +1161,7 @@ export default function DealPage({ onUpdateDeals, clients = [] }) {
         </div>
 
         {/* Stage tracker */}
-        <StageTracker status={d.Status} editing={editing} onChange={(s)=>set('Status', s)} />
+        <StageTracker status={deal.Status} onChange={(s)=>updateDeal({ Status: s })} />
 
         {/* Tabs */}
         <div style={{ display:'flex', borderBottom:'2px solid #e8eaed', marginBottom:18 }}>
@@ -1023,8 +1174,8 @@ export default function DealPage({ onUpdateDeals, clients = [] }) {
           ))}
         </div>
 
-        {tab === 'details' && <LoanDetailsTab d={d} editing={editing} draft={draft} set={set} deal={deal} deals={deals} setDeals={setDeals} clients={clients} />}
-        {tab === 'strategy' && <StrategyTab d={d} editing={editing} set={set} />}
+        {tab === 'details' && <LoanDetailsTab d={d} editing={editing} draft={draft} set={set} deal={deal} deals={deals} setDeals={setDeals} clients={clients} updateDeal={updateDeal} />}
+        {tab === 'strategy' && <StrategyTab deal={deal} updateDeal={updateDeal} />}
         {tab === 'structure' && <StructureTab d={d} editing={editing} set={set} />}
         {tab === 'attachments' && <AttachmentsTab deal={deal} deals={deals} setDeals={setDeals} editing={editing} d={d} set={set} />}
         {tab === 'notes' && <NotesTab d={d} editing={editing} set={set} deal={deal} deals={deals} setDeals={setDeals} />}
