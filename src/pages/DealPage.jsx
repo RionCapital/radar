@@ -68,238 +68,191 @@ function findLinkedClient(deal, clients) {
   return clients.find(c => c.name.toLowerCase().startsWith(dealName) || dealName.startsWith(c.name.toLowerCase().split(' ')[0])) || null
 }
 
-const BLANK_CONTACT = { name:'', type:'Individual', email:'', mobile:'' }
+const BLANK_CONTACT = {
+  name:'', type:'Individual', email:'', mobile:'', homePhone:'', businessPhone:'',
+  title:'', firstName:'', middleName:'', lastName:'', dob:'', maritalStatus:'', gender:'',
+  abn:'',
+  addresses: [], identification: [], relationships: [],
+}
 const CONTACT_TYPES = ['Individual','Company','Trust','SMSF','Partnership']
+const TITLES = ['Mr','Mrs','Miss','Ms','Dr']
+const MARITAL_STATUSES = ['Single','Married','De Facto','Divorced','Widowed','Separated']
+const GENDERS = ['Male','Female','Other']
+const ADDRESS_TYPES = ['Home','Previous','Postal']
+const ADDRESS_OWNERSHIP = ['Own Home - Mortgage','Own Home - No Mortgage','Renting','With Parents','Boarding','Other']
+const ID_DOC_TYPES = ['Drivers Licence','Passport','Medicare Card','Birth Certificate','Other']
+const RELATIONSHIP_TYPES = ['Spouse','De Facto','Child','Parent','Sibling','Business Partner','Guarantor','Other']
 
-function RradarContactsPanel({ deal, clients, editing, draft, set, inp }) {
+function ContactsPanel({ deal, clients, updateDeal }) {
   const [linkMode, setLinkMode] = useState(null)
   const [searchTerm, setSearchTerm] = useState('')
-  const [addingContact, setAddingContact] = useState(false)
-  const [newContact, setNewContact] = useState({ ...BLANK_CONTACT })
-  const [editingIdx, setEditingIdx] = useState(null)
-  const [editBuf, setEditBuf] = useState(null)
+  const [expandedIdx, setExpandedIdx] = useState(null)
 
   const linkedClient = findLinkedClient(deal, clients)
-  const currentLinked = (editing && draft?.['RradarClient'] !== undefined)
-    ? clients.find(c => c.name === draft['RradarClient']) || null
-    : linkedClient
+  const dealContacts = deal.Contacts || []
 
-  // Deal-level contacts stored as deal.Contacts array
-  const dealContacts = (editing ? (draft?.Contacts || []) : (deal.Contacts || []))
+  function setContacts(arr) { updateDeal({ Contacts: arr }) }
+  function addContact() {
+    const next = [...dealContacts, { ...BLANK_CONTACT }]
+    setContacts(next)
+    setExpandedIdx(next.length - 1)
+  }
+  function updContact(i, patch) { setContacts(dealContacts.map((c,idx)=> idx===i ? {...c,...patch} : c)) }
+  function removeContact(i) { setContacts(dealContacts.filter((_,idx)=>idx!==i)); if (expandedIdx===i) setExpandedIdx(null) }
 
-  function setContacts(arr) { set('Contacts', arr) }
+  function addAddress(i) { updContact(i, { addresses:[...(dealContacts[i].addresses||[]), { type:'Home', ownership:'', address:'', from:'', to:'' }] }) }
+  function updAddress(i,ai,k,v) { updContact(i, { addresses: dealContacts[i].addresses.map((a,idx)=>idx===ai?{...a,[k]:v}:a) }) }
+  function rmAddress(i,ai) { updContact(i, { addresses: dealContacts[i].addresses.filter((_,idx)=>idx!==ai) }) }
+
+  function addId(i) { updContact(i, { identification:[...(dealContacts[i].identification||[]), { docType:'Drivers Licence', number:'', nameOnDocument:'', issueDate:'', expiryDate:'' }] }) }
+  function updId(i,ii,k,v) { updContact(i, { identification: dealContacts[i].identification.map((doc,idx)=>idx===ii?{...doc,[k]:v}:doc) }) }
+  function rmId(i,ii) { updContact(i, { identification: dealContacts[i].identification.filter((_,idx)=>idx!==ii) }) }
+
+  function addRelationship(i) { updContact(i, { relationships:[...(dealContacts[i].relationships||[]), { contactName:'', relationship:'Spouse' }] }) }
+  function updRelationship(i,ri,k,v) { updContact(i, { relationships: dealContacts[i].relationships.map((r,idx)=>idx===ri?{...r,[k]:v}:r) }) }
+  function rmRelationship(i,ri) { updContact(i, { relationships: dealContacts[i].relationships.filter((_,idx)=>idx!==ri) }) }
 
   const searchResults = searchTerm.length > 1
     ? clients.filter(c => c.name.toLowerCase().includes(searchTerm.toLowerCase())).slice(0, 6)
     : []
+  function selectClient(c) { updateDeal({ RradarClient: c.name }); setLinkMode(null); setSearchTerm('') }
+  function unlinkClient() { updateDeal({ RradarClient: '' }); setLinkMode(null) }
 
-  function selectClient(c) { set('RradarClient', c.name); setLinkMode(null); setSearchTerm('') }
-  function unlinkClient() { set('RradarClient', ''); setLinkMode(null) }
-
-  // Contacts to display: Rradar-linked contacts take priority, fallback to deal contacts
-  const rradarContacts = currentLinked?.contacts || []
+  // Contacts to display: Rradar-linked contacts take priority (read-only —
+  // that data lives in the broader Rradar CRM, not this deal), fallback to
+  // deal-level contacts, which are fully editable here.
+  const rradarContacts = linkedClient?.contacts || []
   const displayContacts = rradarContacts.length > 0
     ? rradarContacts.map(c => ({
         name: [c.first, c.middle, c.last].filter(Boolean).join(' ') || c.first || '—',
-        type: c.type || 'Individual',
-        email: c.email || '',
-        mobile: c.mobile || '',
-        fromRradar: true
+        type: c.type || 'Individual', email: c.email || '', mobile: c.mobile || '', fromRradar: true,
       }))
     : dealContacts
 
-  function saveNewContact() {
-    if (!newContact.name.trim()) return
-    setContacts([...dealContacts, { ...newContact }])
-    setNewContact({ ...BLANK_CONTACT })
-    setAddingContact(false)
-  }
-  function saveEditContact() {
-    const updated = dealContacts.map((c, i) => i === editingIdx ? { ...editBuf } : c)
-    setContacts(updated)
-    setEditingIdx(null); setEditBuf(null)
-  }
-  function removeContact(i) {
-    setContacts(dealContacts.filter((_, idx) => idx !== i))
-  }
-
-  const thStyle = { padding:'7px 10px', textAlign:'left', color:'#fff', fontSize:10, fontWeight:600 }
-  const inpStyle = { ...inp, fontSize:11, padding:'4px 8px' }
-
   return (
-    <div style={{ background:'#fff', borderRadius:10, border:'0.5px solid #e8eaed', padding:'16px 18px' }}>
-      {/* Header */}
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
-        <div style={{ fontSize:11, fontWeight:600, color:'#7A8090', textTransform:'uppercase', letterSpacing:'0.06em' }}>Clients &amp; Contacts</div>
-        <div style={{ display:'flex', gap:6, alignItems:'center' }}>
-          {currentLinked && <span style={{ fontSize:9, padding:'2px 8px', borderRadius:20, background:'#dcfce7', color:'#15803d', fontWeight:600 }}>● Rradar linked</span>}
-          {editing && !addingContact && !rradarContacts.length && (
-            <button onClick={() => { setAddingContact(true); setEditingIdx(null) }}
-              style={{ fontSize:10, padding:'3px 10px', borderRadius:6, border:'1px solid #EB99C2', background:'#fdf0f6', color:'#9b2c6e', cursor:'pointer', fontWeight:500 }}>
-              + Add contact
-            </button>
-          )}
-          {editing && (
-            <button onClick={() => setLinkMode(l => l === 'search' ? null : 'search')}
-              style={{ fontSize:10, padding:'3px 10px', borderRadius:6, border:'1px solid #e8eaed', background:'#f8f9fa', color:'#2A3545', cursor:'pointer' }}>
-              {currentLinked ? '⇄ Change Rradar link' : '+ Link to Rradar'}
-            </button>
-          )}
-          {editing && currentLinked && (
-            <button onClick={unlinkClient}
-              style={{ fontSize:10, padding:'3px 8px', borderRadius:6, border:'1px solid #fecaca', background:'#fef2f2', color:'#b91c1c', cursor:'pointer' }}>
-              Unlink
-            </button>
-          )}
-        </div>
+    <TabCard title="Clients & Contacts" right={
+      <div style={{ display:'flex', gap:6, alignItems:'center' }}>
+        {linkedClient && <Pill tone="green">Rradar linked</Pill>}
+        {!rradarContacts.length && <button onClick={addContact} style={addBtnStyle}>+ Add contact</button>}
+        <button onClick={()=>setLinkMode(l => l==='search' ? null : 'search')} style={addBtnStyle}>{linkedClient ? '⇄ Change Rradar link' : '+ Link to Rradar'}</button>
+        {linkedClient && <button onClick={unlinkClient} style={rmBtnStyle}>Unlink</button>}
       </div>
-
-      {/* Rradar search */}
-      {editing && linkMode === 'search' && (
+    }>
+      {linkMode === 'search' && (
         <div style={{ marginBottom:12, background:'#f8f9fa', borderRadius:8, padding:'10px 12px', border:'1px solid #e8eaed' }}>
           <div style={{ fontSize:10, color:'#7A8090', marginBottom:6 }}>Search Rradar clients</div>
-          <input autoFocus value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
-            placeholder="Type client name…" style={{ ...inp, marginBottom:6 }} />
-          {searchResults.length > 0 && (
-            <div style={{ border:'1px solid #e8eaed', borderRadius:6, overflow:'hidden' }}>
-              {searchResults.map((c, i) => (
-                <div key={i} onClick={() => selectClient(c)}
-                  style={{ padding:'7px 10px', fontSize:11, cursor:'pointer', borderBottom:i<searchResults.length-1?'0.5px solid #f0f0f0':'none', display:'flex', justifyContent:'space-between', background:'#fff' }}
-                  onMouseOver={e => e.currentTarget.style.background = '#fdf0f6'}
-                  onMouseOut={e => e.currentTarget.style.background = '#fff'}>
-                  <span style={{ fontWeight:500, color:'#2A3545' }}>{c.name}</span>
-                  <span style={{ fontSize:9, color:'#7A8090' }}>{c.loans?.length || 0} loans</span>
+          <input autoFocus value={searchTerm} onChange={e=>setSearchTerm(e.target.value)} placeholder="Type client name…" style={{...inp, marginBottom:6}} />
+          {searchResults.map((c,i) => (
+            <div key={i} onClick={()=>selectClient(c)} style={{ padding:'7px 10px', fontSize:11, cursor:'pointer', display:'flex', justifyContent:'space-between', borderBottom: i<searchResults.length-1 ? '0.5px solid #f0f0f0' : 'none' }}>
+              <span style={{ fontWeight:500, color:'#2A3545' }}>{c.name}</span>
+              <span style={{ fontSize:9, color:'#7A8090' }}>{c.loans?.length||0} loans</span>
+            </div>
+          ))}
+          {searchTerm.length > 1 && searchResults.length === 0 && <div style={{ fontSize:10, color:'#9ca3af' }}>No matching clients found</div>}
+        </div>
+      )}
+
+      {displayContacts.length === 0 && <div style={{ fontSize:11.5, color:'#9ca3af', padding:'10px 0' }}>No contacts on file</div>}
+
+      {displayContacts.map((c, i) => (
+        <div key={i} style={{ borderBottom: i<displayContacts.length-1 ? '0.5px solid #f0f0f0' : 'none', padding:'8px 0' }}>
+          <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+            <button onClick={()=> !c.fromRradar && setExpandedIdx(expandedIdx===i ? null : i)} style={{ background:'none', border:'none', cursor: c.fromRradar?'default':'pointer', fontSize:12, color:'#7A8090', width:16, padding:0 }}>
+              {!c.fromRradar ? (expandedIdx===i ? '▾' : '▸') : ''}
+            </button>
+            <div style={{ flex:1, fontWeight:600, fontSize:12, color:'#2A3545' }}>{c.name || '—'}</div>
+            <Pill tone="pink">{c.type||'Individual'}</Pill>
+            <div style={{ fontSize:11, color:'#7A8090', width:170 }}>{c.email || '—'}</div>
+            <div style={{ fontSize:11, color:'#7A8090', width:120 }}>{c.mobile || '—'}</div>
+            {!c.fromRradar && <button onClick={()=>removeContact(i)} style={rmBtnStyle}>✕</button>}
+          </div>
+
+          {!c.fromRradar && expandedIdx === i && (
+            <div style={{ marginTop:10, marginLeft:26, background:'#f8f9fa', borderRadius:8, padding:'12px 14px' }}>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1.4fr 1fr', gap:8, marginBottom:10 }}>
+                <LiveSelect small value={c.type} onCommit={v=>updContact(i,{type:v})} options={CONTACT_TYPES} allowBlank={false} />
+                <LiveText small value={c.name} onCommit={v=>updContact(i,{name:v})} placeholder="Full name / company name" />
+                {c.type === 'Individual'
+                  ? <LiveSelect small value={c.title} onCommit={v=>updContact(i,{title:v})} options={TITLES} placeholder="Title" />
+                  : <LiveText small value={c.abn} onCommit={v=>updContact(i,{abn:v})} placeholder="ABN" />}
+              </div>
+
+              {c.type === 'Individual' && (
+                <>
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', gap:8, marginBottom:10 }}>
+                    <LiveText small value={c.firstName} onCommit={v=>updContact(i,{firstName:v})} placeholder="First name" />
+                    <LiveText small value={c.middleName} onCommit={v=>updContact(i,{middleName:v})} placeholder="Middle name" />
+                    <LiveText small value={c.lastName} onCommit={v=>updContact(i,{lastName:v})} placeholder="Last name" />
+                    <input type="date" style={rowInp} value={c.dob||''} onChange={e=>updContact(i,{dob:e.target.value})} />
+                  </div>
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:10 }}>
+                    <LiveSelect small value={c.maritalStatus} onCommit={v=>updContact(i,{maritalStatus:v})} options={MARITAL_STATUSES} placeholder="Marital status" />
+                    <LiveSelect small value={c.gender} onCommit={v=>updContact(i,{gender:v})} options={GENDERS} placeholder="Gender" />
+                  </div>
+                </>
+              )}
+
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', gap:8, marginBottom:12 }}>
+                <LiveText small value={c.email} onCommit={v=>updContact(i,{email:v})} placeholder="Email" />
+                <LiveText small value={c.mobile} onCommit={v=>updContact(i,{mobile:v})} placeholder="Mobile" />
+                <LiveText small value={c.homePhone} onCommit={v=>updContact(i,{homePhone:v})} placeholder="Home phone" />
+                <LiveText small value={c.businessPhone} onCommit={v=>updContact(i,{businessPhone:v})} placeholder="Business phone" />
+              </div>
+
+              <div style={{ fontSize:10, fontWeight:700, color:'#7A8090', textTransform:'uppercase', marginBottom:6 }}>Addresses</div>
+              {(c.addresses||[]).map((a,ai) => (
+                <div key={ai} style={{ display:'grid', gridTemplateColumns:'0.8fr 1.1fr 1.6fr 0.7fr 0.7fr auto', gap:6, marginBottom:6, alignItems:'center' }}>
+                  <LiveSelect small value={a.type} onCommit={v=>updAddress(i,ai,'type',v)} options={ADDRESS_TYPES} allowBlank={false} />
+                  <LiveSelect small value={a.ownership} onCommit={v=>updAddress(i,ai,'ownership',v)} options={ADDRESS_OWNERSHIP} placeholder="Ownership" />
+                  <LiveText small value={a.address} onCommit={v=>updAddress(i,ai,'address',v)} placeholder="Address" />
+                  <input type="date" style={rowInp} value={a.from||''} onChange={e=>updAddress(i,ai,'from',e.target.value)} />
+                  <input type="date" style={rowInp} value={a.to||''} onChange={e=>updAddress(i,ai,'to',e.target.value)} />
+                  <button onClick={()=>rmAddress(i,ai)} style={rmBtnStyle}>✕</button>
                 </div>
               ))}
+              <button onClick={()=>addAddress(i)} style={{...addBtnStyle, marginBottom:12}}>+ Add address</button>
+
+              <div style={{ fontSize:10, fontWeight:700, color:'#7A8090', textTransform:'uppercase', marginBottom:6 }}>Identification</div>
+              {(c.identification||[]).map((doc,di) => (
+                <div key={di} style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1.3fr 0.7fr 0.7fr auto', gap:6, marginBottom:6, alignItems:'center' }}>
+                  <LiveSelect small value={doc.docType} onCommit={v=>updId(i,di,'docType',v)} options={ID_DOC_TYPES} allowBlank={false} />
+                  <LiveText small value={doc.number} onCommit={v=>updId(i,di,'number',v)} placeholder="Document number" />
+                  <LiveText small value={doc.nameOnDocument} onCommit={v=>updId(i,di,'nameOnDocument',v)} placeholder="Name on document" />
+                  <input type="date" style={rowInp} value={doc.issueDate||''} onChange={e=>updId(i,di,'issueDate',e.target.value)} />
+                  <input type="date" style={rowInp} value={doc.expiryDate||''} onChange={e=>updId(i,di,'expiryDate',e.target.value)} />
+                  <button onClick={()=>rmId(i,di)} style={rmBtnStyle}>✕</button>
+                </div>
+              ))}
+              <button onClick={()=>addId(i)} style={{...addBtnStyle, marginBottom:12}}>+ Add identification</button>
+
+              <div style={{ fontSize:10, fontWeight:700, color:'#7A8090', textTransform:'uppercase', marginBottom:6 }}>Relationships</div>
+              <datalist id="contact-names">{dealContacts.map(dc=><option key={dc.name} value={dc.name}/>)}</datalist>
+              {(c.relationships||[]).map((r,ri) => (
+                <div key={ri} style={{ display:'grid', gridTemplateColumns:'1.4fr 1fr auto', gap:6, marginBottom:6, alignItems:'center' }}>
+                  <LiveText small value={r.contactName} onCommit={v=>updRelationship(i,ri,'contactName',v)} placeholder="Related contact's name" list="contact-names" />
+                  <LiveSelect small value={r.relationship} onCommit={v=>updRelationship(i,ri,'relationship',v)} options={RELATIONSHIP_TYPES} allowBlank={false} />
+                  <button onClick={()=>rmRelationship(i,ri)} style={rmBtnStyle}>✕</button>
+                </div>
+              ))}
+              <button onClick={()=>addRelationship(i)} style={addBtnStyle}>+ Add relationship</button>
             </div>
           )}
-          {searchTerm.length > 1 && searchResults.length === 0 && (
-            <div style={{ fontSize:10, color:'#9ca3af', padding:'4px 0' }}>No matching clients found</div>
-          )}
         </div>
-      )}
+      ))}
 
-      {/* Contacts table */}
-      <table style={{ width:'100%', borderCollapse:'collapse', fontSize:11 }}>
-        <thead>
-          <tr style={{ background:'#3D4F6B' }}>
-            <th style={thStyle}>Name</th>
-            <th style={thStyle}>Type</th>
-            <th style={thStyle}>Email</th>
-            <th style={thStyle}>Mobile</th>
-            {editing && !rradarContacts.length && <th style={{ ...thStyle, width:60 }}></th>}
-          </tr>
-        </thead>
-        <tbody>
-          {displayContacts.length > 0 ? displayContacts.map((c, i) => (
-            editingIdx === i && !c.fromRradar ? (
-              <tr key={i} style={{ background:'#fdf9ff', borderBottom:'0.5px solid #e8eaed' }}>
-                <td style={{ padding:'5px 6px' }}><input style={inpStyle} value={editBuf.name} onChange={e=>setEditBuf(b=>({...b,name:e.target.value}))}/></td>
-                <td style={{ padding:'5px 6px' }}>
-                  <select style={{...inpStyle, width:'100%'}} value={editBuf.type} onChange={e=>setEditBuf(b=>({...b,type:e.target.value}))}>
-                    {CONTACT_TYPES.map(t=><option key={t}>{t}</option>)}
-                  </select>
-                </td>
-                <td style={{ padding:'5px 6px' }}><input style={inpStyle} value={editBuf.email} onChange={e=>setEditBuf(b=>({...b,email:e.target.value}))}/></td>
-                <td style={{ padding:'5px 6px' }}><input style={inpStyle} value={editBuf.mobile} onChange={e=>setEditBuf(b=>({...b,mobile:e.target.value}))}/></td>
-                <td style={{ padding:'5px 6px' }}>
-                  <div style={{display:'flex',gap:4}}>
-                    <button onClick={saveEditContact} style={{fontSize:9,padding:'3px 6px',borderRadius:4,border:'none',background:'#22c55e',color:'#fff',cursor:'pointer'}}>✓</button>
-                    <button onClick={()=>{setEditingIdx(null);setEditBuf(null)}} style={{fontSize:9,padding:'3px 6px',borderRadius:4,border:'1px solid #e8eaed',background:'#fff',color:'#5a6370',cursor:'pointer'}}>✕</button>
-                  </div>
-                </td>
-              </tr>
-            ) : (
-              <tr key={i} style={{ borderBottom:'0.5px solid #f0f0f0', background:i%2===0?'#fff':'#fafafa' }}>
-                <td style={{ padding:'7px 10px', color:'#2A3545', fontWeight:500 }}>{c.name||'—'}</td>
-                <td style={{ padding:'7px 10px' }}>
-                  <span style={{ fontSize:9, padding:'2px 7px', borderRadius:20, background:'#fdf0f6', color:'#9b2c6e' }}>{c.type||'Individual'}</span>
-                </td>
-                <td style={{ padding:'7px 10px' }}>
-                  {c.email ? <a href={`mailto:${c.email}`} style={{color:'#EB99C2',textDecoration:'none'}}>{c.email}</a> : '—'}
-                </td>
-                <td style={{ padding:'7px 10px' }}>
-                  {c.mobile ? <span style={{display:'flex',gap:6,alignItems:'center'}}>
-                    <a href={`tel:${c.mobile}`} style={{color:'#EB99C2',textDecoration:'none'}}>{c.mobile}</a>
-                    <a href={`sms:${c.mobile}`} style={{background:'#f0f0f0',borderRadius:10,padding:'1px 6px',fontSize:9,color:'#7A8090',textDecoration:'none'}}>💬</a>
-                  </span> : '—'}
-                </td>
-                {editing && !c.fromRradar && (
-                  <td style={{ padding:'5px 8px' }}>
-                    <div style={{display:'flex',gap:4}}>
-                      <button onClick={()=>{setEditingIdx(i);setEditBuf({...c});setAddingContact(false)}}
-                        style={{fontSize:9,padding:'3px 6px',borderRadius:4,border:'1px solid #e8eaed',background:'#f8f9fa',color:'#2A3545',cursor:'pointer'}}>Edit</button>
-                      <button onClick={()=>removeContact(i)}
-                        style={{fontSize:9,padding:'3px 6px',borderRadius:4,border:'1px solid #fecaca',background:'#fef2f2',color:'#b91c1c',cursor:'pointer'}}>✕</button>
-                    </div>
-                  </td>
-                )}
-                {editing && c.fromRradar && <td></td>}
-              </tr>
-            )
-          )) : (
-            <tr>
-              <td colSpan={editing ? 5 : 4} style={{ padding:'12px 10px', fontSize:10, color:'#9ca3af', textAlign:'center' }}>
-                No contacts on file
-              </td>
-            </tr>
-          )}
-
-          {/* Add new contact row */}
-          {addingContact && editing && (
-            <tr style={{ background:'#f0fdf4', borderBottom:'0.5px solid #e8eaed' }}>
-              <td style={{ padding:'5px 6px' }}>
-                <input autoFocus style={inpStyle} placeholder="Full name" value={newContact.name} onChange={e=>setNewContact(c=>({...c,name:e.target.value}))}/>
-              </td>
-              <td style={{ padding:'5px 6px' }}>
-                <select style={{...inpStyle, width:'100%'}} value={newContact.type} onChange={e=>setNewContact(c=>({...c,type:e.target.value}))}>
-                  {CONTACT_TYPES.map(t=><option key={t}>{t}</option>)}
-                </select>
-              </td>
-              <td style={{ padding:'5px 6px' }}>
-                <input style={inpStyle} placeholder="Email" value={newContact.email} onChange={e=>setNewContact(c=>({...c,email:e.target.value}))}/>
-              </td>
-              <td style={{ padding:'5px 6px' }}>
-                <input style={inpStyle} placeholder="Mobile" value={newContact.mobile} onChange={e=>setNewContact(c=>({...c,mobile:e.target.value}))}/>
-              </td>
-              <td style={{ padding:'5px 6px' }}>
-                <div style={{display:'flex',gap:4}}>
-                  <button onClick={saveNewContact} style={{fontSize:9,padding:'3px 6px',borderRadius:4,border:'none',background:'#22c55e',color:'#fff',cursor:'pointer',fontWeight:600}}>Save</button>
-                  <button onClick={()=>{setAddingContact(false);setNewContact({...BLANK_CONTACT})}} style={{fontSize:9,padding:'3px 6px',borderRadius:4,border:'1px solid #e8eaed',background:'#fff',color:'#5a6370',cursor:'pointer'}}>✕</button>
-                </div>
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
-
-      {/* Add another contact button (below table) */}
-      {editing && !addingContact && !rradarContacts.length && displayContacts.length > 0 && (
-        <button onClick={() => { setAddingContact(true); setEditingIdx(null) }}
-          style={{ marginTop:8, fontSize:10, padding:'4px 12px', borderRadius:6, border:'1px dashed #EB99C2', background:'transparent', color:'#EB99C2', cursor:'pointer', width:'100%' }}>
-          + Add another contact
-        </button>
-      )}
-
-      {/* Rradar footer */}
-      {currentLinked && (
+      {linkedClient && (
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:10 }}>
-          <span style={{ fontSize:10, color:'#7A8090' }}>
-            Rradar: <strong style={{color:'#2A3545'}}>{currentLinked.name}</strong> · {currentLinked.loans?.filter(l=>!l.closed).length||0} active loans
-          </span>
-          <a href={`/radar/clients/${encodeURIComponent(currentLinked.name)}`}
-            style={{ fontSize:10, color:'#EB99C2', textDecoration:'none', padding:'3px 10px', border:'1px solid #EB99C2', borderRadius:6 }}>
-            View in Rradar →
-          </a>
+          <span style={{ fontSize:10, color:'#7A8090' }}>Rradar: <strong style={{color:'#2A3545'}}>{linkedClient.name}</strong> · {linkedClient.loans?.filter(l=>!l.closed).length||0} active loans</span>
+          <a href={`/radar/clients/${encodeURIComponent(linkedClient.name)}`} style={{ fontSize:10, color:'#EB99C2', textDecoration:'none', padding:'3px 10px', border:'1px solid #EB99C2', borderRadius:6 }}>View in Rradar →</a>
         </div>
       )}
 
-      {!currentLinked && !editing && displayContacts.length === 0 && (
+      {!linkedClient && displayContacts.length === 0 && (
         <div style={{ marginTop:8, padding:'8px 10px', background:'#fef9ec', border:'1px solid #fde68a', borderRadius:6, fontSize:10, color:'#92600a' }}>
-          ⚡ Not linked to Rradar — edit this deal to link a client or add contacts manually
+          ⚡ Not linked to Rradar — link a client above, or add a contact manually.
         </div>
       )}
-    </div>
+    </TabCard>
   )
 }
 
@@ -602,77 +555,89 @@ function LiveRowDate({ label, value, onCommit }) {
   )
 }
 
-function LoanDetailsTab({ d, editing, draft, set, deal, deals, setDeals, clients, updateDeal }) {
+function LoanDetailsTab({ deal, updateDeal, deals, setDeals, clients }) {
   const fmtAmt = v => v ? `$${Number(v).toLocaleString()}` : '—'
   const validTxnTypes = CATEGORY_TRANSACTION_TYPES[deal.Categories] || []
+  const [sub, setSub] = useState('details')
+  const LOAN_DETAILS_SUBS = [
+    { id:'details', label:'Loan Details' },
+    { id:'contacts', label:'Clients & Contacts' },
+  ]
+
   return (
-    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
-      <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
-        <TabCard title="Deal details">
-          <datalist id="lender-suggestions">{LENDER_SUGGESTIONS.map(l=><option key={l} value={l}/>)}</datalist>
-          <LiveRowCurrency label="Amount" value={deal.Amount} onCommit={v=>updateDeal({Amount:v})} pink />
-          <LiveRowSelect label="Category" value={deal.Categories} onCommit={v=>{
-            const validTypes = CATEGORY_TRANSACTION_TYPES[v] || []
-            const patch = { Categories: v }
-            if (deal['Transaction Type'] && !validTypes.includes(deal['Transaction Type'])) patch['Transaction Type'] = ''
-            updateDeal(patch)
-          }} options={CATEGORIES} />
-          <LiveRowSelect label="Transaction type" value={deal['Transaction Type']} onCommit={v=>updateDeal({'Transaction Type':v})} options={validTxnTypes} disabled={!deal.Categories} placeholder={deal.Categories ? '—' : 'Pick a category first'} />
-          <LiveRow label="Lender" value={deal.Lender} onCommit={v=>updateDeal({Lender:v})} list="lender-suggestions" />
-          <LiveRowSelect label="Lead source" value={deal['Lead Source']} onCommit={v=>updateDeal({'Lead Source':v})} options={LEAD_SOURCES} />
-          <LiveRowCurrency label="Total security" value={deal['Total Security']} onCommit={v=>updateDeal({'Total Security':v})} />
-          <LiveRow label="Internal reference" value={deal['Internal Reference']} onCommit={v=>updateDeal({'Internal Reference':v})} />
-          {(deal['_referrers']||[]).length > 0 && (
-            <div style={{ marginTop:10, fontSize:11, color:'#7A8090' }}>Referral partner: <strong style={{color:'#2A3545'}}>{(deal['_referrers']||[]).map(r=>r.name).join(', ')}</strong></div>
-          )}
-        </TabCard>
+    <div style={{ display:'flex', gap:20 }}>
+      <SideTabs tabs={LOAN_DETAILS_SUBS} active={sub} onChange={setSub} />
 
-        <TabCard title="Key dates">
-          <LiveRowDate label="Settlement date" value={deal['Date Settled']} onCommit={v=>updateDeal({'Date Settled':v})} />
-          <LiveRowDate label="Finance due date" value={deal['Finance Due Date']} onCommit={v=>updateDeal({ 'Finance Due Date': v, 'Month of Settlement': v ? v.slice(0,7) : deal['Month of Settlement'] })} />
-          <LiveRowDate label="Deposit due date" value={deal['Deposit Due Date']} onCommit={v=>updateDeal({'Deposit Due Date':v})} />
-          <LiveRowDate label="Fixed rate expiry" value={deal['Fixed Rate Expiry']} onCommit={v=>updateDeal({'Fixed Rate Expiry':v})} />
-          <LiveRowDate label="IO expiry" value={deal['Interest Only Expiry']} onCommit={v=>updateDeal({'Interest Only Expiry':v})} />
-          <LiveRowDate label="Discharge date" value={deal['Discharge Date']} onCommit={v=>updateDeal({'Discharge Date':v})} />
-          <LiveRow label="Discharge reason" value={deal['Discharge Reason']} onCommit={v=>updateDeal({'Discharge Reason':v})} />
-        </TabCard>
-      </div>
+      <div style={{ flex:1, minWidth:0 }}>
+        {sub === 'details' && (
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
+            <TabCard title="Loan Details">
+              <datalist id="lender-suggestions">{LENDER_SUGGESTIONS.map(l=><option key={l} value={l}/>)}</datalist>
+              <LiveRowCurrency label="Amount" value={deal.Amount} onCommit={v=>updateDeal({Amount:v})} pink />
+              <LiveRowSelect label="Category" value={deal.Categories} onCommit={v=>{
+                const validTypes = CATEGORY_TRANSACTION_TYPES[v] || []
+                const patch = { Categories: v }
+                if (deal['Transaction Type'] && !validTypes.includes(deal['Transaction Type'])) patch['Transaction Type'] = ''
+                updateDeal(patch)
+              }} options={CATEGORIES} />
+              <LiveRowSelect label="Transaction type" value={deal['Transaction Type']} onCommit={v=>updateDeal({'Transaction Type':v})} options={validTxnTypes} disabled={!deal.Categories} placeholder={deal.Categories ? '—' : 'Pick a category first'} />
+              <LiveRow label="Lender" value={deal.Lender} onCommit={v=>updateDeal({Lender:v})} list="lender-suggestions" />
+              <LiveRowSelect label="Lead source" value={deal['Lead Source']} onCommit={v=>updateDeal({'Lead Source':v})} options={LEAD_SOURCES} />
+              <LiveRowCurrency label="Total security" value={deal['Total Security']} onCommit={v=>updateDeal({'Total Security':v})} />
+              <LiveRow label="Internal reference" value={deal['Internal Reference']} onCommit={v=>updateDeal({'Internal Reference':v})} />
+              {(deal['_referrers']||[]).length > 0 && (
+                <div style={{ marginTop:10, fontSize:11, color:'#7A8090' }}>Referral partner: <strong style={{color:'#2A3545'}}>{(deal['_referrers']||[]).map(r=>r.name).join(', ')}</strong></div>
+              )}
+            </TabCard>
 
-      <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
-        <RradarContactsPanel deal={d} clients={clients} editing={editing} draft={draft} set={set} inp={inp} />
+            <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+              <TabCard title="Key dates">
+                <LiveRowDate label="Settlement date" value={deal['Date Settled']} onCommit={v=>updateDeal({'Date Settled':v})} />
+                <LiveRowDate label="Finance due date" value={deal['Finance Due Date']} onCommit={v=>updateDeal({ 'Finance Due Date': v, 'Month of Settlement': v ? v.slice(0,7) : deal['Month of Settlement'] })} />
+                <LiveRowDate label="Deposit due date" value={deal['Deposit Due Date']} onCommit={v=>updateDeal({'Deposit Due Date':v})} />
+                <LiveRowDate label="Fixed rate expiry" value={deal['Fixed Rate Expiry']} onCommit={v=>updateDeal({'Fixed Rate Expiry':v})} />
+                <LiveRowDate label="IO expiry" value={deal['Interest Only Expiry']} onCommit={v=>updateDeal({'Interest Only Expiry':v})} />
+                <LiveRowDate label="Discharge date" value={deal['Discharge Date']} onCommit={v=>updateDeal({'Discharge Date':v})} />
+                <LiveRow label="Discharge reason" value={deal['Discharge Reason']} onCommit={v=>updateDeal({'Discharge Reason':v})} />
+              </TabCard>
 
-        <TabCard title="Referral Partner">
-          <ReferrerPicker
-            compact
-            label=""
-            attached={deal['_referrers'] || (deal['_referrer'] ? [{ name:deal['_referrer'], tier:'contenders' }] : [])}
-            onAttach={r => {
-              const curr = deal['_referrers'] || []
-              if (curr.find(x => x.name === r.name)) return
-              const updated = deals.map(x => x['Transaction Name'] === deal['Transaction Name'] ? { ...x, '_referrers': [...curr, r] } : x)
-              setDeals(updated); saveDeals(updated)
-              if (editing) set('_referrers', [...curr, r])
-            }}
-            onDetach={name => {
-              const updated = deals.map(x => x['Transaction Name'] === deal['Transaction Name'] ? { ...x, '_referrers': (x['_referrers']||[]).filter(r => r.name !== name) } : x)
-              setDeals(updated); saveDeals(updated)
-              if (editing) set('_referrers', (draft?.['_referrers']||[]).filter(r => r.name !== name))
-            }}
-          />
-        </TabCard>
-
-        <TabCard title="Estimated commission">
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
-            <div style={{ background:'#f8f9fa', borderRadius:8, padding:'10px 12px' }}>
-              <div style={{ fontSize:10, color:'#9ca3af' }}>Est. upfront (0.66%)</div>
-              <div style={{ fontSize:16, fontWeight:700, color:'#22c55e', marginTop:2 }}>{d.Amount ? `$${Math.round(d.Amount*0.0066).toLocaleString()}` : '—'}</div>
-            </div>
-            <div style={{ background:'#f8f9fa', borderRadius:8, padding:'10px 12px' }}>
-              <div style={{ fontSize:10, color:'#9ca3af' }}>Deal amount</div>
-              <div style={{ fontSize:16, fontWeight:700, color:'#EB99C2', marginTop:2 }}>{fmtAmt(d.Amount)}</div>
+              <TabCard title="Estimated commission">
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+                  <div style={{ background:'#f8f9fa', borderRadius:8, padding:'10px 12px' }}>
+                    <div style={{ fontSize:10, color:'#9ca3af' }}>Est. upfront (0.66%)</div>
+                    <div style={{ fontSize:16, fontWeight:700, color:'#22c55e', marginTop:2 }}>{deal.Amount ? `$${Math.round(deal.Amount*0.0066).toLocaleString()}` : '—'}</div>
+                  </div>
+                  <div style={{ background:'#f8f9fa', borderRadius:8, padding:'10px 12px' }}>
+                    <div style={{ fontSize:10, color:'#9ca3af' }}>Deal amount</div>
+                    <div style={{ fontSize:16, fontWeight:700, color:'#EB99C2', marginTop:2 }}>{fmtAmt(deal.Amount)}</div>
+                  </div>
+                </div>
+              </TabCard>
             </div>
           </div>
-        </TabCard>
+        )}
+
+        {sub === 'contacts' && (
+          <div>
+            <ContactsPanel deal={deal} clients={clients} updateDeal={updateDeal} />
+
+            <TabCard title="Referral Partner">
+              <ReferrerPicker
+                compact
+                label=""
+                attached={deal['_referrers'] || (deal['_referrer'] ? [{ name:deal['_referrer'], tier:'contenders' }] : [])}
+                onAttach={r => {
+                  const curr = deal['_referrers'] || []
+                  if (curr.find(x => x.name === r.name)) return
+                  updateDeal({ '_referrers': [...curr, r] })
+                }}
+                onDetach={name => {
+                  updateDeal({ '_referrers': (deal['_referrers']||[]).filter(r => r.name !== name) })
+                }}
+              />
+            </TabCard>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -1318,47 +1283,29 @@ function StrategyTab({ deal, updateDeal }) {
 // entity financials and servicing calculations.
 function StructureTab({ d, editing, set }) {
   const isResidential = d.Categories === 'Residential'
-  const subs = [
-    {id:'client',label:'Client Details'},
-    {id:'security',label:'Security'},
-    ...(isResidential
-      ? [
-          {id:'livingExpenses',label:'Living Expenses'},
-          {id:'realEstate',label:'Assets — Real Estate'},
-          {id:'otherAssets',label:'Assets — Other'},
-          {id:'liabilities',label:'Liabilities'},
-          {id:'employment',label:'Employment'},
-          {id:'otherIncome',label:'Other Income'},
-        ]
-      : [{id:'financials',label:'Financials'},{id:'servicing',label:'Servicing'}]
-    ),
-  ]
-  const [sub, setSub] = useState('client')
-  useEffect(() => { if (!subs.find(x=>x.id===sub)) setSub('client') }, [d.Categories]) // eslint-disable-line react-hooks/exhaustive-deps
+  const subs = isResidential
+    ? [
+        {id:'livingExpenses',label:'Living Expenses'},
+        {id:'realEstate',label:'Assets — Real Estate'},
+        {id:'otherAssets',label:'Assets — Other'},
+        {id:'liabilities',label:'Liabilities'},
+        {id:'employment',label:'Employment'},
+        {id:'otherIncome',label:'Other Income'},
+      ]
+    : [{id:'financials',label:'Financials'},{id:'servicing',label:'Servicing'}]
+  const [sub, setSub] = useState(subs[0].id)
+  useEffect(() => { if (!subs.find(x=>x.id===sub)) setSub(subs[0].id) }, [d.Categories]) // eslint-disable-line react-hooks/exhaustive-deps
   const struct = d._structure || {}
   const s = (k, v) => set('_structure', { ...struct, [k]: v })
-  const entities = struct.entities || []
-  const securities = struct.securities || []
-  const facilities = struct.facilities || []
   const fin = struct.financials || {}
   const setFin = (year, k, v) => s('financials', { ...fin, [year]: { ...(fin[year]||{}), [k]: v } })
   const servicing = struct.servicing || {}
   const setServicing = (k, v) => s('servicing', { ...servicing, [k]: v })
 
-  const addEntity = () => s('entities', [...entities, { name:'', type:'Company', position:'Borrower', shortName:'' }])
-  const updEntity = (i,k,v) => s('entities', entities.map((r,idx)=>idx===i?{...r,[k]:v}:r))
-  const rmEntity = (i) => s('entities', entities.filter((_,idx)=>idx!==i))
-
-  const addSecurity = () => s('securities', [...securities, { type:'1MTG', description:'', value:'', lendingValue:'', owner:'', band:'FS' }])
-  const updSecurity = (i,k,v) => s('securities', securities.map((r,idx)=>idx===i?{...r,[k]:v}:r))
-  const rmSecurity = (i) => s('securities', securities.filter((_,idx)=>idx!==i))
-
-  const addFacility = () => s('facilities', [...facilities, { entity:'', type:'Term Loan', lender:'', amount:'', rate:'', llvr:'' }])
-  const updFacility = (i,k,v) => s('facilities', facilities.map((r,idx)=>idx===i?{...r,[k]:v}:r))
-  const rmFacility = (i) => s('facilities', facilities.filter((_,idx)=>idx!==i))
-
-  // Residential financial-position registers
-  const individuals = entities.filter(e => e.type === 'Individual' && e.name)
+  // Individuals now come from Loan Details → Clients & Contacts, rather than
+  // a separate entity register here — Cameron folded that in to avoid
+  // capturing the same people twice.
+  const individuals = (d.Contacts || []).filter(c => c.type === 'Individual' && c.name)
   const OWNERSHIP_OPTIONS = ['Shared Equally', ...individuals.map(e => `100% ${e.name}`)]
 
   const livingExpenses = struct.livingExpenses || []
@@ -1427,48 +1374,9 @@ function StructureTab({ d, editing, set }) {
       <SideTabs tabs={subs} active={sub} onChange={setSub} />
 
       <div style={{ flex:1, minWidth:0 }}>
-        {isResidential && (
-          <div style={{ fontSize:11, color:'#9ca3af', marginBottom:16 }}>Residential deals capture financial position the way Mercury does — Living Expenses, Real Estate, Other Assets, Liabilities, Employment and Other Income — instead of trading-analysis Financials/Servicing.</div>
+        {isResidential && individuals.length === 0 && (
+          <div style={{ fontSize:11, color:'#9ca3af', marginBottom:16 }}>Add individuals under Loan Details → Clients & Contacts first — Employment and the ownership splits here are driven by who's listed there.</div>
         )}
-        {sub === 'client' && (
-        <TabCard title="Entity & Individual Register" right={editing && <button onClick={addEntity} style={addBtnStyle}>+ Add entity</button>}>
-          <MiniTable columns={['Entity / Individual','Entity Type','Position','Short Name', editing?'':undefined].filter(Boolean)} rows={entities.map((r,i) => editing ? [
-            <input style={rowInp} value={r.name} onChange={e=>updEntity(i,'name',e.target.value)}/>,
-            <select style={rowInp} value={r.type} onChange={e=>updEntity(i,'type',e.target.value)}>{ENTITY_TYPES.map(t=><option key={t}>{t}</option>)}</select>,
-            <select style={rowInp} value={r.position} onChange={e=>updEntity(i,'position',e.target.value)}>{ENTITY_POSITIONS.map(t=><option key={t}>{t}</option>)}</select>,
-            <div style={{display:'flex',gap:6,alignItems:'center'}}><input style={rowInp} value={r.shortName} onChange={e=>updEntity(i,'shortName',e.target.value)}/><button onClick={()=>rmEntity(i)} style={rmBtnStyle}>✕</button></div>,
-          ] : [r.name,r.type,r.position,r.shortName])}/>
-        </TabCard>
-      )}
-
-      {sub === 'security' && (
-        <>
-          <TabCard title="Facilities" right={editing && <button onClick={addFacility} style={addBtnStyle}>+ Add facility</button>}>
-            <MiniTable columns={['Borrowing Entity','Facility Type','Lender','Loan Amount','Rate','LLVR']} rows={facilities.map((r,i) => editing ? [
-              <input style={rowInp} value={r.entity} onChange={e=>updFacility(i,'entity',e.target.value)}/>,
-              <select style={rowInp} value={r.type} onChange={e=>updFacility(i,'type',e.target.value)}>{FACILITY_TYPES.map(t=><option key={t}>{t}</option>)}</select>,
-              <input style={rowInp} value={r.lender} onChange={e=>updFacility(i,'lender',e.target.value)}/>,
-              <input style={rowInp} value={r.amount} onChange={e=>updFacility(i,'amount',e.target.value)}/>,
-              <input style={rowInp} value={r.rate} onChange={e=>updFacility(i,'rate',e.target.value)}/>,
-              <div style={{display:'flex',gap:6,alignItems:'center'}}><input style={rowInp} value={r.llvr} onChange={e=>updFacility(i,'llvr',e.target.value)}/><button onClick={()=>rmFacility(i)} style={rmBtnStyle}>✕</button></div>,
-            ] : [r.entity,r.type,r.lender, r.amount?`$${Number(r.amount).toLocaleString()}`:'—', r.rate?`${r.rate}%`:'—', r.llvr?`${r.llvr}%`:'—'])}/>
-          </TabCard>
-
-          <TabCard title="Securities Held" right={editing && <button onClick={addSecurity} style={addBtnStyle}>+ Add security</button>}>
-            <MiniTable columns={['Type','Description','Value','Lending Value','Owner','Band']} rows={securities.map((r,i) => editing ? [
-              <select style={rowInp} value={r.type} onChange={e=>updSecurity(i,'type',e.target.value)}>{SECURITY_TYPES.map(t=><option key={t}>{t}</option>)}</select>,
-              <input style={rowInp} value={r.description} onChange={e=>updSecurity(i,'description',e.target.value)}/>,
-              <input style={rowInp} value={r.value} onChange={e=>updSecurity(i,'value',e.target.value)}/>,
-              <input style={rowInp} value={r.lendingValue} onChange={e=>updSecurity(i,'lendingValue',e.target.value)}/>,
-              <input style={rowInp} value={r.owner} onChange={e=>updSecurity(i,'owner',e.target.value)}/>,
-              <div style={{display:'flex',gap:6,alignItems:'center'}}>
-                <select style={rowInp} value={r.band} onChange={e=>updSecurity(i,'band',e.target.value)}>{SEC_BANDS.map(b=><option key={b.code} value={b.code}>{b.code}</option>)}</select>
-                <button onClick={()=>rmSecurity(i)} style={rmBtnStyle}>✕</button>
-              </div>,
-            ] : [<Pill tone="navy">{r.type}</Pill>, r.description, r.value?`$${Number(r.value).toLocaleString()}`:'—', r.lendingValue?`$${Number(r.lendingValue).toLocaleString()}`:'—', r.owner, <Pill tone={r.band==='WS'?'green':r.band==='UN'?'slate':'pink'}>{r.band}</Pill>])}/>
-          </TabCard>
-        </>
-      )}
 
       {sub === 'financials' && (
         <TabCard title="Trading Analysis">
@@ -1824,6 +1732,69 @@ function NotesTab({ d, editing, set, deal, deals, setDeals }) {
   )
 }
 
+// First pass only — pulls together figures that already exist elsewhere on
+// the deal (Strategy's funding calc, Financials' servicing) into one
+// read-only overview. Cameron hasn't specified exactly what belongs here
+// yet, so this is a reasonable starting point to react to rather than a
+// finished spec — the numbers themselves are the same ones shown on their
+// source tabs, just gathered in one place.
+function SummaryTab({ deal }) {
+  const strat = deal._strategy || {}
+  const dealType = deriveDealType(deal['Transaction Type'])
+  const calc = calcFunding(strat, dealType)
+  const struct = deal._structure || {}
+  const servicing = struct.servicing || {}
+  const dscr = servicing.ebitda && servicing.repayments ? (Number(servicing.ebitda)/Number(servicing.repayments)).toFixed(2) : null
+  const icr = servicing.ebit && servicing.interestForCover ? (Number(servicing.ebit)/Number(servicing.interestForCover)).toFixed(2) : null
+  const fmtAmt = v => v ? `$${Number(v).toLocaleString()}` : '—'
+
+  return (
+    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
+      <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+        <TabCard title="Deal Overview">
+          <ReadRow label="Category" value={deal.Categories}/>
+          <ReadRow label="Transaction type" value={deal['Transaction Type']}/>
+          <ReadRow label="Lender" value={deal.Lender}/>
+          <ReadRow label="Status" value={deal.Status}/>
+          <ReadRow label="Settlement date" value={deal['Date Settled']?.slice(0,10)}/>
+          <ReadRow label="Finance due date" value={deal['Finance Due Date']?.slice(0,10)}/>
+        </TabCard>
+
+        <TabCard title="Contacts">
+          {(deal.Contacts||[]).length === 0 && <div style={{fontSize:11.5,color:'#9ca3af'}}>No contacts on file — add them under Loan Details.</div>}
+          {(deal.Contacts||[]).map((c,i) => <ReadRow key={i} label={c.type||'Individual'} value={c.name}/>)}
+          {(deal['_referrers']||[]).length > 0 && <ReadRow label="Referral partner" value={(deal['_referrers']||[]).map(r=>r.name).join(', ')}/>}
+        </TabCard>
+      </div>
+
+      <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+        <TabCard title="Funding Summary">
+          <ComputedRow label="Total Costs" value={fmtM(calc.totalCosts)} tone="navy" />
+          <ComputedRow label="Loan From Lender" value={fmtM(calc.loanFromLender)} tone="navy" side={calc.lvrBase ? `${(calc.totalLVR*100).toFixed(1)}% LVR` : null} />
+          <ComputedRow label="Total Funds Available" value={fmtM(calc.totalFundsAvailable)} tone="navy" />
+          <ComputedRow label="Surplus / (Deficit)" value={fmtM(calc.surplusDeficit)} tone={calc.surplusDeficit < 0 ? 'red' : 'green'} big />
+        </TabCard>
+
+        {(dscr || icr) && (
+          <TabCard title="Servicing Summary">
+            <div style={{ display:'flex', gap:24 }}>
+              {dscr && <div><div style={{fontSize:10,color:'#9ca3af'}}>Debt Service Cover Ratio</div><div style={{fontSize:18,fontWeight:700,color:'#3D4F6B'}}>{dscr}x</div></div>}
+              {icr && <div><div style={{fontSize:10,color:'#9ca3af'}}>Interest Cover Ratio</div><div style={{fontSize:18,fontWeight:700,color:'#3D4F6B'}}>{icr}x</div></div>}
+            </div>
+          </TabCard>
+        )}
+
+        <TabCard title="Estimated Commission">
+          <div style={{ background:'#f8f9fa', borderRadius:8, padding:'10px 12px' }}>
+            <div style={{ fontSize:10, color:'#9ca3af' }}>Est. upfront (0.66%)</div>
+            <div style={{ fontSize:16, fontWeight:700, color:'#22c55e', marginTop:2 }}>{deal.Amount ? `$${Math.round(deal.Amount*0.0066).toLocaleString()}` : '—'}</div>
+          </div>
+        </TabCard>
+      </div>
+    </div>
+  )
+}
+
 const addBtnStyle = { fontSize:11, fontWeight:600, color:'#3D4F6B', background:'#fff', border:'1px solid #e8eaed', borderRadius:6, padding:'5px 12px', cursor:'pointer' }
 const rmBtnStyle = { fontSize:10, padding:'3px 7px', borderRadius:4, border:'1px solid #fecaca', background:'#fef2f2', color:'#b91c1c', cursor:'pointer' }
 const rowInp = { border:'1px solid #e8eaed', borderRadius:5, padding:'4px 7px', fontSize:11.5, width:'100%', boxSizing:'border-box', fontFamily:'inherit' }
@@ -1894,9 +1865,10 @@ export default function DealPage({ onUpdateDeals, clients = [] }) {
   const TABS = [
     { id:'details', label:'Loan Details' },
     { id:'strategy', label:'Strategy' },
-    { id:'structure', label:'Structure' },
+    { id:'structure', label:'Financials' },
     { id:'attachments', label:'Attachments' },
     { id:'notes', label:'Notes' },
+    { id:'summary', label:'Summary' },
   ]
 
   return (
@@ -1941,11 +1913,12 @@ export default function DealPage({ onUpdateDeals, clients = [] }) {
           ))}
         </div>
 
-        {tab === 'details' && <LoanDetailsTab d={d} editing={editing} draft={draft} set={set} deal={deal} deals={deals} setDeals={setDeals} clients={clients} updateDeal={updateDeal} />}
+        {tab === 'details' && <LoanDetailsTab deal={deal} updateDeal={updateDeal} deals={deals} setDeals={setDeals} clients={clients} />}
         {tab === 'strategy' && <StrategyTab deal={deal} updateDeal={updateDeal} />}
         {tab === 'structure' && <StructureTab d={d} editing={editing} set={set} />}
         {tab === 'attachments' && <AttachmentsTab deal={deal} deals={deals} setDeals={setDeals} editing={editing} d={d} set={set} />}
         {tab === 'notes' && <NotesTab d={d} editing={editing} set={set} deal={deal} deals={deals} setDeals={setDeals} />}
+        {tab === 'summary' && <SummaryTab deal={deal} />}
       </div>
     </div>
   )
