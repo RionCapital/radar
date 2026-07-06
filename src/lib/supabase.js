@@ -37,10 +37,39 @@ export async function sbLoadDeals() {
 }
 
 export async function sbSaveDeals(deals) {
-  const { error } = await supabase
-    .from('deals')
-    .upsert({ id: 1, data: deals, updated_at: new Date().toISOString() })
-  return !error
+  try {
+    // Merge-safe write. Every save previously pushed the caller's full local
+    // array straight over whatever Supabase held — so a save from one
+    // device/tab could silently wipe a deal that was added or edited
+    // elsewhere in the meantime (the same shape of bug that lost the
+    // April/May commission data). Before writing, pull the freshest cloud
+    // copy and fold back in any deal that exists there but is missing from
+    // what we're about to write, keyed on 'Transaction Name'.
+    //
+    // This lives here rather than in deals.js because CRM.jsx and
+    // NewOpportunityModal.jsx each define their own local saveDeals()
+    // wrapper that calls sbSaveDeals() directly, bypassing deals.js
+    // entirely — putting the merge here protects every save path at once.
+    const { data: existing } = await supabase
+      .from('deals')
+      .select('data')
+      .eq('id', 1)
+      .single()
+
+    let merged = deals
+    if (existing?.data && Array.isArray(existing.data)) {
+      const localNames = new Set(deals.map(d => d['Transaction Name']))
+      const cloudOnly = existing.data.filter(d => !localNames.has(d['Transaction Name']))
+      if (cloudOnly.length > 0) merged = [...deals, ...cloudOnly]
+    }
+
+    const { error } = await supabase
+      .from('deals')
+      .upsert({ id: 1, data: merged, updated_at: new Date().toISOString() })
+    return !error
+  } catch {
+    return false
+  }
 }
 
 // ─── Referrers (Marketing) ────────────────────────────────────────────────────
