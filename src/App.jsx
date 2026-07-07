@@ -113,8 +113,16 @@ export default function App() {
         const fixed = prev.map(c => ({
           ...c,
           loans: c.loans.map(l => {
+            // Only '2026-30' is fixed here — that was a genuinely invalid month key
+            // from an old filename-parsing bug. '2026-05' used to be lumped in with
+            // it as "also invalid", back when no real May 2026 data existed yet —
+            // but May 2026 is now a real, current month, and this line was silently
+            // rewriting every legitimate May commission entry back to April on every
+            // single page load. That's the actual cause of the April/May mix-up —
+            // not the import, and not a sync race — so '2026-05' must never appear
+            // in this condition again.
             const fixHistory = (arr) => (arr || []).map(h => {
-              if (h.month === '2026-30' || h.month === '2026-05') { needsSave = true; return { ...h, month: '2026-04' } }
+              if (h.month === '2026-30') { needsSave = true; return { ...h, month: '2026-04' } }
               return h
             })
             return { ...l, balanceHistory: fixHistory(l.balanceHistory), commissionHistory: fixHistory(l.commissionHistory) }
