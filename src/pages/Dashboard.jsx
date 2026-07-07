@@ -195,7 +195,7 @@ function buildMaturingRows(clients) {
   return rows.sort((a, b) => new Date(a.expiryDate) - new Date(b.expiryDate)).slice(0, 30)
 }
 
-function BarChart({ data, keys, colors, title, formatY }) {
+function BarChart({ data, keys, colors, title, formatY, onBarHover, onBarLeave, hoveredIdx }) {
   const maxVal = Math.max(...data.map(d => keys.reduce((s, k) => s + (d[k] || 0), 0))) * 1.1 || 1
   const h = 120, barW = Math.max(12, Math.floor(420 / data.length) - 3)
   return (
@@ -210,12 +210,17 @@ function BarChart({ data, keys, colors, title, formatY }) {
         ))}
         {data.map((d, i) => {
           const x = 40 + i * (barW + 3); let yOff = h
+          const isHovered = onBarHover && hoveredIdx === i
           return <g key={i}>
             {keys.map((k, ki) => {
               const val = Math.max(0, d[k] || 0), bh = maxVal > 0 ? (val / maxVal) * h : 0; yOff -= bh
-              return <rect key={ki} x={x} y={yOff} width={barW} height={bh} fill={colors[ki]} rx={1.5}><title>{`${d.month}: $${val.toLocaleString()}`}</title></rect>
+              return <rect key={ki} x={x} y={yOff} width={barW} height={bh} fill={colors[ki]} rx={1.5} opacity={isHovered ? 1 : (onBarHover && hoveredIdx != null ? 0.45 : 1)}><title>{`${d.month}: $${val.toLocaleString()}`}</title></rect>
             })}
-            <text x={x + barW / 2} y={h + 14} textAnchor="middle" fontSize={8} fill="var(--text-secondary)">{d.month}</text>
+            {onBarHover && (
+              <rect x={x} y={0} width={barW} height={h} fill="transparent" style={{ cursor:'pointer' }}
+                onMouseEnter={()=>onBarHover(i)} onMouseLeave={()=>onBarLeave && onBarLeave()} />
+            )}
+            <text x={x + barW / 2} y={h + 14} textAnchor="middle" fontSize={8} fontWeight={isHovered?700:400} fill={isHovered ? 'var(--text-primary)' : 'var(--text-secondary)'}>{d.month}</text>
           </g>
         })}
       </svg>
@@ -231,7 +236,7 @@ function BarChart({ data, keys, colors, title, formatY }) {
   )
 }
 
-function PieChart({ pw, comm }) {
+function PieChart({ pw, comm, label }) {
   const total = pw + comm
   if (!total) return null
   const pwAngle = (pw / total) * 360
@@ -250,7 +255,8 @@ function PieChart({ pw, comm }) {
   const mid2 = polarToXY(pwAngle + (360 - pwAngle) / 2 - 90 + 90, r * 0.6)
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-      <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-secondary)', marginBottom: 8 }}>Portfolio Split</div>
+      <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-secondary)', marginBottom: label ? 0 : 8 }}>Portfolio Split</div>
+      {label && <div style={{ fontSize: 9, color: 'var(--pk)', fontWeight: 600, marginBottom: 6 }}>{label}</div>}
       <svg width={180} height={160} viewBox="0 0 180 160">
         {arc(0, pwAngle, '#EB99C2')}
         {arc(pwAngle, 360, '#2A3D54')}
@@ -400,6 +406,7 @@ function RadarTable({ title, panelKey, rows, navigate, onTick, showExpiry, showL
 export default function Dashboard({ clients, onImport, onUpdateClients }) {
   const navigate = useNavigate()
   const [showImport, setShowImport] = useState(false)
+  const [hoveredMonthIdx, setHoveredMonthIdx] = useState(null)
   const hasPendingImport = !!localStorage.getItem('rion-pending-import')
   // Ticked rows stored as Set of unique keys: `${panelKey}-${conn}-${acc}`
   const [tickedKeys, setTickedKeys] = useState(() => {
@@ -511,10 +518,13 @@ export default function Dashboard({ clients, onImport, onUpdateClients }) {
       {/* TOP ROW */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 180px 1fr 200px', gap: 14, marginBottom: 14, alignItems: 'start' }}>
         <Panel style={{ display: 'flex', flexDirection: 'column' }}>
-          <BarChart data={balData} keys={['private', 'commercial']} colors={['#EB99C2', '#3D5570']} title="Portfolio Balances" formatY={v => v >= 1e6 ? `$${Math.round(v / 5e6) * 5}m` : `$${Math.round(v / 5000) * 5}k`} />
+          <BarChart data={balData} keys={['private', 'commercial']} colors={['#EB99C2', '#3D5570']} title="Portfolio Balances" formatY={v => v >= 1e6 ? `$${Math.round(v / 5e6) * 5}m` : `$${Math.round(v / 5000) * 5}k`} onBarHover={setHoveredMonthIdx} onBarLeave={()=>setHoveredMonthIdx(null)} hoveredIdx={hoveredMonthIdx} />
         </Panel>
         <Panel style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '10px 6px' }}>
           {(() => {
+            const idx = hoveredMonthIdx != null ? hoveredMonthIdx : balData.length - 1
+            const point = balData[idx]
+            if (point) return <PieChart pw={point.private} comm={point.commercial} label={hoveredMonthIdx != null ? point.month : null} />
             const latestBal = last12[last12.length - 1]?.balance || (pwTotal + commTotal)
             const ratio = pwTotal / (pwTotal + commTotal || 1)
             return <PieChart pw={Math.round(latestBal * ratio)} comm={Math.round(latestBal * (1 - ratio))} />
