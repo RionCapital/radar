@@ -278,6 +278,21 @@ const FACILITY_TYPES = ['Home Loan','Term Loan','Line of Credit','Overdraft','Ba
 const ENTITY_TYPES = ['Company','Sole Trader','Partnership','Trust','Individual']
 const ENTITY_POSITIONS = ['Borrower','Co-Borrower','Guarantor','Cash Flow']
 
+// Which security types are realistic depends on the deal Category — a
+// straightforward mortgage-style set for Residential, GSA/PMSI weighted
+// more heavily for Business/Asset Finance, etc. Falls back to the full list
+// for anything not explicitly mapped.
+const CATEGORY_SECURITY_TYPES = {
+  'Residential': ['1MTG','2MTG','Gtee'],
+  'Commercial': ['1MTG','2MTG','GSA','Gtee'],
+  'Full Commercial (BANK RM)': ['1MTG','2MTG','GSA','PMSI','Gtee'],
+  'SMSF': ['1MTG','Gtee'],
+  'Business Loan': ['GSA','1MTG','Gtee'],
+  'Trade & Invoice Finance': ['GSA','PMSI'],
+  'Asset Finance': ['PMSI','Gtee'],
+  'Development': ['1MTG','2MTG','GSA','Gtee'],
+}
+
 // Residential financial-position registers — matches the shape Cameron's
 // existing Mercury CRM already uses for home loan servicing (Living
 // Expenses / Assets - Real Estate / Assets - Other / Liabilities /
@@ -503,6 +518,29 @@ function LiveRow({ label, value, onCommit, placeholder='—', pink, list }) {
         style={rowValueStyle(focused, pink)}
       />
     </div>
+  )
+}
+
+// Bare currency input, no label/row wrapper — used where an amount needs to
+// sit next to another control on the same line (e.g. Stamp Duty's state
+// dropdown) rather than as its own full row.
+function StampDutyAmountInput({ value, onCommit }) {
+  const [editVal, setEditVal] = useState('')
+  const [focused, setFocused] = useState(false)
+  const display = focused ? editVal : (value ? `$${Number(value).toLocaleString()}` : '')
+  return (
+    <input
+      value={display}
+      placeholder="—"
+      onFocus={()=>{ setFocused(true); setEditVal(value ?? '') }}
+      onChange={e=>setEditVal(e.target.value.replace(/[^0-9.]/g,''))}
+      onBlur={()=>{
+        setFocused(false)
+        const num = editVal === '' ? '' : Number(editVal)
+        if (num !== (value ?? '')) onCommit(num===''?null:num)
+      }}
+      style={{ ...rowValueStyle(focused, false), width:AMOUNT_COL_WIDTH, flexShrink:0 }}
+    />
   )
 }
 
@@ -880,14 +918,14 @@ function LoanAmountRow({ label, lvrBase, amountValue, lmiAddOn=0, onLvrCommit, t
     <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'8px 10px', margin:'4px 0', borderRadius:6, background:t.bg }}>
       <span style={{ fontSize:11.5, fontWeight:700, color:t.fg }}>{label}</span>
       <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'flex-end', gap:3, width:LVR_COL_WIDTH, flexShrink:0 }}>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'flex-end', gap:1, width:LVR_COL_WIDTH, flexShrink:0 }}>
           <input
-            type="number" placeholder="—"
+            type="text" inputMode="decimal" placeholder="—"
             value={lvrFocused ? lvrEdit : displayLvr}
             onFocus={()=>{ setLvrFocused(true); setLvrEdit(displayLvr) }}
-            onChange={e=>setLvrEdit(e.target.value)}
+            onChange={e=>setLvrEdit(e.target.value.replace(/[^0-9.]/g,''))}
             onBlur={commitLvr}
-            style={{ width:40, textAlign:'right', border:'none', borderBottom: lvrFocused?`1px solid ${t.fg}`:'1px solid transparent', background:'transparent', fontSize:12, fontWeight:700, color:t.fg, outline:'none', fontFamily:'inherit' }}
+            style={{ width:38, textAlign:'right', border:'none', borderBottom: lvrFocused?`1px solid ${t.fg}`:'1px solid transparent', background:'transparent', fontSize:12, fontWeight:700, color:t.fg, outline:'none', fontFamily:'inherit', padding:0 }}
           />
           <span style={{ fontSize:11, fontWeight:700, color:t.fg, opacity:0.75, whiteSpace:'nowrap' }}>% LVR</span>
         </div>
@@ -1065,12 +1103,14 @@ function StrategyTab({ deal, updateDeal }) {
                 {calc.hasStampDuty && (
                   <>
                     <div style={rowWrap}>
-                      <span style={rowLabel}>State (for stamp duty estimate)</span>
-                      <select value={strat.state||'NSW'} onChange={e=>s('state', e.target.value)} style={{ ...rowValueStyle(false,false), width:'40%' }}>
-                        {STAMP_DUTY_STATES.map(st=><option key={st} value={st}>{st}</option>)}
-                      </select>
+                      <span style={rowLabel}>Stamp Duty (OSR est.)</span>
+                      <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                        <select value={strat.state||'NSW'} onChange={e=>s('state', e.target.value)} style={{ border:'1px solid #e8eaed', borderRadius:5, padding:'2px 6px', fontSize:11, color:'#7A8090', background:'#fff', cursor:'pointer' }}>
+                          {STAMP_DUTY_STATES.map(st=><option key={st} value={st}>{st}</option>)}
+                        </select>
+                        <StampDutyAmountInput value={calc.stampDuty} onCommit={v=>s('stampDuty', v)} />
+                      </div>
                     </div>
-                    <LiveRowCurrency label="Stamp Duty (OSR est.)" value={calc.stampDuty} onCommit={v=>s('stampDuty', v)} />
                     {strat.stampDuty != null && strat.stampDuty !== calc.stampDutyEstimate && calc.stampDutyEstimate > 0 && (
                       <div style={{ display:'flex', justifyContent:'flex-end', alignItems:'center', gap:8, margin:'-4px 0 8px' }}>
                         <span style={{ fontSize:10.5, color:'#9ca3af' }}>Estimated ({strat.state||'NSW'}): {fmtM(calc.stampDutyEstimate)}</span>
@@ -1283,16 +1323,20 @@ function StrategyTab({ deal, updateDeal }) {
 // entity financials and servicing calculations.
 function StructureTab({ d, editing, set }) {
   const isResidential = d.Categories === 'Residential'
-  const subs = isResidential
-    ? [
-        {id:'livingExpenses',label:'Living Expenses'},
-        {id:'realEstate',label:'Assets — Real Estate'},
-        {id:'otherAssets',label:'Assets — Other'},
-        {id:'liabilities',label:'Liabilities'},
-        {id:'employment',label:'Employment'},
-        {id:'otherIncome',label:'Other Income'},
-      ]
-    : [{id:'financials',label:'Financials'},{id:'servicing',label:'Servicing'}]
+  const subs = [
+    {id:'security',label:'Security'},
+    ...(isResidential
+      ? [
+          {id:'livingExpenses',label:'Living Expenses'},
+          {id:'realEstate',label:'Assets — Real Estate'},
+          {id:'otherAssets',label:'Assets — Other'},
+          {id:'liabilities',label:'Liabilities'},
+          {id:'employment',label:'Employment'},
+          {id:'otherIncome',label:'Other Income'},
+        ]
+      : [{id:'financials',label:'Financials'},{id:'servicing',label:'Servicing'}]
+    ),
+  ]
   const [sub, setSub] = useState(subs[0].id)
   useEffect(() => { if (!subs.find(x=>x.id===sub)) setSub(subs[0].id) }, [d.Categories]) // eslint-disable-line react-hooks/exhaustive-deps
   const struct = d._structure || {}
@@ -1301,6 +1345,12 @@ function StructureTab({ d, editing, set }) {
   const setFin = (year, k, v) => s('financials', { ...fin, [year]: { ...(fin[year]||{}), [k]: v } })
   const servicing = struct.servicing || {}
   const setServicing = (k, v) => s('servicing', { ...servicing, [k]: v })
+
+  const securityTypeOptions = CATEGORY_SECURITY_TYPES[d.Categories] || SECURITY_TYPES
+  const securities = struct.securities || []
+  const addSecurity = () => s('securities', [...securities, { type:securityTypeOptions[0], description:'', value:'', lendingValue:'', owner:'', band:'FS' }])
+  const updSecurity = (i,k,v) => s('securities', securities.map((r,idx)=>idx===i?{...r,[k]:v}:r))
+  const rmSecurity = (i) => s('securities', securities.filter((_,idx)=>idx!==i))
 
   // Individuals now come from Loan Details → Clients & Contacts, rather than
   // a separate entity register here — Cameron folded that in to avoid
@@ -1376,6 +1426,21 @@ function StructureTab({ d, editing, set }) {
       <div style={{ flex:1, minWidth:0 }}>
         {isResidential && individuals.length === 0 && (
           <div style={{ fontSize:11, color:'#9ca3af', marginBottom:16 }}>Add individuals under Loan Details → Clients & Contacts first — Employment and the ownership splits here are driven by who's listed there.</div>
+        )}
+
+        {sub === 'security' && (
+          <TabCard title="Securities Held" right={<button onClick={addSecurity} style={addBtnStyle}>+ Add security</button>}>
+            <div style={{ fontSize:11, color:'#9ca3af', marginBottom:10 }}>Security types shown are the ones typically used for a <strong style={{color:'#2A3545'}}>{d.Categories || 'this'}</strong> deal — change Category on Loan Details if this list isn't right.</div>
+            <MiniTable columns={['Type','Description','Value','Lending Value','Owner','Band','']} rows={securities.map((r,i) => [
+              <LiveSelect small value={r.type} onCommit={v=>updSecurity(i,'type',v)} options={securityTypeOptions} allowBlank={false} />,
+              <LiveText small value={r.description} onCommit={v=>updSecurity(i,'description',v)} placeholder="e.g. address, or asset description" />,
+              <LiveNumber small value={r.value} onCommit={v=>updSecurity(i,'value',v)} />,
+              <LiveNumber small value={r.lendingValue} onCommit={v=>updSecurity(i,'lendingValue',v)} />,
+              <LiveText small value={r.owner} onCommit={v=>updSecurity(i,'owner',v)} />,
+              <LiveSelect small value={r.band} onCommit={v=>updSecurity(i,'band',v)} options={SEC_BANDS.map(b=>b.code)} allowBlank={false} />,
+              <button onClick={()=>rmSecurity(i)} style={rmBtnStyle}>✕</button>,
+            ])} empty="No security added yet"/>
+          </TabCard>
         )}
 
       {sub === 'financials' && (
@@ -1522,7 +1587,7 @@ function StructureTab({ d, editing, set }) {
 
         {sub === 'employment' && (
           <div>
-            {individuals.length === 0 && <TabCard><div style={{fontSize:11.5,color:'#9ca3af'}}>Add individuals in Client Details first — employment is captured per applicant.</div></TabCard>}
+            {individuals.length === 0 && <TabCard><div style={{fontSize:11.5,color:'#9ca3af'}}>Add individuals under Loan Details → Clients & Contacts first — employment is captured per applicant.</div></TabCard>}
             {individuals.map(e => {
               const records = empFor(e.name)
               return (
