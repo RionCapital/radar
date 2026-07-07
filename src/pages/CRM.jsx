@@ -415,6 +415,8 @@ export default function CRM({ clients, onUpdateClients }) {
   const [showNewOpp, setShowNewOpp] = useState(false)
   const [settleModal, setSettleModal] = useState(null)
   const [showPastMonths, setShowPastMonths] = useState(false)
+  const [searchTerm, setSearchTerm] = useState('')
+  const [showWithdrawn, setShowWithdrawn] = useState(false)
 
   function saveDeals(d) { setDeals(d); try { localStorage.setItem('rion-crm-deals',JSON.stringify(d)) } catch {} sbSaveDeals(d).catch(() => {}) }
 
@@ -450,15 +452,31 @@ export default function CRM({ clients, onUpdateClients }) {
     const sortedMonths = [...visibleMonths].sort()
     sortedMonths.forEach(m => { groups[m] = [] })
     deals.forEach(d => {
+      if (!showWithdrawn && d.Status === '8. Withdrawn') return
       const m = d['Month of Settlement']?.slice(0,7)
       if (m && groups[m] !== undefined) groups[m].push(d)
     })
     Object.keys(groups).forEach(m => { groups[m].sort((a,b)=>STAGES.indexOf(a.Status)-STAGES.indexOf(b.Status)) })
     return groups
-  }, [deals, visibleMonths])
+  }, [deals, visibleMonths, showWithdrawn])
 
   const activeDeals = deals.filter(d => ACTIVE_STAGES.includes(d.Status))
   const totalPipeline = activeDeals.reduce((s,d)=>s+(d.Amount||0),0)
+
+  // Search matches regardless of settlement month/stage — this is the fix
+  // for deals that don't show up in the month-grouped List view because
+  // their Month of Settlement is missing or wrong.
+  const searchResults = useMemo(() => {
+    const q = searchTerm.trim().toLowerCase()
+    if (!q) return []
+    return deals.filter(d => {
+      if (!showWithdrawn && d.Status === '8. Withdrawn') return false
+      return [
+        d['Transaction Name'], d.Lender, d.Categories, d['Transaction Type'], d['Lead Source'],
+        ...(d['_referrers']||[]).map(r=>r.name),
+      ].some(v => v && String(v).toLowerCase().includes(q))
+    })
+  }, [deals, searchTerm, showWithdrawn])
   const thisMonthSettled = deals.filter(d=>d.Status==='7. Settled'&&d['Month of Settlement']?.startsWith(curMonth)).reduce((s,d)=>s+(d.Amount||0),0)
   const thisMonthUpfront = deals.filter(d=>d.Status==='7. Settled'&&d['Month of Settlement']?.startsWith(curMonth)).reduce((s,d)=>s+calcUpfront(d.Amount,d.Categories),0)
 
@@ -517,6 +535,15 @@ export default function CRM({ clients, onUpdateClients }) {
             </div>
           </div>
           <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+            <input
+              value={searchTerm}
+              onChange={e=>setSearchTerm(e.target.value)}
+              placeholder="🔍 Search deals, lender, referral…"
+              style={{ padding:'6px 12px', borderRadius:7, border:'1px solid #e8eaed', fontSize:11, width:220, fontFamily:'inherit' }}
+            />
+            <button onClick={()=>setShowWithdrawn(p=>!p)} style={{ padding:'6px 12px', borderRadius:7, border:'1px solid #e8eaed', background:showWithdrawn?'#3D4F6B':'#fff', color:showWithdrawn?'#fff':'#5a6370', fontSize:11, cursor:'pointer', whiteSpace:'nowrap' }}>
+              {showWithdrawn?'✓ Withdrawn':'Show Withdrawn'}
+            </button>
             <button onClick={()=>setShowForecast(p=>!p)} style={{ padding:'6px 12px', borderRadius:7, border:'1px solid #e8eaed', background:showForecast?'#3D4F6B':'#fff', color:showForecast?'#fff':'#5a6370', fontSize:11, cursor:'pointer' }}>
               {showForecast?'✓ Forecast':'Forecast'}
             </button>
@@ -555,7 +582,7 @@ export default function CRM({ clients, onUpdateClients }) {
         )}
 
         {/* List view */}
-        {viewMode==='list' && (
+        {!searchTerm && viewMode==='list' && (
           <div style={{ background:'#fff', borderRadius:8, border:'0.5px solid #e8eaed', overflow:'hidden' }}>
             {/* Filter bar */}
             <div style={{ padding:'8px 12px', borderBottom:'0.5px solid #e8eaed', display:'flex', alignItems:'center', gap:8, background:'#f9fafb' }}>
@@ -664,10 +691,83 @@ export default function CRM({ clients, onUpdateClients }) {
           </div>
         )}
 
+        {/* Search results — flat, ignores month/stage grouping entirely so a
+            deal with a wrong or missing settlement date still shows up */}
+        {searchTerm && (
+          <div style={{ background:'#fff', borderRadius:8, border:'0.5px solid #e8eaed', overflow:'hidden' }}>
+            <div style={{ padding:'8px 12px', borderBottom:'0.5px solid #e8eaed', background:'#f9fafb', fontSize:11, color:'#64748b' }}>
+              {searchResults.length} result{searchResults.length===1?'':'s'} for "{searchTerm}"
+            </div>
+            {searchResults.length === 0 ? (
+              <div style={{ padding:'24px 12px', textAlign:'center', fontSize:11.5, color:'#9ca3af' }}>No deals match — check the spelling, or try just part of the name or lender.</div>
+            ) : (
+              <table style={{ width:'100%', borderCollapse:'collapse', tableLayout:'fixed' }}>
+                <colgroup>
+                  <col style={{width:14}}/><col style={{width:'12%'}}/><col style={{width:'18%'}}/>
+                  <col style={{width:'10%'}}/><col style={{width:'8%'}}/><col style={{width:'10%'}}/>
+                  <col style={{width:'10%'}}/><col style={{width:'10%'}}/><col style={{width:'10%'}}/>
+                  <col style={{width:72}}/>
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th style={{ ...thStyle, width:14 }}></th>
+                    <th style={thStyle}>Stage</th>
+                    <th style={thStyle}>Deal name</th>
+                    <th style={thStyle}>Category</th>
+                    <th style={{ ...thStyle, textAlign:'right' }}>Amount</th>
+                    <th style={thStyle}>Lender</th>
+                    <th style={thStyle}>Referral</th>
+                    <th style={thStyle}>Sett. Month</th>
+                    <th style={thStyle}>Sett. Date</th>
+                    <th style={{ ...thStyle }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {searchResults.map((deal,i) => {
+                    const sc = STAGE_COLORS[deal.Status]||STAGE_COLORS['1. Lead']
+                    const isSettled = deal.Status==='7. Settled'
+                    const isWithdrawn = deal.Status==='8. Withdrawn'
+                    return (
+                      <tr key={i} style={{ borderBottom:'0.5px solid #e8eaed' }}
+                        onMouseOver={e=>e.currentTarget.style.background='#fdf0f6'}
+                        onMouseOut={e=>e.currentTarget.style.background='#fff'}>
+                        <td style={{ padding:'6px 8px', width:20 }}>
+                          <div style={{ width:8, height:8, borderRadius:'50%', background:sc.dot }}/>
+                        </td>
+                        <td style={{ padding:'6px 10px' }}>
+                          <StageDropdown deal={deal} onChangeStage={changeStage} />
+                        </td>
+                        <td style={{ padding:'6px 10px', fontSize:11, fontWeight:500, color:'#EB99C2', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', cursor:'pointer' }}
+                          onClick={() => navigate(`/crm/deal/${encodeURIComponent(deal['Transaction Name'])}`)}>
+                          {deal['Transaction Name']}
+                        </td>
+                        <td style={{ padding:'6px 10px', fontSize:10, color:'#2A3545' }}>{deal.Categories||deal['Transaction Type']||'—'}</td>
+                        <td style={{ padding:'6px 10px', fontSize:11, fontWeight:500, color:'#EB99C2', textAlign:'right', whiteSpace:'nowrap' }}>{deal.Amount?fmt(deal.Amount):'—'}</td>
+                        <td style={{ padding:'6px 10px', fontSize:10, color:'#2A3545' }}>{deal.Lender||'—'}</td>
+                        <td style={{ padding:'6px 10px', fontSize:10, color:'#2A3545' }}>{deal['Lead Source']||'—'}</td>
+                        <td style={{ padding:'6px 10px', fontSize:10, color: deal['Month of Settlement'] ? '#2A3545' : '#ef4444', fontWeight:500 }}>{deal['Month of Settlement'] ? fmtMonth(deal['Month of Settlement'].slice(0,7)) : 'Not set'}</td>
+                        <InlineDateCell deal={deal} onSave={updateFinanceDate} />
+                        <td style={{ padding:'6px 10px', textAlign:'right' }}>
+                          {!isSettled && !isWithdrawn && (
+                            <button onClick={e=>{e.stopPropagation();handleSettle(deal)}}
+                              style={{ fontSize:9, padding:'3px 8px', borderRadius:5, border:'none', background:'#22c55e', color:'#fff', cursor:'pointer', fontWeight:600, whiteSpace:'nowrap' }}>
+                              Settle →
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
+
         {/* Kanban */}
-        {viewMode==='kanban' && (
+        {!searchTerm && viewMode==='kanban' && (
           <div style={{ display:'flex', gap:10, overflowX:'auto', paddingBottom:8 }}>
-            {[...ACTIVE_STAGES, '7. Settled'].map(stage => {
+            {[...ACTIVE_STAGES, '7. Settled', ...(showWithdrawn ? ['8. Withdrawn'] : [])].map(stage => {
               const stageDeals = deals.filter(d=>d.Status===stage)
               const sc = STAGE_COLORS[stage]
               const isSettled = stage === '7. Settled'

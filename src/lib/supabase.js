@@ -77,6 +77,13 @@ export async function sbSaveDeals(deals) {
     // NewOpportunityModal.jsx each define their own local saveDeals()
     // wrapper that calls sbSaveDeals() directly, bypassing deals.js
     // entirely — putting the merge here protects every save path at once.
+    //
+    // IMPORTANT: this recovery logic assumes anything missing from the local
+    // write is missing by accident (a stale save), never on purpose. Now
+    // that a real "Delete deal" exists (see sbDeleteDeal below), deletion
+    // deliberately does NOT go through this function — it would otherwise
+    // get silently undone by the exact protection meant to prevent data
+    // loss.
     const { data: existing } = await supabase
       .from('deals')
       .select('data')
@@ -93,6 +100,29 @@ export async function sbSaveDeals(deals) {
     const { error } = await supabase
       .from('deals')
       .upsert({ id: 1, data: merged, updated_at: new Date().toISOString() })
+    return !error
+  } catch {
+    return false
+  }
+}
+
+// Deliberate deletion — reads the freshest cloud copy, removes exactly the
+// named deal, and writes the result straight back with no recovery logic.
+// Kept separate from sbSaveDeals on purpose (see note above it).
+export async function sbDeleteDeal(transactionName) {
+  try {
+    const { data: existing } = await supabase
+      .from('deals')
+      .select('data')
+      .eq('id', 1)
+      .single()
+
+    const current = Array.isArray(existing?.data) ? existing.data : []
+    const filtered = current.filter(d => d['Transaction Name'] !== transactionName)
+
+    const { error } = await supabase
+      .from('deals')
+      .upsert({ id: 1, data: filtered, updated_at: new Date().toISOString() })
     return !error
   } catch {
     return false

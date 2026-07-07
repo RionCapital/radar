@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { loadDeals, saveDeals, syncDealsFromSupabase } from '../lib/deals'
+import { sbDeleteDeal } from '../lib/supabase'
 import CRMTopbar from '../components/CRMTopbar'
 import ReferrerPicker from '../components/ReferrerPicker'
 
@@ -499,6 +500,29 @@ function rowValueStyle(focused, pink) {
     color: pink ? '#EB99C2' : '#2A3545', outline:'none', width:'60%', padding:'2px 0',
     fontFamily:'inherit', cursor:'text',
   }
+}
+
+// Click-to-edit deal title in the header — same "no edit button" pattern as
+// everything else, just sized for an H1. Commits on blur or Enter.
+function EditableTitle({ value, onCommit }) {
+  const [val, setVal] = useState(value)
+  const [focused, setFocused] = useState(false)
+  useEffect(() => { if (!focused) setVal(value) }, [value, focused])
+  return (
+    <input
+      value={focused ? val : value}
+      onFocus={()=>{ setFocused(true); setVal(value) }}
+      onChange={e=>setVal(e.target.value)}
+      onKeyDown={e=>{ if (e.key === 'Enter') e.currentTarget.blur() }}
+      onBlur={()=>{ setFocused(false); onCommit(val) }}
+      style={{
+        fontSize:20, fontWeight:700, color:'#2A3545', margin:0, border:'none',
+        borderBottom: focused ? '1px solid #EB99C2' : '1px solid transparent',
+        background:'transparent', outline:'none', fontFamily:'inherit', padding:0,
+        width: `${Math.max(value.length, 8)+1}ch`, maxWidth:'70vw',
+      }}
+    />
+  )
 }
 
 function LiveRow({ label, value, onCommit, placeholder='—', pink, list }) {
@@ -1923,6 +1947,38 @@ export default function DealPage({ onUpdateDeals, clients = [] }) {
     setTimeout(()=>setSaved(false), 3000)
   }
 
+  const [nameError, setNameError] = useState('')
+  function renameDeal(newName) {
+    const trimmed = newName.trim()
+    setNameError('')
+    if (!trimmed || trimmed === decodedName) return
+    if (deals.some(x => x['Transaction Name'] === trimmed)) {
+      setNameError('A deal with that name already exists.')
+      return
+    }
+    const updated = deals.map(x => x['Transaction Name'] === decodedName ? { ...x, 'Transaction Name': trimmed } : x)
+    setDeals(updated)
+    saveDeals(updated)
+    if (onUpdateDeals) onUpdateDeals(updated)
+    // The URL is keyed on the deal name, so move to the new one — otherwise
+    // every subsequent updateDeal() call would keep looking for the old name.
+    navigate(`/crm/deal/${encodeURIComponent(trimmed)}`, { replace: true })
+  }
+
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
+  async function deleteDeal() {
+    const updated = deals.filter(x => x['Transaction Name'] !== decodedName)
+    setDeals(updated)
+    try { localStorage.setItem('rion-crm-deals', JSON.stringify(updated)) } catch {}
+    if (onUpdateDeals) onUpdateDeals(updated)
+    // Deletion goes through its own dedicated cloud path rather than the
+    // regular save — the regular save's merge-safety logic exists to
+    // recover deals that go missing by accident, which would otherwise
+    // silently undo an intentional delete.
+    await sbDeleteDeal(decodedName)
+    navigate('/crm')
+  }
+
   const d = editing ? draft : deal
   const sc = STAGE_COLORS[d.Status] || STAGE_COLORS['1. Lead']
   const fmtAmt = v => v ? `$${Number(v).toLocaleString()}` : '—'
@@ -1945,7 +2001,8 @@ export default function DealPage({ onUpdateDeals, clients = [] }) {
         {/* Header */}
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:16 }}>
           <div>
-            <h1 style={{ fontSize:20, fontWeight:700, color:'#2A3545', margin:0 }}>{d['Transaction Name']}</h1>
+            <EditableTitle value={d['Transaction Name']} onCommit={renameDeal} />
+            {nameError && <div style={{ fontSize:11, color:'#dc2626', marginTop:2 }}>{nameError}</div>}
             <div style={{ display:'flex', alignItems:'center', gap:8, marginTop:6 }}>
               <span style={{ fontSize:11, padding:'3px 10px', borderRadius:20, background:sc.bg, color:sc.color, fontWeight:500 }}>{d.Status}</span>
               {d.Categories && <span style={{ fontSize:11, padding:'3px 10px', borderRadius:20, background:'#f0f0f0', color:'#7A8090' }}>{d.Categories}</span>}
@@ -1954,13 +2011,24 @@ export default function DealPage({ onUpdateDeals, clients = [] }) {
           </div>
           <div style={{ display:'flex', gap:8, alignItems:'center' }}>
             {saved && <span style={{ fontSize:11, color:'#22c55e', padding:'6px 12px', background:'#f0fdf4', borderRadius:7, border:'1px solid #bbf7d0' }}>✓ Saved</span>}
-            {!editing
-              ? <button onClick={startEdit} style={{ padding:'8px 20px', borderRadius:8, border:'1.5px solid #EB99C2', background:'#fff', color:'#EB99C2', fontSize:12, fontWeight:500, cursor:'pointer' }}>Edit deal</button>
-              : <>
-                  <button onClick={cancelEdit} style={{ padding:'8px 16px', borderRadius:8, border:'1px solid #e8eaed', background:'#fff', color:'#7A8090', fontSize:12, cursor:'pointer' }}>Cancel</button>
-                  <button onClick={saveEdit} style={{ padding:'8px 20px', borderRadius:8, border:'none', background:'#22c55e', color:'#fff', fontSize:12, fontWeight:600, cursor:'pointer' }}>Save changes</button>
-                </>
-            }
+            {confirmingDelete ? (
+              <>
+                <span style={{ fontSize:11.5, color:'#b91c1c', fontWeight:600 }}>Delete this deal? This can't be undone.</span>
+                <button onClick={()=>setConfirmingDelete(false)} style={{ padding:'8px 16px', borderRadius:8, border:'1px solid #e8eaed', background:'#fff', color:'#7A8090', fontSize:12, cursor:'pointer' }}>Cancel</button>
+                <button onClick={deleteDeal} style={{ padding:'8px 20px', borderRadius:8, border:'none', background:'#dc2626', color:'#fff', fontSize:12, fontWeight:600, cursor:'pointer' }}>Yes, delete</button>
+              </>
+            ) : (
+              <>
+                <button onClick={()=>setConfirmingDelete(true)} style={{ padding:'8px 16px', borderRadius:8, border:'1px solid #fecaca', background:'#fff', color:'#b91c1c', fontSize:12, cursor:'pointer' }}>Delete deal</button>
+                {!editing
+                  ? <button onClick={startEdit} style={{ padding:'8px 20px', borderRadius:8, border:'1.5px solid #EB99C2', background:'#fff', color:'#EB99C2', fontSize:12, fontWeight:500, cursor:'pointer' }}>Edit deal</button>
+                  : <>
+                      <button onClick={cancelEdit} style={{ padding:'8px 16px', borderRadius:8, border:'1px solid #e8eaed', background:'#fff', color:'#7A8090', fontSize:12, cursor:'pointer' }}>Cancel</button>
+                      <button onClick={saveEdit} style={{ padding:'8px 20px', borderRadius:8, border:'none', background:'#22c55e', color:'#fff', fontSize:12, fontWeight:600, cursor:'pointer' }}>Save changes</button>
+                    </>
+                }
+              </>
+            )}
           </div>
         </div>
 
