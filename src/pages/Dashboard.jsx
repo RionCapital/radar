@@ -466,9 +466,13 @@ export default function Dashboard({ clients, onImport, onUpdateClients }) {
       const dateStr = String(today.getDate()).padStart(2,'0') + '-' + MONTHS[today.getMonth()] + '-' + today.getFullYear()
       const todayISO = today.toISOString().slice(0, 10)
       const noteText = '\u2713 ' + panelLabel + ' actioned \u2014 ' + dateStr
-      const updated = clients.map(c => {
+      // Built against the freshest clients state (via the updater form),
+      // not the clients prop as it stood when this render happened — ticking
+      // two rows in quick succession could otherwise have the second tick's
+      // save overwrite the first one's, the same bug that hit loan discharge
+      // on the Settle flow.
+      onUpdateClients(prevClients => (prevClients||[]).map(c => {
         if (c.name !== row.conn) return c
-        // Match the specific loan: acc match preferred, then lname, then first active loan
         const hasAcc = row.acc && row.acc !== '\u2014'
         const accMatchExists = hasAcc && c.loans.some(l => l.acc === row.acc)
         const updatedClient = {
@@ -491,8 +495,7 @@ export default function Dashboard({ clients, onImport, onUpdateClients }) {
           })
         }
         return updatedClient
-      })
-      onUpdateClients(updated)
+      }))
     }
     // Mark as ticked (persisted)
     const key = rowKey(panelKey, row)

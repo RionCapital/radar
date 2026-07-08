@@ -219,9 +219,12 @@ export default function App() {
     showToast('Client added')
   }
 
-  function updateAllClients(updated) {
-    setClients(updated)
-    saveClients(updated)
+  function updateAllClients(updaterOrArray) {
+    setClients(prev => {
+      const next = typeof updaterOrArray === 'function' ? updaterOrArray(prev) : updaterOrArray
+      saveClients(next)
+      return next
+    })
   }
 
   function handleImport(updates, stmtMap, statementMonth, allocations = []) {
@@ -301,7 +304,7 @@ export default function App() {
           <Route path="/radar/clients/:name/loan/:loanIdx" element={<RequireAuth><LoanAccount clients={clients} updateClient={updateClient} /></RequireAuth>} />
           <Route path="/crm/settings" element={<RequireAuth><AdminSettings /></RequireAuth>} />
           <Route path="/settings" element={<RequireAuth><AdminSettings /></RequireAuth>} />
-          <Route path="/crm/deal/:dealName" element={<RequireAuth><DealPage onUpdateDeals={updateCrmDeals} clients={clients} /></RequireAuth>} />
+          <Route path="/crm/deal/:dealName" element={<RequireAuth><DealPage onUpdateDeals={updateCrmDeals} clients={clients} onUpdateClients={updateAllClients} /></RequireAuth>} />
           <Route path="/crm/dashboard" element={<RequireAuth><CRMDashboard /></RequireAuth>} />
           <Route path="/crm" element={<RequireAuth><CRM clients={clients} onUpdateClients={updateAllClients} /></RequireAuth>} />
           <Route path="/radar/clients/:name/opportunity" element={<RequireAuth><OpportunityScore clients={clients} updateClient={updateClient} /></RequireAuth>} />

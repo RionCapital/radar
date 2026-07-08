@@ -4,6 +4,7 @@ import { loadDeals, saveDeals, syncDealsFromSupabase } from '../lib/deals'
 import { sbDeleteDeal } from '../lib/supabase'
 import CRMTopbar from '../components/CRMTopbar'
 import ReferrerPicker from '../components/ReferrerPicker'
+import { SettleModal, applySettlement } from '../components/SettleModal'
 
 const STAGES = ['1. Lead','2. Strategy','3. Pre-Lodged','4. Lodged','5. Conditional','6. Unconditional','7. Settled','8. Withdrawn']
 // Category list and per-category Transaction Type options, per Cameron's
@@ -1888,7 +1889,7 @@ const addBtnStyle = { fontSize:11, fontWeight:600, color:'#3D4F6B', background:'
 const rmBtnStyle = { fontSize:10, padding:'3px 7px', borderRadius:4, border:'1px solid #fecaca', background:'#fef2f2', color:'#b91c1c', cursor:'pointer' }
 const rowInp = { border:'1px solid #e8eaed', borderRadius:5, padding:'4px 7px', fontSize:11.5, width:'100%', boxSizing:'border-box', fontFamily:'inherit' }
 
-export default function DealPage({ onUpdateDeals, clients = [] }) {
+export default function DealPage({ onUpdateDeals, clients = [], onUpdateClients }) {
   const { dealName } = useParams()
   const navigate = useNavigate()
   const decodedName = decodeURIComponent(dealName)
@@ -1905,6 +1906,7 @@ export default function DealPage({ onUpdateDeals, clients = [] }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(null)
   const [saved, setSaved] = useState(false)
+  const [settleModal, setSettleModal] = useState(null)
 
   const deal = deals.find(d => d['Transaction Name'] === decodedName)
 
@@ -1932,6 +1934,21 @@ export default function DealPage({ onUpdateDeals, clients = [] }) {
     saveDeals(updated)
     if (onUpdateDeals) onUpdateDeals(updated)
     if (editing) setDraft(dr => ({ ...dr, ...patch }))
+  }
+  // Moving a deal to Settled must always go through the Settle modal
+  // (client link / loan discharge) — same rule as every other settlement
+  // pathway in the CRM, so a deal can't slip through to "Settled" from here
+  // without the discharge step ever being offered.
+  function requestStageChange(s) {
+    if (s === '7. Settled') { setSettleModal(true); return }
+    updateDeal({ Status: s })
+  }
+  function handleSettleConfirm({ deal: settledDeal, settlementDate, existingClient, createNew, dischargeLoans }) {
+    updateDeal({ Status: '7. Settled', 'Date Settled': settlementDate })
+    if (onUpdateClients) {
+      onUpdateClients(prevClients => applySettlement(prevClients, { deal: settledDeal, settlementDate, existingClient, createNew, dischargeLoans }))
+    }
+    setSettleModal(null)
   }
   function saveEdit() {
     const finalDraft = {...draft}
@@ -2033,7 +2050,7 @@ export default function DealPage({ onUpdateDeals, clients = [] }) {
         </div>
 
         {/* Stage tracker */}
-        <StageTracker status={deal.Status} onChange={(s)=>updateDeal({ Status: s })} />
+        <StageTracker status={deal.Status} onChange={requestStageChange} />
 
         {/* Tabs */}
         <div style={{ display:'flex', borderBottom:'2px solid #e8eaed', marginBottom:18 }}>
@@ -2053,6 +2070,10 @@ export default function DealPage({ onUpdateDeals, clients = [] }) {
         {tab === 'notes' && <NotesTab d={d} editing={editing} set={set} deal={deal} deals={deals} setDeals={setDeals} />}
         {tab === 'summary' && <SummaryTab deal={deal} />}
       </div>
+
+      {settleModal && (
+        <SettleModal deal={deal} clients={clients} onConfirm={handleSettleConfirm} onCancel={()=>setSettleModal(null)} />
+      )}
     </div>
   )
 }

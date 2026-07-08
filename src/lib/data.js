@@ -92,10 +92,15 @@ export async function syncFromSupabase() {
 export const LOAN_TYPES = ['Home Loan (OO)','Home Loan (Inv)','SMSF','Commercial Property','Lease Doc','Term','Asset Finance','Trade Finance','Business Loan','Invoice Finance','Other'];
 export const BANKS = ['ANZ','CBA','NAB','WBC','MAC','HSL','BWS','CHLS','CHLAB','CHLA','TMB','SGB','RES','CHHR','TNT','GRNYT','WPC','864H','Selfco','Dynamoney','Other'];
 
-export function totalBal(c) { return c.loans.reduce((s, l) => s + (l.balance || 0), 0); }
-export function totalAmt(c) { return c.loans.reduce((s, l) => s + (l.amount || 0), 0); }
-export function pwBal(c) { return c.loans.filter(l => !['Commercial Property','Lease Doc','Term'].includes(l.type)).reduce((s, l) => s + (l.balance || 0), 0); }
-export function commBal(c) { return c.loans.filter(l => ['Commercial Property','Lease Doc','Term'].includes(l.type)).reduce((s, l) => s + (l.balance || 0), 0); }
+// A discharged loan should never contribute to a client's current balance —
+// it's history, not exposure. These previously summed every loan regardless
+// of closed status, which is why "Balances" on the client page (and
+// anywhere else these are used) included loans that had already been paid
+// out/refinanced away.
+export function totalBal(c) { return c.loans.filter(l => !l.closed).reduce((s, l) => s + (l.balance || 0), 0); }
+export function totalAmt(c) { return c.loans.filter(l => !l.closed).reduce((s, l) => s + (l.amount || 0), 0); }
+export function pwBal(c) { return c.loans.filter(l => !l.closed && !['Commercial Property','Lease Doc','Term'].includes(l.type)).reduce((s, l) => s + (l.balance || 0), 0); }
+export function commBal(c) { return c.loans.filter(l => !l.closed && ['Commercial Property','Lease Doc','Term'].includes(l.type)).reduce((s, l) => s + (l.balance || 0), 0); }
 export function fmt(n) { return n > 0 ? '$' + Math.round(n).toLocaleString() : '—'; }
 export function ini(n) { return n.split(/[\s-]+/).map(w => w[0] || '').join('').toUpperCase().slice(0, 2) || '??'; }
 export function calcOpp(c) {
