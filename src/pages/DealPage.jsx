@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { loadDeals, saveDeals, syncDealsFromSupabase } from '../lib/deals'
 import { sbDeleteDeal } from '../lib/supabase'
+import { notifySaveFailed } from '../lib/saveStatus'
 import CRMTopbar from '../components/CRMTopbar'
 import ReferrerPicker from '../components/ReferrerPicker'
 import { SettleModal, applySettlement } from '../components/SettleModal'
@@ -1992,7 +1993,8 @@ export default function DealPage({ onUpdateDeals, clients = [], onUpdateClients 
     // regular save — the regular save's merge-safety logic exists to
     // recover deals that go missing by accident, which would otherwise
     // silently undo an intentional delete.
-    await sbDeleteDeal(decodedName)
+    const ok = await sbDeleteDeal(decodedName)
+    if (!ok) notifySaveFailed('deals', { action: 'delete' })
     navigate('/crm')
   }
 

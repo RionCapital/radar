@@ -1,4 +1,5 @@
 import { sbLoadDeals, sbSaveDeals } from './supabase'
+import { notifySaveFailed } from './saveStatus'
 
 const STORAGE_KEY = 'rion-crm-deals'
 
@@ -18,7 +19,11 @@ export function loadDeals() {
 
 export function saveDeals(deals) {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(deals)) } catch {}
-  sbSaveDeals(deals).catch(() => {})
+  sbSaveDeals(deals).then(ok => {
+    if (!ok) notifySaveFailed('deals')
+  }).catch(err => {
+    notifySaveFailed('deals', { error: String(err) })
+  })
   return true
 }
 

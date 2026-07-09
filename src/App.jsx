@@ -21,6 +21,8 @@ import CRMTopbar from './components/CRMTopbar'
 import OpportunityScore from './pages/OpportunityScore'
 import ProjectStudio from './pages/ProjectStudio'
 import Toast from './components/Toast'
+import SaveFailedBanner from './components/SaveFailedBanner'
+import { SAVE_FAILED_EVENT } from './lib/saveStatus'
 import ClientCommission from './pages/ClientCommission'
 import AddClient from './pages/AddClient'
 import CommissionImportPage from './pages/CommissionImportPage'
@@ -196,6 +198,13 @@ export default function App() {
   // ─────────────────────────────────────────────────────────────────────────
 
   const [toast, setToast] = useState(null)
+  const [saveFailure, setSaveFailure] = useState(null)
+
+  useEffect(() => {
+    function handleSaveFailed(e) { setSaveFailure(e.detail) }
+    window.addEventListener(SAVE_FAILED_EVENT, handleSaveFailed)
+    return () => window.removeEventListener(SAVE_FAILED_EVENT, handleSaveFailed)
+  }, [])
   const location = useLocation()
   const isHome = location.pathname === '/'
   const isLogin = location.pathname === '/login'
@@ -293,6 +302,7 @@ export default function App() {
       {!isHome && !isLogin && !isStudio && !isCRM && !isSettings && <Topbar clients={clients} onOpenBirthdays={() => setShowBirthdays(true)} />}
       {showBirthdays && !isHome && !isLogin && !isStudio && !isCRM && !isSettings && <BirthdayNotifier clients={clients} onClose={() => setShowBirthdays(false)} />}
       <Toast message={toast} />
+      <SaveFailedBanner failure={saveFailure} onDismiss={()=>setSaveFailure(null)} />
       <AppErrorBoundary>
         <Routes>
           <Route path="/login" element={<Login />} />

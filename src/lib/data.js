@@ -12,6 +12,7 @@ const LAST_SYNCED_KEY = 'rion-radar-clients-lastsync';
 
 // ─── Supabase-backed load/save (with localStorage cache) ─────────────────────
 import { sbLoadClients, sbSaveClients } from './supabase.js'
+import { notifySaveFailed } from './saveStatus.js'
 
 export function loadClients() {
   // Fast synchronous load from localStorage cache
@@ -39,8 +40,17 @@ export function saveClients(data) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
   } catch (e) {}
-  // Then persist to Supabase in background (async, fire-and-forget)
-  sbSaveClients(payload).catch(err => console.warn('Supabase save failed:', err));
+  // Then persist to Supabase in background (async, fire-and-forget) — but
+  // still check the actual result. sbSaveClients resolves to `false` on a
+  // Supabase-side error rather than throwing, so a plain .catch() alone
+  // never saw that case; this is what makes a failed save visible instead
+  // of silently only-ever-local.
+  sbSaveClients(payload).then(ok => {
+    if (!ok) notifySaveFailed('clients')
+  }).catch(err => {
+    console.warn('Supabase save failed:', err)
+    notifySaveFailed('clients', { error: String(err) })
+  });
   return true;
 }
 
