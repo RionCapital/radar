@@ -25,19 +25,46 @@ export async function sbSaveClients(payload) {
     // kept for safety in case something ever calls this directly.
     const { data: existing } = await supabase
       .from('clients')
-      .select('data')
+      .select('data,updated_at')
       .eq('id', 1)
       .single()
 
     const incomingArr = Array.isArray(payload) ? payload : (payload?.data || [])
+    // lastSyncedAt — not savedAt — is the real freshness signal here. savedAt
+    // is Date.now() at save time, so it's "fresh" even from a stale tab
+    // making a live edit. lastSyncedAt only moves when this session last
+    // actually pulled/confirmed the cloud's state, so a tab left open for
+    // two days still shows its true age here even though savedAt wouldn't.
+    const incomingLastSyncedAt = Array.isArray(payload) ? 0 : (payload?.lastSyncedAt || 0)
     const cloudWrapped = existing?.data
     const cloudArr = Array.isArray(cloudWrapped) ? cloudWrapped : (cloudWrapped?.data || [])
+    const cloudUpdatedAt = existing?.updated_at ? new Date(existing.updated_at).getTime() : 0
 
-    let mergedArr = incomingArr
-    if (Array.isArray(cloudArr) && cloudArr.length > 0) {
-      const localNames = new Set(incomingArr.map(c => c.name))
-      const cloudOnly = cloudArr.filter(c => !localNames.has(c.name))
-      if (cloudOnly.length > 0) mergedArr = [...incomingArr, ...cloudOnly]
+    // Staleness guard: if this session's last confirmed check-in with the
+    // cloud predates the cloud's most recent write by more than the
+    // threshold, something else has changed the data since this session
+    // last looked — e.g. a browser tab or device left open for a while.
+    // Don't let it clobber clients that have moved on since. Only clients
+    // genuinely missing from the cloud (new additions) get pulled in from
+    // a stale save; anything present in both keeps the cloud's (newer)
+    // version. Threshold is generous on purpose — this should only ever
+    // catch a real stale-session case, not normal back-to-back saves.
+    const STALE_THRESHOLD_MS = 5 * 60 * 1000
+    const isStale = cloudUpdatedAt > 0 && incomingLastSyncedAt > 0 && (cloudUpdatedAt - incomingLastSyncedAt) > STALE_THRESHOLD_MS
+
+    let mergedArr
+    if (isStale && Array.isArray(cloudArr) && cloudArr.length > 0) {
+      const cloudNames = new Set(cloudArr.map(c => c.name))
+      const newFromStaleSave = incomingArr.filter(c => !cloudNames.has(c.name))
+      mergedArr = [...cloudArr, ...newFromStaleSave]
+      console.warn(`[sbSaveClients] Stale save detected (session last synced ${Math.round((cloudUpdatedAt - incomingLastSyncedAt)/60000)} min before the cloud's last update) — kept cloud data for existing clients, only added ${newFromStaleSave.length} new one(s).`)
+    } else {
+      mergedArr = incomingArr
+      if (Array.isArray(cloudArr) && cloudArr.length > 0) {
+        const localNames = new Set(incomingArr.map(c => c.name))
+        const cloudOnly = cloudArr.filter(c => !localNames.has(c.name))
+        if (cloudOnly.length > 0) mergedArr = [...incomingArr, ...cloudOnly]
+      }
     }
 
     const mergedPayload = Array.isArray(payload) ? mergedArr : { ...payload, data: mergedArr }

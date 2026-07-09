@@ -1,6 +1,14 @@
 const BASE_DATA = []
 
 const STORAGE_KEY = 'rion-radar-clients-v13';
+// Tracks when THIS browser session last actually confirmed its state
+// against Supabase — set only by syncFromSupabase(), never by a local edit.
+// This is what makes the staleness guard in sbSaveClients meaningful: a tab
+// left open for two days without reloading keeps this frozen at whenever
+// it started, even though every local edit still stamps savedAt with
+// "right now". Comparing savedAt alone can't tell a fresh edit in a stale
+// tab apart from a genuinely fresh one — this can.
+const LAST_SYNCED_KEY = 'rion-radar-clients-lastsync';
 
 // ─── Supabase-backed load/save (with localStorage cache) ─────────────────────
 import { sbLoadClients, sbSaveClients } from './supabase.js'
@@ -18,9 +26,16 @@ export function loadClients() {
   return JSON.parse(JSON.stringify(BASE_DATA));
 }
 
+function getLastSyncedAt() {
+  try { return Number(localStorage.getItem(LAST_SYNCED_KEY)) || 0 } catch { return 0 }
+}
+function setLastSyncedAt(ts) {
+  try { localStorage.setItem(LAST_SYNCED_KEY, String(ts)) } catch {}
+}
+
 export function saveClients(data) {
   // Write to localStorage immediately (sync) with a timestamp
-  const payload = { data, savedAt: Date.now() }
+  const payload = { data, savedAt: Date.now(), lastSyncedAt: getLastSyncedAt() }
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
   } catch (e) {}
@@ -61,6 +76,10 @@ export async function syncFromSupabase() {
       }
     } catch (e) {}
 
+    // Whatever happens below, this session has now checked in with the
+    // cloud as of right now — record that regardless of which side wins.
+    setLastSyncedAt(Date.now())
+
     // If local has no real timestamp, always trust Supabase
     if (!localHasRealData) {
       const payload = { data: cloudClients, savedAt: cloudSavedAt || Date.now() };
@@ -80,7 +99,7 @@ export async function syncFromSupabase() {
     if (localRaw) {
       const localParsed = JSON.parse(localRaw);
       const localClients = Array.isArray(localParsed) ? localParsed : localParsed.data;
-      if (localClients) sbSaveClients({ data: localClients, savedAt: localSavedAt }).catch(() => {});
+      if (localClients) sbSaveClients({ data: localClients, savedAt: localSavedAt, lastSyncedAt: getLastSyncedAt() }).catch(() => {});
     }
     return null; // Keep using local data
   } catch (e) {
