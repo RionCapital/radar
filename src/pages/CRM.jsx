@@ -525,6 +525,7 @@ export default function CRM({ clients, onUpdateClients }) {
                   <th style={{ ...thStyle, width:14 }}></th>
                   <th style={thStyle}>Stage</th>
                   <th style={thStyle}>Deal name</th>
+                  <th style={thStyle}>Contact</th>
                   <th style={thStyle}>Category</th>
                   <th style={{ ...thStyle, textAlign:'right' }}>Amount</th>
                   <th style={thStyle}>Lender</th>
@@ -585,6 +586,14 @@ export default function CRM({ clients, onUpdateClients }) {
                             <td style={{ padding:'6px 10px', fontSize:11, fontWeight:500, color:'#EB99C2', maxWidth:200, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', cursor:'pointer' }}
                               onClick={() => navigate(`/crm/deal/${encodeURIComponent(deal['Transaction Name'])}`)}>
                               {deal['Transaction Name']}
+                            </td>
+                            <td style={{ padding:'6px 10px', fontSize:10, whiteSpace:'nowrap' }}>
+                              {deal.Contacts?.[0]?.mobile ? (
+                                <span style={{ display:'flex', alignItems:'center', gap:5 }}>
+                                  <a href={`tel:${deal.Contacts[0].mobile}`} onClick={e=>e.stopPropagation()} style={{ color:'#3D4F6B', textDecoration:'none', fontWeight:500 }}>{deal.Contacts[0].mobile}</a>
+                                  <a href={`sms:${deal.Contacts[0].mobile}`} onClick={e=>e.stopPropagation()} title="Send text" style={{ background:'#f0f0f0', borderRadius:10, padding:'1px 6px', fontSize:9, color:'#7A8090', textDecoration:'none' }}>💬</a>
+                                </span>
+                              ) : <span style={{ color:'#9ca3af' }}>—</span>}
                             </td>
                             <td style={{ padding:'6px 10px', fontSize:10, color:'#2A3545' }}>{deal.Categories||deal['Transaction Type']||'—'}</td>
                             <td style={{ padding:'6px 10px', fontSize:11, fontWeight:500, color:'#EB99C2', textAlign:'right', whiteSpace:'nowrap' }}>{deal.Amount?fmt(deal.Amount):'—'}</td>

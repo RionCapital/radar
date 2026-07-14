@@ -159,15 +159,22 @@ function ContactsPanel({ deal, clients, updateDeal }) {
 
       {displayContacts.map((c, i) => (
         <div key={i} style={{ borderBottom: i<displayContacts.length-1 ? '0.5px solid #f0f0f0' : 'none', padding:'8px 0' }}>
-          <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-            <button onClick={()=> !c.fromRradar && setExpandedIdx(expandedIdx===i ? null : i)} style={{ background:'none', border:'none', cursor: c.fromRradar?'default':'pointer', fontSize:12, color:'#7A8090', width:16, padding:0 }}>
+          <div style={{ display:'flex', alignItems:'center', gap:10, flexWrap:'wrap' }}>
+            <button onClick={()=> !c.fromRradar && setExpandedIdx(expandedIdx===i ? null : i)} style={{ background:'none', border:'none', cursor: c.fromRradar?'default':'pointer', fontSize:12, color:'#7A8090', width:16, padding:0, flexShrink:0 }}>
               {!c.fromRradar ? (expandedIdx===i ? '▾' : '▸') : ''}
             </button>
-            <div style={{ flex:1, fontWeight:600, fontSize:12, color:'#2A3545' }}>{c.name || '—'}</div>
+            <div style={{ flex:'1 1 140px', minWidth:100, fontWeight:600, fontSize:12, color:'#2A3545' }}>{c.name || '—'}</div>
             <Pill tone="pink">{c.type||'Individual'}</Pill>
-            <div style={{ fontSize:11, color:'#7A8090', width:170 }}>{c.email || '—'}</div>
-            <div style={{ fontSize:11, color:'#7A8090', width:120 }}>{c.mobile || '—'}</div>
-            {!c.fromRradar && <button onClick={()=>removeContact(i)} style={rmBtnStyle}>✕</button>}
+            {c.email
+              ? <a href={`mailto:${c.email}`} title={c.email} style={{ fontSize:11, color:'#7A8090', textDecoration:'none', maxWidth:180, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{c.email}</a>
+              : <span style={{ fontSize:11, color:'#7A8090' }}>—</span>}
+            {c.mobile
+              ? <span style={{ display:'flex', alignItems:'center', gap:6, flexShrink:0 }}>
+                  <a href={`tel:${c.mobile}`} style={{ fontSize:11, color:'#EB99C2', textDecoration:'none', fontWeight:500 }}>{c.mobile}</a>
+                  <a href={`sms:${c.mobile}`} title="Send text" style={{ background:'#f0f0f0', borderRadius:10, padding:'1px 6px', fontSize:9, color:'#7A8090', textDecoration:'none' }}>💬</a>
+                </span>
+              : <span style={{ fontSize:11, color:'#7A8090', flexShrink:0 }}>—</span>}
+            {!c.fromRradar && <button onClick={()=>removeContact(i)} style={{...rmBtnStyle, flexShrink:0}}>✕</button>}
           </div>
 
           {!c.fromRradar && expandedIdx === i && (
