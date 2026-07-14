@@ -46,7 +46,21 @@ export function saveClients(data) {
   // never saw that case; this is what makes a failed save visible instead
   // of silently only-ever-local.
   sbSaveClients(payload).then(ok => {
-    if (!ok) notifySaveFailed('clients')
+    if (ok) {
+      // A successful save from THIS session means this session's view of
+      // the world — including the change it just made — is now the
+      // authoritative latest state. Without advancing this, a session left
+      // open past the staleness threshold would have its own SECOND save
+      // judged "stale" relative to its own FIRST save (since that first
+      // save just bumped the cloud's timestamp), and the staleness guard
+      // would silently discard the second save's changes for any client
+      // that already existed. That's a real bug this fixes, not a
+      // hypothetical one — it's what caused May's import to vanish after
+      // April's had already landed in the same session.
+      setLastSyncedAt(Date.now())
+    } else {
+      notifySaveFailed('clients')
+    }
   }).catch(err => {
     console.warn('Supabase save failed:', err)
     notifySaveFailed('clients', { error: String(err) })
