@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { computeReconciliationData, downloadReconciliationReport } from '../lib/reconciliationReport'
 
 const STORAGE_KEY = 'rion-pending-import'
 const NAVY = '#3D4F6B'
@@ -88,7 +89,7 @@ function UnmatchedRow({ a, idx, clients, onAllocate, onDelete, navigate }) {
       <div style={{ padding: '8px 12px', background: '#f0fdf4', borderRadius: 7, border: '0.5px solid #bbf7d0', marginBottom: 6, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
           <span style={{ fontSize: 11, fontWeight: 600, color: '#166534' }}>✓ {a.name}</span>
-          <span style={{ fontSize: 10, color: '#166534', marginLeft: 8 }}>{a.acc} · {fmt(a.bal)} → {a.allocation?.clientName} · {a.allocation?.mode === 'new' ? 'new loan' : 'replaces existing loan'}</span>
+          <span style={{ fontSize: 10, color: '#166534', marginLeft: 8 }}>{a.acc} · {fmt(a.bal)} → {a.allocation?.clientName} · {a.allocation?.mode === 'new' ? 'new loan' : (typeof a.allocation?.mode === 'string' && a.allocation.mode.startsWith('merge-')) ? 'merged into existing loan' : 'replaces existing loan'}</span>
         </div>
         <button onClick={() => onAllocate(idx, null)} style={{ fontSize: 10, color: '#64748b', background: 'none', border: 'none', cursor: 'pointer' }}>Edit</button>
       </div>
@@ -156,22 +157,40 @@ function UnmatchedRow({ a, idx, clients, onAllocate, onDelete, navigate }) {
 
               {client.loans?.filter(l => !l.closed).length > 0 && (
                 <>
-                  <div style={{ fontSize: 10, color: '#94a3b8', margin: '8px 0 5px', fontStyle: 'italic' }}>— or replace an existing loan (marks it discharged) —</div>
+                  <div style={{ fontSize: 10, color: '#94a3b8', margin: '8px 0 5px', fontStyle: 'italic' }}>— or attach to an existing loan —</div>
                   {client.loans.filter(l => !l.closed).map((l, li) => {
                     const realIdx = client.loans.indexOf(l)
+                    const mergeKey = `merge-${realIdx}`
+                    const looksUnbanked = !l.acc || !l.balance
                     return (
-                      <label key={li} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '8px 10px', borderRadius: 6, border: `1.5px solid ${replaceMode === realIdx ? '#e8a020' : '#e2e8f0'}`, background: replaceMode === realIdx ? '#fffbeb' : '#fff', cursor: 'pointer', marginBottom: 6 }}>
-                        <input type="radio" name={`mode-${idx}`} style={{ marginTop: 2 }} checked={replaceMode === realIdx} onChange={() => setReplaceMode(realIdx)} />
-                        <div>
-                          <div style={{ fontSize: 11, fontWeight: 600, color: '#2A3545' }}>
-                            Replace: {l.lname || l.acc || `Loan ${li+1}`}
-                            <span style={{ fontSize: 10, color: '#e8a020', fontWeight: 400, marginLeft: 6 }}>→ marked discharged</span>
+                      <div key={li} style={{ marginBottom: 6 }}>
+                        {looksUnbanked && (
+                          <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '8px 10px', borderRadius: 6, border: `1.5px solid ${replaceMode === mergeKey ? '#166534' : '#e2e8f0'}`, background: replaceMode === mergeKey ? '#f0fdf4' : '#fff', cursor: 'pointer', marginBottom: 4 }}>
+                            <input type="radio" name={`mode-${idx}`} style={{ marginTop: 2 }} checked={replaceMode === mergeKey} onChange={() => setReplaceMode(mergeKey)} />
+                            <div>
+                              <div style={{ fontSize: 11, fontWeight: 600, color: '#2A3545' }}>
+                                Merge into: {l.lname || `Loan ${li+1}`}
+                                <span style={{ fontSize: 10, color: '#166534', fontWeight: 400, marginLeft: 6 }}>→ same loan, adds bank account &amp; balance — not discharged</span>
+                              </div>
+                              <div style={{ fontSize: 10, color: '#64748b' }}>
+                                Settled via CRM {l.settled ? `on ${l.settled}` : '(no date on file)'} — {l.bank || 'lender not set'} · currently missing account/balance from the bank
+                              </div>
+                            </div>
+                          </label>
+                        )}
+                        <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '8px 10px', borderRadius: 6, border: `1.5px solid ${replaceMode === realIdx ? '#e8a020' : '#e2e8f0'}`, background: replaceMode === realIdx ? '#fffbeb' : '#fff', cursor: 'pointer' }}>
+                          <input type="radio" name={`mode-${idx}`} style={{ marginTop: 2 }} checked={replaceMode === realIdx} onChange={() => setReplaceMode(realIdx)} />
+                          <div>
+                            <div style={{ fontSize: 11, fontWeight: 600, color: '#2A3545' }}>
+                              Replace: {l.lname || l.acc || `Loan ${li+1}`}
+                              <span style={{ fontSize: 10, color: '#e8a020', fontWeight: 400, marginLeft: 6 }}>→ marked discharged, new loan added</span>
+                            </div>
+                            <div style={{ fontSize: 10, color: '#64748b' }}>
+                              {l.acc && <span style={{marginRight:6}}>Acc: {l.acc} ·</span>}{l.bank} · {l.rpmt} · Limit: {fmt(l.amount)} · Bal: {fmt(l.balance)}
+                            </div>
                           </div>
-                          <div style={{ fontSize: 10, color: '#64748b' }}>
-                            {l.acc && <span style={{marginRight:6}}>Acc: {l.acc} ·</span>}{l.bank} · {l.rpmt} · Limit: {fmt(l.amount)} · Bal: {fmt(l.balance)}
-                          </div>
-                        </div>
-                      </label>
+                        </label>
+                      </div>
                     )
                   })}
                 </>
@@ -179,8 +198,8 @@ function UnmatchedRow({ a, idx, clients, onAllocate, onDelete, navigate }) {
 
               {replaceMode !== null && (
                 <button onClick={confirmAllocation}
-                  style={{ marginTop: 8, width: '100%', padding: '9px', borderRadius: 7, border: 'none', background: replaceMode === 'new' ? NAVY : '#e8a020', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
-                  ✓ Confirm — {replaceMode === 'new' ? `add new loan to ${pickedClient}` : `replace & discharge in ${pickedClient}`}
+                  style={{ marginTop: 8, width: '100%', padding: '9px', borderRadius: 7, border: 'none', background: replaceMode === 'new' ? NAVY : (typeof replaceMode === 'string' && replaceMode.startsWith('merge-')) ? '#166534' : '#e8a020', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                  ✓ Confirm — {replaceMode === 'new' ? `add new loan to ${pickedClient}` : (typeof replaceMode === 'string' && replaceMode.startsWith('merge-')) ? `merge bank data into existing loan for ${pickedClient}` : `replace & discharge in ${pickedClient}`}
                 </button>
               )}
             </div>
@@ -232,6 +251,7 @@ function CommissionImportPageInner({ clients, onImport }) {
   const [matchedOpen, setMatchedOpen] = useState(false)
   const [missingOpen, setMissingOpen] = useState(false)
   const [applying, setApplying] = useState(false)
+  const [reportData, setReportData] = useState(null)
 
   const MO = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 
@@ -406,6 +426,12 @@ function CommissionImportPageInner({ clients, onImport }) {
         }
       }))
 
+    // Compute the reconciliation + analysis report from the state as it
+    // stood BEFORE this import — needed for "prior balance" comparisons and
+    // to know which loans looked active a moment ago.
+    const report = computeReconciliationData({ clients, pending, allocations, month })
+    setReportData(report)
+
     // Pass allocations alongside matched updates
     onImport(pending.matched, pending.stmtMap, month, allocations)
     clearPending()
@@ -490,8 +516,23 @@ function CommissionImportPageInner({ clients, onImport }) {
         <div style={{ background: '#fff', borderRadius: 10, border: '0.5px solid #e2e8f0', padding: 60, textAlign: 'center' }}>
           <div style={{ fontSize: 40, marginBottom: 12 }}>✅</div>
           <div style={{ fontSize: 16, fontWeight: 600, color: '#22c55e', marginBottom: 8 }}>Import applied successfully</div>
-          <div style={{ fontSize: 12, color: '#64748b', marginBottom: 24 }}>All balances and commission records have been updated.</div>
-          <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+          <div style={{ fontSize: 12, color: '#64748b', marginBottom: reportData ? 12 : 24 }}>All balances and commission records have been updated.</div>
+          {reportData && (
+            <div style={{ fontSize: 11, color: '#64748b', marginBottom: 24, maxWidth: 420, margin: '0 auto 24px', textAlign: 'left', background: '#f8fafc', borderRadius: 8, padding: '12px 16px' }}>
+              <div>📈 {reportData.summary.newDealsCount} new deal{reportData.summary.newDealsCount !== 1 ? 's' : ''}</div>
+              <div>🔗 {reportData.summary.mergedCount} merged — CRM deal linked to bank account</div>
+              <div>🔁 {reportData.summary.dischargedCount} discharged this reconciliation</div>
+              <div>⚠️ {reportData.summary.possiblyDischargedCount} possibly discharged — not seen this statement</div>
+              <div>📊 {reportData.summary.majorMovementsCount} balance movement{reportData.summary.majorMovementsCount !== 1 ? 's' : ''} over 10%</div>
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
+            {reportData && (
+              <button onClick={() => downloadReconciliationReport(reportData)}
+                style={{ padding: '8px 20px', borderRadius: 8, border: 'none', background: PINK, color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
+                📄 Download Reconciliation Report (PDF)
+              </button>
+            )}
             <button onClick={() => { setStatus('idle'); setPending(null) }}
               style={{ padding: '8px 20px', borderRadius: 8, border: `1px solid ${NAVY}`, color: NAVY, background: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
               Import another

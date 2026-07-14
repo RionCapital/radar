@@ -140,7 +140,7 @@ function AnnualReview({ client, onBack, logNote }) {
   const [secValues, setSecValues] = useState(securities.map(s => ({ ...s, coreLogicVal: s.estVal || '' })))
   const [rpmtOverrides, setRpmtOverrides] = useState(() => Object.fromEntries(loans.map((l, i) => [i, ''])))
 
-  const totalBalance = loans.filter(l => l.balance).reduce((s, l) => s + (l.balance || 0), 0)
+  const totalBalance = loans.filter(l => !l.closed && l.balance).reduce((s, l) => s + (l.balance || 0), 0)
   const totalSecValue = secValues.reduce((s, sv) => s + (Number(sv.coreLogicVal) || 0), 0)
 
   // LVR + Equity calc

@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { loadDeals, syncDealsFromSupabase } from '../lib/deals'
 import { fmt } from '../lib/data'
+import { calcUpfront } from '../lib/settings'
 import CRMTopbar from '../components/CRMTopbar'
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
@@ -246,9 +247,10 @@ export default function CRMDashboard() {
     settled.forEach(d => {
       const f = getFY(d['Date Settled'])
       if (!f) return
-      if (!fy[f]) fy[f]={count:0,amount:0}
+      if (!fy[f]) fy[f]={count:0,amount:0,upfront:0}
       fy[f].count+=1
       fy[f].amount+=d.Amount||0
+      fy[f].upfront+=calcUpfront(d.Amount, d.Categories)
     })
     return Object.entries(fy).sort(([a],[b])=>a.localeCompare(b)).map(([f,v])=>({fy:f,...v}))
   }, [settled])
@@ -312,7 +314,7 @@ export default function CRMDashboard() {
   const current12m = monthlyChart.reduce((s,m)=>s+m.amount,0)
   const prior12m = monthlyChart.reduce((s,m)=>s+m.prevAmount,0)
   const growth = prior12m>0?Math.round((current12m-prior12m)/prior12m*100):null
-  const totalUpfront = Math.round(totalVolume*0.0066)
+  const totalUpfront = settled.reduce((s,d)=>s+calcUpfront(d.Amount, d.Categories),0)
   const avgTime = timeframes.length?Math.round(timeframes.reduce((s,t)=>s+t.days,0)/timeframes.length):0
   const medTime = timeframes.length?[...timeframes].sort((a,b)=>a.days-b.days)[Math.floor(timeframes.length/2)].days:0
   const buckets = [
@@ -338,7 +340,7 @@ export default function CRMDashboard() {
           <Card><Stat label="Total settlements" value={totalSettled} sub="Since inception"/></Card>
           <Card><Stat label="Total volume settled" value={`$${(totalVolume/1e6).toFixed(1)}m`} sub="All time" color="#2A3545"/></Card>
           <Card><Stat label="Current 12m volume" value={`$${(current12m/1e6).toFixed(1)}m`} sub={growth!==null?`${growth>=0?'+':''}${growth}% vs prior 12m`:''} color="#EB99C2"/></Card>
-          <Card><Stat label="Est. total upfront" value={`$${(totalUpfront/1000).toFixed(0)}k`} sub="@ 0.66% est." color="#22c55e"/></Card>
+          <Card><Stat label="Est. total upfront" value={`$${(totalUpfront/1000).toFixed(0)}k`} sub="by category rate" color="#22c55e"/></Card>
           <Card><Stat label="Avg settlement time" value={`${avgTime}d`} sub={`Median ${medTime}d · ${timeframes.length} deals`}/></Card>
         </div>
 
@@ -385,7 +387,7 @@ export default function CRMDashboard() {
                     <td style={{ padding:'6px 8px', textAlign:'center' }}>{f.count}</td>
                     <td style={{ padding:'6px 8px', textAlign:'right', fontWeight:500 }}>{fmt(f.amount)}</td>
                     <td style={{ padding:'6px 8px', textAlign:'right', color:'#7A8090' }}>{fmt(Math.round(f.amount/f.count))}</td>
-                    <td style={{ padding:'6px 8px', textAlign:'right', color:'#22c55e' }}>${Math.round(f.amount*0.0066).toLocaleString()}</td>
+                    <td style={{ padding:'6px 8px', textAlign:'right', color:'#22c55e' }}>${Math.round(f.upfront).toLocaleString()}</td>
                   </tr>
                 ))}
                 <tr style={{ borderTop:'1px solid #e8eaed', background:'#f8f9fa' }}>
@@ -393,7 +395,7 @@ export default function CRMDashboard() {
                   <td style={{ padding:'6px 8px', textAlign:'center', fontWeight:700 }}>{totalSettled}</td>
                   <td style={{ padding:'6px 8px', textAlign:'right', fontWeight:700 }}>{fmt(totalVolume)}</td>
                   <td style={{ padding:'6px 8px', textAlign:'right', color:'#7A8090' }}>{fmt(Math.round(totalVolume/totalSettled))}</td>
-                  <td style={{ padding:'6px 8px', textAlign:'right', fontWeight:700, color:'#22c55e' }}>${Math.round(totalVolume*0.0066).toLocaleString()}</td>
+                  <td style={{ padding:'6px 8px', textAlign:'right', fontWeight:700, color:'#22c55e' }}>${Math.round(totalUpfront).toLocaleString()}</td>
                 </tr>
               </tbody>
             </table>

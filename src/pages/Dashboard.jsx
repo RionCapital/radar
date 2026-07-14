@@ -427,8 +427,8 @@ export default function Dashboard({ clients, onImport, onUpdateClients }) {
   const COMM = mergeCommission(clients)
   const latest = COMM[COMM.length - 1]
   const allLoans = clients.flatMap(c => c.loans)
-  const pwTotal = clients.filter(c => c.stream === 'Private Wealth' && !c._demo).flatMap(c => c.loans).reduce((s, l) => s + (l.balance || 0), 0)
-  const commTotal = clients.filter(c => c.stream === 'Commercial' && !c._demo).flatMap(c => c.loans).reduce((s, l) => s + (l.balance || 0), 0)
+  const pwTotal = clients.filter(c => c.stream === 'Private Wealth' && !c._demo).flatMap(c => c.loans).filter(l => !l.closed).reduce((s, l) => s + (l.balance || 0), 0)
+  const commTotal = clients.filter(c => c.stream === 'Commercial' && !c._demo).flatMap(c => c.loans).filter(l => !l.closed).reduce((s, l) => s + (l.balance || 0), 0)
   const overdue = clients.filter(c => !c._demo && c.days >= 365).length
   const triggers = clients.filter(c => !c._demo && c.loans.some(l => l.io || l.fixed || l.balloon)).length
   const rolling12 = rollingYTD(COMM)

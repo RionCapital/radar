@@ -278,6 +278,25 @@ export default function App() {
           let loans = [...c.loans]
           if (mode === 'new') {
             loans = [...loans, newLoan]
+          } else if (typeof mode === 'string' && mode.startsWith('merge-')) {
+            // Attach the bank's real account number/balance to an existing
+            // (typically CRM-settled) loan — same loan, not discharged, not
+            // duplicated. This is for a loan that was created from a CRM
+            // settlement before the bank's real details were known.
+            const targetIdx = parseInt(mode.slice('merge-'.length), 10)
+            loans = loans.map((l, i) => i === targetIdx
+              ? {
+                  ...l,
+                  acc: newLoan.acc || l.acc,
+                  balance: newLoan.balance ?? l.balance,
+                  amount: newLoan.amount ?? l.amount,
+                  bank: l.bank || newLoan.bank,
+                  settled: l.settled || newLoan.settled,
+                  commissionHistory: [...(l.commissionHistory||[]).filter(h=>h.month!==month), ...(newLoan.commissionHistory||[])],
+                  balanceHistory: [...(l.balanceHistory||[]).filter(h=>h.month!==month), ...(newLoan.balanceHistory||[])],
+                }
+              : l
+            )
           } else if (typeof mode === 'number') {
             // Discharge the replaced loan, add new one
             loans = loans.map((l, i) => i === mode

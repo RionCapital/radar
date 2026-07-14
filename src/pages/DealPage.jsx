@@ -6,6 +6,7 @@ import { notifySaveFailed } from '../lib/saveStatus'
 import CRMTopbar from '../components/CRMTopbar'
 import ReferrerPicker from '../components/ReferrerPicker'
 import { SettleModal, applySettlement } from '../components/SettleModal'
+import { calcUpfront, getUpfrontRate } from '../lib/settings'
 
 const STAGES = ['1. Lead','2. Strategy','3. Pre-Lodged','4. Lodged','5. Conditional','6. Unconditional','7. Settled','8. Withdrawn']
 // Category list and per-category Transaction Type options, per Cameron's
@@ -675,8 +676,8 @@ function LoanDetailsTab({ deal, updateDeal, deals, setDeals, clients }) {
               <TabCard title="Estimated commission">
                 <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
                   <div style={{ background:'#f8f9fa', borderRadius:8, padding:'10px 12px' }}>
-                    <div style={{ fontSize:10, color:'#9ca3af' }}>Est. upfront (0.66%)</div>
-                    <div style={{ fontSize:16, fontWeight:700, color:'#22c55e', marginTop:2 }}>{deal.Amount ? `$${Math.round(deal.Amount*0.0066).toLocaleString()}` : '—'}</div>
+                    <div style={{ fontSize:10, color:'#9ca3af' }}>Est. upfront ({(getUpfrontRate(deal.Categories)*100).toFixed(2)}%)</div>
+                    <div style={{ fontSize:16, fontWeight:700, color:'#22c55e', marginTop:2 }}>{deal.Amount ? `$${calcUpfront(deal.Amount, deal.Categories).toLocaleString()}` : '—'}</div>
                   </div>
                   <div style={{ background:'#f8f9fa', borderRadius:8, padding:'10px 12px' }}>
                     <div style={{ fontSize:10, color:'#9ca3af' }}>Deal amount</div>
@@ -1884,8 +1885,8 @@ function SummaryTab({ deal }) {
 
         <TabCard title="Estimated Commission">
           <div style={{ background:'#f8f9fa', borderRadius:8, padding:'10px 12px' }}>
-            <div style={{ fontSize:10, color:'#9ca3af' }}>Est. upfront (0.66%)</div>
-            <div style={{ fontSize:16, fontWeight:700, color:'#22c55e', marginTop:2 }}>{deal.Amount ? `$${Math.round(deal.Amount*0.0066).toLocaleString()}` : '—'}</div>
+            <div style={{ fontSize:10, color:'#9ca3af' }}>Est. upfront ({(getUpfrontRate(deal.Categories)*100).toFixed(2)}%)</div>
+            <div style={{ fontSize:16, fontWeight:700, color:'#22c55e', marginTop:2 }}>{deal.Amount ? `$${calcUpfront(deal.Amount, deal.Categories).toLocaleString()}` : '—'}</div>
           </div>
         </TabCard>
       </div>

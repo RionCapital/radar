@@ -63,7 +63,7 @@ export default function ClientList({ clients, onAddClient }) {
         </div>
 
         {list.length > 0 ? list.map(c => {
-          const bal = c.loans.reduce((s,l)=>s+(l.balance||0),0)
+          const bal = c.loans.filter(l=>!l.closed).reduce((s,l)=>s+(l.balance||0),0)
           const isComm = c.stream==='Commercial'
           return (
             <div key={c.name} onClick={()=>navigate(`/radar/clients/${encodeURIComponent(c.name)}`)}
