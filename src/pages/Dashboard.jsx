@@ -407,6 +407,7 @@ export default function Dashboard({ clients, onImport, onUpdateClients }) {
   const navigate = useNavigate()
   const [showImport, setShowImport] = useState(false)
   const [hoveredMonthIdx, setHoveredMonthIdx] = useState(null)
+  const [hoveredCommIdx,  setHoveredCommIdx]  = useState(null)
   const hasPendingImport = !!localStorage.getItem('rion-pending-import')
   // Ticked rows stored as Set of unique keys: `${panelKey}-${conn}-${acc}`
   const [tickedKeys, setTickedKeys] = useState(() => {
@@ -534,15 +535,49 @@ export default function Dashboard({ clients, onImport, onUpdateClients }) {
           })()}
         </Panel>
         <Panel style={{ display: 'flex', flexDirection: 'column' }}>
-          <BarChart data={last12} keys={['trail', 'upfront']} colors={['#3D5570', '#EB99C2']} title="Commission Income" formatY={v => `$${Math.round(v / 1000)}k`} />
+          <BarChart data={last12} keys={['trail', 'upfront']} colors={['#3D5570', '#EB99C2']} title="Commission Income" formatY={v => `$${Math.round(v / 1000)}k`} onBarHover={setHoveredCommIdx} onBarLeave={() => setHoveredCommIdx(null)} hoveredIdx={hoveredCommIdx} />
         </Panel>
         <Panel style={{ padding: '12px 14px' }}>
-          <div style={{ fontSize: 10, fontWeight: 500, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Summary</div>
-          {stat('Month', latest.month)}
-          {stat('Connections', clients.length)}
-          {stat('Accounts', allLoans.length)}
-          {stat('Needs Attention', overdue, '#e8a020')}
-          {stat('Active Triggers', triggers, 'var(--pk)')}
+          {hoveredCommIdx != null ? (() => {
+            // Commission hover mode — show that month's income detail
+            const m     = last12[hoveredCommIdx]
+            const priorIdx = COMM.findIndex(c => c._key === m._key) - 12
+            const prior = priorIdx >= 0 ? COMM[priorIdx] : null
+            const pct   = prior && prior.total > 0 ? Math.round((m.total - prior.total) / prior.total * 100) : null
+            const isClawback = m.upfront < 0
+            return (
+              <>
+                <div style={{ fontSize: 10, fontWeight: 500, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
+                  {m.month}
+                </div>
+                {stat('Trail',   `$${Math.round(m.trail).toLocaleString()}`,   '#3D5570')}
+                {stat('Upfront', `$${Math.round(m.upfront).toLocaleString()}`, isClawback ? 'var(--pk)' : '#EB99C2')}
+                {stat('Total',   `$${Math.round(m.total).toLocaleString()}`,   m.total > 0 ? '#27ae60' : 'var(--pk)')}
+                {stat('Balance', `$${Math.round(m.balance || 0).toLocaleString()}`)}
+                {prior && (
+                  <>
+                    <div style={{ marginTop: 8, paddingTop: 8, borderTop: '0.5px solid var(--border-light)', fontSize: 9, color: 'var(--text-tertiary)', marginBottom: 3 }}>
+                      Prior year ({prior.month})
+                    </div>
+                    {stat('Total', `$${Math.round(prior.total).toLocaleString()}`, 'var(--text-tertiary)')}
+                    {pct !== null && stat('vs Prior Yr', `${pct >= 0 ? '▲' : '▼'} ${Math.abs(pct)}%`, pct >= 0 ? '#27ae60' : '#c0392b')}
+                  </>
+                )}
+                {isClawback && (
+                  <div style={{ marginTop: 6, fontSize: 9, color: 'var(--pk)', fontWeight: 600 }}>⚠ Clawback month</div>
+                )}
+              </>
+            )
+          })() : (
+            <>
+              <div style={{ fontSize: 10, fontWeight: 500, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Summary</div>
+              {stat('Month', latest.month)}
+              {stat('Connections', clients.length)}
+              {stat('Accounts', allLoans.length)}
+              {stat('Needs Attention', overdue, '#e8a020')}
+              {stat('Active Triggers', triggers, 'var(--pk)')}
+            </>
+          )}
           <button onClick={() => navigate('/radar/import')} style={{ width: '100%', marginTop: 12, padding: '7px', borderRadius: 7, border: '1.5px solid var(--pk)', background: 'transparent', color: 'var(--pk)', fontWeight: 500, fontSize: 11, cursor: 'pointer' }}
             onMouseOver={e => { e.currentTarget.style.background = 'var(--pk)'; e.currentTarget.style.color = '#fff' }}
             onMouseOut={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--pk)' }}>
