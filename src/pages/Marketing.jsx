@@ -24,6 +24,7 @@ const REFERRER_TIERS = [
   { id: 'contenders', label: 'Contenders', colour: '#EB99C2', desc: 'Target & Prospect Network' },
 ]
 
+const CAMPAIGN_OUTCOMES = ['','Referred','No Response','Not Suitable','Follow Up Later']
 const REFERRER_TYPES = ['Accountant','Financial Planner','Real Estate Agent','Conveyancer','Solicitor','Insurance Broker','Other']
 const PROFESSIONS    = ['Accountant','Builder/Tradesperson','Business Owner','Doctor/Medical','Engineer','IT Professional','Lawyer','Manager/Executive','Nurse/Allied Health','Real Estate Agent','Retail','Teacher','Transport/Logistics','Other']
 const INDUSTRIES     = ['Agriculture','Construction','Education','Finance & Insurance','Food & Hospitality','Health & Medical','IT & Technology','Legal','Manufacturing','Professional Services','Real Estate','Retail','Transport & Logistics','Other']
@@ -923,7 +924,7 @@ function ContactDetail({ contact, section, onBack, onSave, onDelete, onMove, rra
 
         {/* Broker assignment */}
         <div style={{ marginTop: 10, paddingTop: 8, borderTop: `1px solid ${C.border}`,
-          display: 'flex', alignItems: 'center', gap: 8 }}>
+          display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <span style={{ fontSize: 11, fontWeight: 600, color: C.slate, fontFamily: 'Montserrat,sans-serif', whiteSpace: 'nowrap' }}>
             Assigned to:
           </span>
@@ -933,6 +934,61 @@ function ContactDetail({ contact, section, onBack, onSave, onDelete, onMove, rra
             {brokers.map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
           </select>
         </div>
+
+        {/* Active Campaign toggle — only for contenders */}
+        {section === 'referrers' && contact.tier === 'contenders' && (
+          <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${C.border}` }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '10px 12px', borderRadius: 8,
+              background: contact.targeted ? '#FFFBEB' : '#F9FAFB',
+              border: `1px solid ${contact.targeted ? '#F59E0B' : C.border}` }}>
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: contact.targeted ? '#92400E' : C.text,
+                  fontFamily: 'Montserrat,sans-serif' }}>
+                  🎯 Active Campaign Target
+                </div>
+                <div style={{ fontSize: 11, color: C.muted, fontFamily: 'Montserrat,sans-serif', marginTop: 2 }}>
+                  {contact.targeted ? 'In current outreach cohort' : 'Not in active campaign'}
+                </div>
+              </div>
+              <div onClick={() => onSave({ ...contact, targeted: !contact.targeted,
+                  campaignOutcome: !contact.targeted ? contact.campaignOutcome : '' })}
+                style={{ width: 42, height: 24, borderRadius: 12,
+                  background: contact.targeted ? '#D97706' : '#CBD5E1',
+                  cursor: 'pointer', position: 'relative', transition: 'background 0.2s', flexShrink: 0 }}>
+                <div style={{ position: 'absolute', top: 3, width: 18, height: 18, borderRadius: '50%',
+                  background: '#fff', transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                  left: contact.targeted ? 21 : 3 }} />
+              </div>
+            </div>
+
+            {/* Campaign outcome — shown when targeted */}
+            {contact.targeted && (
+              <div style={{ marginTop: 8 }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: C.slate, fontFamily: 'Montserrat,sans-serif', marginBottom: 5 }}>
+                  Campaign Outcome
+                </div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {['Awaiting','Referred','No Response','Not Suitable','Follow Up Later'].map(outcome => {
+                    const cols = { 'Referred':'#16a34a','No Response':'#9CA3AF','Not Suitable':'#dc2626','Follow Up Later':'#D4A017','Awaiting':'#6B7280' }
+                    const val  = outcome === 'Awaiting' ? '' : outcome
+                    const active = (contact.campaignOutcome || '') === val
+                    const col  = cols[outcome] || C.slate
+                    return (
+                      <button key={outcome} onClick={() => onSave({ ...contact, campaignOutcome: val })}
+                        style={{ padding: '4px 12px', borderRadius: 20, border: `1px solid ${active ? col : C.border}`,
+                          background: active ? col : '#fff', color: active ? '#fff' : C.text,
+                          fontSize: 11, fontWeight: active ? 700 : 500, cursor: 'pointer',
+                          fontFamily: 'Montserrat,sans-serif', transition: 'all 0.15s' }}>
+                        {outcome}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* linked referrers (for clients) */}
@@ -1013,6 +1069,9 @@ function EditContactModal({ contact, section, onChange, onSave, onClose }) {
           <Input label="Referred By" value={f.referredBy || ''} onChange={e => set('referredBy', e.target.value)} />
           <Toggle label="Birthday reminders" checked={!!f.birthdayReminder} onChange={v => set('birthdayReminder', v)} />
           <Toggle label="Unsubscribed from group emails" checked={!!f.unsubscribed} onChange={v => set('unsubscribed', v)} />
+          {f.tier === 'contenders' && (
+            <Toggle label="🎯 Add to Active Campaign" checked={!!f.targeted} onChange={v => set('targeted', v)} />
+          )}
         </>
       )}
 
@@ -1029,6 +1088,9 @@ function EditContactModal({ contact, section, onChange, onSave, onClose }) {
           <Select label="Preferred Contact Method" options={CONTACT_PREFS} value={f.preferredContact || ''} onChange={e => set('preferredContact', e.target.value)} />
           <Input label="Referral Count (all time)" value={f.referralCount || ''} onChange={e => set('referralCount', e.target.value)} />
           <Toggle label="Unsubscribed from group emails" checked={!!f.unsubscribed} onChange={v => set('unsubscribed', v)} />
+          {f.tier === 'contenders' && (
+            <Toggle label="🎯 Add to Active Campaign" checked={!!f.targeted} onChange={v => set('targeted', v)} />
+          )}
         </>
       )}
 
@@ -1045,6 +1107,9 @@ function EditContactModal({ contact, section, onChange, onSave, onClose }) {
         <>
           <Input label="Role / Category" value={f.type || ''} onChange={e => set('type', e.target.value)} />
           <Toggle label="Unsubscribed from group emails" checked={!!f.unsubscribed} onChange={v => set('unsubscribed', v)} />
+          {f.tier === 'contenders' && (
+            <Toggle label="🎯 Add to Active Campaign" checked={!!f.targeted} onChange={v => set('targeted', v)} />
+          )}
         </>
       )}
 
@@ -1114,7 +1179,7 @@ function exportToCSV(contacts, section, label) {
   URL.revokeObjectURL(url)
 }
 
-function ContactList({ contacts, section, onSelect, onOutreach, onAdd, onDeleteMultiple, onMoveContacts }) {
+function ContactList({ contacts, section, onSelect, onOutreach, onAdd, onDeleteMultiple, onMoveContacts, onBulkTarget }) {
   const [search,   setSearch]   = useState('')
   const [filters,  setFilters]  = useState({}) // { tier:'gold', stream:'Commercial', type:'Accountant', ... }
   const [selected, setSelected] = useState(new Set())
@@ -1295,6 +1360,19 @@ function ContactList({ contacts, section, onSelect, onOutreach, onAdd, onDeleteM
           </div>
         )}
 
+        {selected.size > 0 && section === 'referrers' && (
+          <button onClick={() => {
+            // Target all selected contenders
+            const ids = [...selected]
+            onBulkTarget(ids)
+            setSelected(new Set())
+          }}
+            style={{ padding: '7px 13px', borderRadius: 8, border: '1px solid #F59E0B',
+              background: '#FFFBEB', fontWeight: 600, fontSize: 12, cursor: 'pointer',
+              fontFamily: 'Montserrat,sans-serif', color: '#92400E', whiteSpace: 'nowrap' }}>
+            🎯 Target ({selected.size})
+          </button>
+        )}
         {selected.size > 0 && section !== 'clients' && (
           <button onClick={handleDeleteSelected}
             style={{ padding: '7px 13px', borderRadius: 8, border: '1px solid #fecaca',
@@ -1313,27 +1391,116 @@ function ContactList({ contacts, section, onSelect, onOutreach, onAdd, onDeleteM
 
       {/* ── List (tier-grouped for referrers when no filter active) ── */}
       {section === 'referrers' && activeFilters.every(([k]) => k !== 'tier') && !search
-        ? REFERRER_TIERS.map(tier => {
-            const tierFilter = filters['tier']
-            const tc = filtered.filter(c => c.tier === tier.id)
-            if (tc.length === 0) return null
-            return (
-              <div key={tier.id} style={{ marginBottom: 24 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                  <Pill label={`${tier.label} · ${tc.length}`} colour={tier.colour} />
-                  <span style={{ fontSize: 11, color: C.muted, fontFamily: 'Montserrat,sans-serif' }}>{tier.desc}</span>
+        ? <>
+            {/* Active Campaign section — targeted contenders shown first */}
+            {(() => {
+              const targeted = filtered.filter(c => c.tier === 'contenders' && c.targeted)
+              if (targeted.length === 0) return null
+              const OUTCOME_COLOURS = {
+                'Referred': '#16a34a', 'No Response': '#9CA3AF',
+                'Not Suitable': '#dc2626', 'Follow Up Later': '#D4A017'
+              }
+              return (
+                <div style={{ marginBottom: 28 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 14px',
+                      background: '#FEF3C7', border: '1px solid #F59E0B', borderRadius: 20 }}>
+                      <span style={{ fontSize: 13 }}>🎯</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: '#92400E', fontFamily: 'Montserrat,sans-serif' }}>
+                        Active Campaign · {targeted.length}
+                      </span>
+                    </div>
+                    <span style={{ fontSize: 11, color: C.muted, fontFamily: 'Montserrat,sans-serif' }}>
+                      Current outreach cohort — working this group now
+                    </span>
+                  </div>
+                  <div style={{ border: `2px solid #F59E0B`, borderRadius: 10, overflow: 'hidden', background: '#fff' }}>
+                    {/* select-all */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 16px',
+                      borderBottom: `1px solid ${C.border}`, background: '#FFFBEB' }}>
+                      <input type="checkbox"
+                        checked={targeted.every(c => selected.has(c.id || c._id))}
+                        onChange={() => {
+                          const allOn = targeted.every(c => selected.has(c.id || c._id))
+                          const next = new Set(selected)
+                          targeted.forEach(c => allOn ? next.delete(c.id||c._id) : next.add(c.id||c._id))
+                          setSelected(next)
+                        }}
+                        style={{ width:15, height:15, cursor:'pointer', accentColor:'#D97706' }} />
+                      <span style={{ fontSize: 11, color: '#92400E', fontFamily: 'Montserrat,sans-serif', fontWeight: 600 }}>
+                        Select all in campaign
+                      </span>
+                    </div>
+                    {targeted.map((c, i) => {
+                      const cid = c.id || c._id
+                      const isChecked = selected.has(cid)
+                      const outCol = OUTCOME_COLOURS[c.campaignOutcome] || C.muted
+                      return (
+                        <div key={cid}
+                          style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 16px',
+                            borderBottom: i < targeted.length - 1 ? `1px solid ${C.border}` : 'none',
+                            background: isChecked ? '#FEF9C3' : '#FFFBEB' }}
+                          onMouseEnter={e => { if (!isChecked) e.currentTarget.style.background = '#FEF3C7' }}
+                          onMouseLeave={e => { if (!isChecked) e.currentTarget.style.background = '#FFFBEB' }}>
+                          <input type="checkbox" checked={isChecked}
+                            onChange={e => { e.stopPropagation(); toggleOne(cid) }}
+                            style={{ width:15, height:15, cursor:'pointer', accentColor:'#D97706', flexShrink:0 }} />
+                          <div onClick={() => onSelect(c)} style={{ display:'flex', alignItems:'center', gap:12, flex:1, cursor:'pointer', minWidth:0 }}>
+                            <Avatar name={c.name} size={34} />
+                            <div style={{ flex:1, minWidth:0 }}>
+                              <div style={{ fontSize:13, fontWeight:700, color:C.text, fontFamily:'Montserrat,sans-serif',
+                                overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                                {c.name}
+                              </div>
+                              <div style={{ fontSize:11, color:C.muted, fontFamily:'Montserrat,sans-serif' }}>
+                                {c.company || c.type || 'Contender'}
+                              </div>
+                            </div>
+                            {/* Campaign outcome badge */}
+                            {c.campaignOutcome ? (
+                              <span style={{ fontSize:10, fontWeight:700, color:outCol,
+                                background:outCol+'18', padding:'2px 9px', borderRadius:10,
+                                fontFamily:'Montserrat,sans-serif', whiteSpace:'nowrap',
+                                border:`1px solid ${outCol}44` }}>
+                                {c.campaignOutcome}
+                              </span>
+                            ) : (
+                              <span style={{ fontSize:10, color:'#D97706', fontFamily:'Montserrat,sans-serif',
+                                fontStyle:'italic' }}>Awaiting outcome</span>
+                            )}
+                            <span style={{ color:C.slate, fontSize:14 }}>›</span>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
                 </div>
-                <ContactTable contacts={tc} section={section} onSelect={onSelect}
-                  selected={selected} onToggle={toggleOne}
-                  onToggleAll={() => {
-                    const allOn = tc.every(c => selected.has(c.id || c._id))
-                    const next  = new Set(selected)
-                    tc.forEach(c => allOn ? next.delete(c.id || c._id) : next.add(c.id || c._id))
-                    setSelected(next)
-                  }} />
-              </div>
-            )
-          })
+              )
+            })()}
+
+            {/* Regular tier groups */}
+            {REFERRER_TIERS.map(tier => {
+              // For contenders: exclude targeted ones (shown above)
+              const tc = filtered.filter(c => c.tier === tier.id && !(tier.id === 'contenders' && c.targeted))
+              if (tc.length === 0) return null
+              return (
+                <div key={tier.id} style={{ marginBottom: 24 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                    <Pill label={`${tier.label} · ${tc.length}`} colour={tier.colour} />
+                    <span style={{ fontSize: 11, color: C.muted, fontFamily: 'Montserrat,sans-serif' }}>{tier.desc}</span>
+                  </div>
+                  <ContactTable contacts={tc} section={section} onSelect={onSelect}
+                    selected={selected} onToggle={toggleOne}
+                    onToggleAll={() => {
+                      const allOn = tc.every(c => selected.has(c.id || c._id))
+                      const next  = new Set(selected)
+                      tc.forEach(c => allOn ? next.delete(c.id || c._id) : next.add(c.id || c._id))
+                      setSelected(next)
+                    }} />
+                </div>
+              )
+            })}
+          </>
         : <ContactTable contacts={filtered} section={section} onSelect={onSelect}
             selected={selected} onToggle={toggleOne} onToggleAll={toggleAll} />
       }
@@ -1624,7 +1791,7 @@ export default function Marketing() {
             <div style={{ fontSize: 20, fontWeight: 800, color: C.text }}>{sectionLabel[section]}</div>
             {section === 'referrers' && (
               <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>
-                Gold: {referrers.filter(r => r.tier === 'gold').length} · Silver: {referrers.filter(r => r.tier === 'silver').length} · Bronze: {referrers.filter(r => r.tier === 'bronze').length} · Contenders: {referrers.filter(r => r.tier === 'contenders').length}
+                Gold: {referrers.filter(r => r.tier === 'gold').length} · Silver: {referrers.filter(r => r.tier === 'silver').length} · Bronze: {referrers.filter(r => r.tier === 'bronze').length} · Contenders: {referrers.filter(r => r.tier === 'contenders').length} · 🎯 Campaign: {referrers.filter(r => r.targeted).length}
               </div>
             )}
             {section === 'clients' && (
@@ -1657,6 +1824,13 @@ export default function Marketing() {
                 if (section !== 'clients') {
                   saveList(section, list => list.filter(c => !ids.includes(c.id)))
                 }
+              }}
+              onBulkTarget={ids => {
+                saveList('referrers', list => list.map(c =>
+                  ids.includes(c.id) && c.tier === 'contenders'
+                    ? { ...c, targeted: true }
+                    : c
+                ))
               }}
               onMoveContacts={(contacts, targetSection) => {
                 // Add to target list
