@@ -17,7 +17,29 @@ export async function sbLoadClients() {
   return data.data
 }
 
+// Serializes writes to a given Supabase table. Without this, two saves
+// triggered close together (e.g. importing April, then May, moments later)
+// each start their own independent read-merge-write round trip — and
+// there's no guarantee they complete in the order they started. If the
+// first save's network response is slow for any reason, it can land AFTER
+// the second one and silently overwrite it with older data, even though
+// the second save's own read-merge-write logic was completely correct at
+// the time it ran. Queuing forces each save to fully complete (read, merge,
+// write) before the next one even starts its own read, which removes the
+// race entirely rather than trying to out-guess network timing.
+const saveQueues = {}
+function queued(table, fn) {
+  const prior = saveQueues[table] || Promise.resolve()
+  const next = prior.then(fn, fn)
+  saveQueues[table] = next.catch(() => {})
+  return next
+}
+
 export async function sbSaveClients(payload) {
+  return queued('clients', () => _doSaveClients(payload))
+}
+
+async function _doSaveClients(payload) {
   try {
     // Merge-safe write, same reasoning as sbSaveDeals below. Client saves
     // always arrive wrapped as { data: [...clients], savedAt }, per the
@@ -91,6 +113,10 @@ export async function sbLoadDeals() {
 }
 
 export async function sbSaveDeals(deals) {
+  return queued('deals', () => _doSaveDeals(deals))
+}
+
+async function _doSaveDeals(deals) {
   try {
     // Merge-safe write. Every save previously pushed the caller's full local
     // array straight over whatever Supabase held — so a save from one
@@ -137,6 +163,10 @@ export async function sbSaveDeals(deals) {
 // named deal, and writes the result straight back with no recovery logic.
 // Kept separate from sbSaveDeals on purpose (see note above it).
 export async function sbDeleteDeal(transactionName) {
+  return queued('deals', () => _doDeleteDeal(transactionName))
+}
+
+async function _doDeleteDeal(transactionName) {
   try {
     const { data: existing } = await supabase
       .from('deals')
