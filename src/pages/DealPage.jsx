@@ -7,6 +7,7 @@ import CRMTopbar from '../components/CRMTopbar'
 import ReferrerPicker from '../components/ReferrerPicker'
 import { SettleModal, applySettlement } from '../components/SettleModal'
 import { calcUpfront, getUpfrontRate } from '../lib/settings'
+import { mapRradarContactToDealContact } from '../lib/data'
 
 const STAGES = ['1. Lead','2. Strategy','3. Pre-Lodged','4. Lodged','5. Conditional','6. Unconditional','7. Settled','8. Withdrawn']
 // Category list and per-category Transaction Type options, per Cameron's
@@ -119,25 +120,41 @@ function ContactsPanel({ deal, clients, updateDeal }) {
   const searchResults = searchTerm.length > 1
     ? clients.filter(c => c.name.toLowerCase().includes(searchTerm.toLowerCase())).slice(0, 6)
     : []
-  function selectClient(c) { updateDeal({ RradarClient: c.name }); setLinkMode(null); setSearchTerm('') }
+  function selectClient(c) {
+    // Copies the client's contacts onto the deal itself, same as at deal
+    // creation — so linking a client to an existing deal also brings their
+    // details in as real, editable records rather than just a live pointer
+    // back to the client (which no field on this deal could ever edit).
+    // Only copies if the deal doesn't already have contacts of its own, so
+    // this never silently overwrites something the broker already entered
+    // or edited here.
+    const patch = { RradarClient: c.name }
+    if (!dealContacts.length && c.contacts?.length) {
+      patch.Contacts = c.contacts.map(mapRradarContactToDealContact)
+    }
+    updateDeal(patch)
+    setLinkMode(null); setSearchTerm('')
+  }
   function unlinkClient() { updateDeal({ RradarClient: '' }); setLinkMode(null) }
 
-  // Contacts to display: Rradar-linked contacts take priority (read-only —
-  // that data lives in the broader Rradar CRM, not this deal), fallback to
-  // deal-level contacts, which are fully editable here.
+  // Contacts to display: the deal's own copy takes priority now that
+  // linking (and deal creation) copies contacts across — this is what
+  // makes them editable. Only falls back to a live, read-only view of the
+  // Rradar client's contacts for older deals that got linked before this
+  // copying existed and never got a copy of their own.
   const rradarContacts = linkedClient?.contacts || []
-  const displayContacts = rradarContacts.length > 0
-    ? rradarContacts.map(c => ({
+  const displayContacts = dealContacts.length > 0
+    ? dealContacts
+    : rradarContacts.map(c => ({
         name: [c.first, c.middle, c.last].filter(Boolean).join(' ') || c.first || '—',
         type: c.type || 'Individual', email: c.email || '', mobile: c.mobile || '', fromRradar: true,
       }))
-    : dealContacts
 
   return (
     <TabCard title="Clients & Contacts" right={
       <div style={{ display:'flex', gap:6, alignItems:'center' }}>
         {linkedClient && <Pill tone="green">Rradar linked</Pill>}
-        {!rradarContacts.length && <button onClick={addContact} style={addBtnStyle}>+ Add contact</button>}
+        <button onClick={addContact} style={addBtnStyle}>+ Add contact</button>
         <button onClick={()=>setLinkMode(l => l==='search' ? null : 'search')} style={addBtnStyle}>{linkedClient ? '⇄ Change Rradar link' : '+ Link to Rradar'}</button>
         {linkedClient && <button onClick={unlinkClient} style={rmBtnStyle}>Unlink</button>}
       </div>

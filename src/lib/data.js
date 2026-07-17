@@ -135,6 +135,31 @@ export async function syncFromSupabase() {
 export const LOAN_TYPES = ['Home Loan (OO)','Home Loan (Inv)','SMSF','Commercial Property','Lease Doc','Term','Asset Finance','Trade Finance','Business Loan','Invoice Finance','Other'];
 export const BANKS = ['ANZ','CBA','NAB','WBC','MAC','HSL','BWS','CHLS','CHLAB','CHLA','TMB','SGB','RES','CHHR','TNT','GRNYT','WPC','864H','Selfco','Dynamoney','Other'];
 
+// Rradar client contacts use a compact shape ({type:'Ind'|'Co'|..., first,
+// middle, last, mobile, email, dob}); the CRM's own deal.Contacts use a
+// richer, differently-shaped record. This is the one place that translates
+// between them, used both when a new deal is created for an existing
+// client and when an existing deal is linked to one afterwards — so a
+// client's contact details land on the deal as a real, editable copy
+// rather than the broker having to retype them.
+const RRADAR_CONTACT_TYPE_MAP = { Ind: 'Individual', Co: 'Company', Tru: 'Trust', SMSF: 'SMSF', Part: 'Partnership' }
+export function mapRradarContactToDealContact(c) {
+  const type = RRADAR_CONTACT_TYPE_MAP[c.type] || 'Individual'
+  const name = c.first
+    ? [c.first, c.middle, c.last].filter(Boolean).join(' ')
+    : (c.name || c.company || '')
+  return {
+    name, type,
+    email: c.email || '',
+    mobile: c.mobile || c.phone || '',
+    homePhone: '', businessPhone: '',
+    title: '', firstName: c.first || '', middleName: c.middle || '', lastName: c.last || '',
+    dob: c.dob || '', maritalStatus: '', gender: '',
+    abn: '',
+    addresses: [], identification: [], relationships: [],
+  }
+}
+
 // A discharged loan should never contribute to a client's current balance —
 // it's history, not exposure. These previously summed every loan regardless
 // of closed status, which is why "Balances" on the client page (and

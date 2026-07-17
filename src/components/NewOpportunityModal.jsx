@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { sbSaveDeals } from '../lib/supabase'
 import { notifySaveFailed } from '../lib/saveStatus'
+import { mapRradarContactToDealContact } from '../lib/data'
 
 const STAGES = ['1. Lead','2. Strategy','3. Pre-Lodged','4. Lodged','5. Conditional','6. Unconditional','7. Settled','8. Withdrawn']
 // Kept in sync with the same taxonomy in src/pages/DealPage.jsx — Category
@@ -114,6 +115,14 @@ export default function NewOpportunityModal({ onClose, onCreated, prefillClientN
       return
     }
 
+    // Bug fix: this used to write '_linkedClient', but DealPage's client-
+    // linking logic only ever reads 'RradarClient' — so a deal created
+    // against an existing client here was never actually recognised as
+    // linked by anything else in the app, only by a much looser fallback
+    // that guesses from the deal name. Writing the field DealPage actually
+    // checks makes the link real, not just a name-based guess.
+    const linkedClient = clientMode === 'existing' ? clients.find(c => c.name === selectedClient) : null
+
     const newDeal = {
       'Transaction Name': transactionName,
       'Status': status,
@@ -127,7 +136,12 @@ export default function NewOpportunityModal({ onClose, onCreated, prefillClientN
       'Status Notes': notes || '',
       'First Name(s)': '',
       'Last Name(s)': '',
-      '_linkedClient': clientMode === 'existing' ? selectedClient : '',
+      'RradarClient': linkedClient ? linkedClient.name : '',
+      // Copies the client's contact details onto the deal itself (name,
+      // email, mobile, etc.) rather than just linking to them live — so
+      // they're here, editable, ready to use straight away, and stay put
+      // even if the client's own record changes later.
+      'Contacts': linkedClient?.contacts?.length ? linkedClient.contacts.map(mapRradarContactToDealContact) : [],
       '_createdAt': new Date().toISOString(),
     }
 
