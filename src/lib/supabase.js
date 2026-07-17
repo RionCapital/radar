@@ -334,3 +334,39 @@ export async function sbSaveMarketing(partialData, id = 1) {
     return false
   }
 }
+
+// ─── Deal Attachments (Supabase Storage) ───────────────────────────────────────
+// Requires a Storage bucket named 'deal-attachments' to exist in this
+// project — see setup notes delivered alongside this code. Kept private
+// (not public) since these are often tax returns, IDs, and financials;
+// access is via short-lived signed URLs rather than permanent public links.
+const ATTACHMENTS_BUCKET = 'deal-attachments'
+
+export async function sbUploadAttachment(path, file) {
+  try {
+    const { data, error } = await supabase.storage.from(ATTACHMENTS_BUCKET).upload(path, file, { upsert: true })
+    if (error) return { ok: false, error: error.message }
+    return { ok: true, path: data.path }
+  } catch (err) {
+    return { ok: false, error: String(err) }
+  }
+}
+
+export async function sbGetAttachmentUrl(path) {
+  try {
+    const { data, error } = await supabase.storage.from(ATTACHMENTS_BUCKET).createSignedUrl(path, 60 * 60)
+    if (error) return null
+    return data.signedUrl
+  } catch {
+    return null
+  }
+}
+
+export async function sbDeleteAttachment(path) {
+  try {
+    const { error } = await supabase.storage.from(ATTACHMENTS_BUCKET).remove([path])
+    return !error
+  } catch {
+    return false
+  }
+}
