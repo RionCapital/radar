@@ -212,6 +212,7 @@ export default function App() {
   const isStudio = location.pathname === '/radar/studio'
   const isCRM = location.pathname.startsWith('/crm')
   const isSettings = location.pathname === '/settings' || location.pathname === '/crm/settings'
+  const isPlanner = location.pathname === '/planner'
 
   function showToast(msg) { setToast(msg); setTimeout(() => setToast(null), 2500) }
 
@@ -319,8 +320,8 @@ export default function App() {
 
   return (
     <div style={{ minHeight:'100vh', background: isHome||isLogin ? '#3D5570' : 'var(--bg)' }}>
-      {!isHome && !isLogin && !isStudio && !isCRM && !isSettings && <Topbar clients={clients} onOpenBirthdays={() => setShowBirthdays(true)} />}
-      {showBirthdays && !isHome && !isLogin && !isStudio && !isCRM && !isSettings && <BirthdayNotifier clients={clients} onClose={() => setShowBirthdays(false)} />}
+      {!isHome && !isLogin && !isStudio && !isCRM && !isSettings && !isPlanner && <Topbar clients={clients} onOpenBirthdays={() => setShowBirthdays(true)} />}
+      {showBirthdays && !isHome && !isLogin && !isStudio && !isCRM && !isSettings && !isPlanner && <BirthdayNotifier clients={clients} onClose={() => setShowBirthdays(false)} />}
       <Toast message={toast} />
       <SaveFailedBanner failure={saveFailure} onDismiss={()=>setSaveFailure(null)} />
       <AppErrorBoundary>

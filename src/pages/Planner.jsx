@@ -781,30 +781,36 @@ function AnalysisTab({ store, onUpdateMonthNotes }) {
         </div>
       </SectionCard>
 
-      <SectionCard title="Meetings per month" style={{ marginTop: 16 }}>
-        <StackChart labels={monthLabels} series={MEETING_TYPES.map(t => ({ name: t, color: TYPE_COLOR[t], values: monthRows.map(r => r.byType[t] || 0) }))} />
-        <BreakdownTable
-          months={monthLabels}
-          rows={[
-            ...MEETING_TYPES.map(t => ({ label: t, values: monthRows.map(r => r.byType[t] || 0) })),
-            { label: 'Total', bold: true, values: monthRows.map(r => r.meetings) },
-          ]}
-        />
-      </SectionCard>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 16 }}>
+        <SectionCard title="Lodgements ($ and count)">
+          <ComboChart labels={monthLabels} bars={monthRows.map(r => r.lodgedTotal)} line={monthRows.map(r => r.lodgedCount)}
+            barColor={PINK} lineColor={NAVY} barFormatter={fmtMoney} lineFormatter={v => v} />
+        </SectionCard>
 
-      <SectionCard title="Lodgements ($ and count) per month" style={{ marginTop: 16 }}>
-        <ComboChart labels={monthLabels} bars={monthRows.map(r => r.lodgedTotal)} line={monthRows.map(r => r.lodgedCount)}
-          barColor={PINK} lineColor={NAVY} barFormatter={fmtMoney} lineFormatter={v => v} />
-      </SectionCard>
+        <SectionCard title="Settlements ($ and count)">
+          <ComboChart labels={monthLabels} bars={monthRows.map(r => r.settledTotal)} line={monthRows.map(r => r.settledCount)}
+            barColor={BRAND_PINK} lineColor={NAVY} barFormatter={fmtMoney} lineFormatter={v => v} />
+        </SectionCard>
 
-      <SectionCard title="Settlements ($ and count) per month" style={{ marginTop: 16 }}>
-        <ComboChart labels={monthLabels} bars={monthRows.map(r => r.settledTotal)} line={monthRows.map(r => r.settledCount)}
-          barColor={BRAND_PINK} lineColor={NAVY} barFormatter={fmtMoney} lineFormatter={v => v} />
-      </SectionCard>
+        <SectionCard title="Meetings">
+          <div style={{ maxHeight: 300, overflowY: 'auto' }}>
+            <StackChart labels={monthLabels} series={MEETING_TYPES.map(t => ({ name: t, color: TYPE_COLOR[t], values: monthRows.map(r => r.byType[t] || 0) }))} />
+            <BreakdownTable
+              months={monthLabels}
+              rows={[
+                ...MEETING_TYPES.map(t => ({ label: t, values: monthRows.map(r => r.byType[t] || 0) })),
+                { label: 'Total', bold: true, values: monthRows.map(r => r.meetings) },
+              ]}
+            />
+          </div>
+        </SectionCard>
 
-      <SectionCard title="Training & fitness" style={{ marginTop: 16 }}>
-        <TrainingBreakdownTable months={monthLabels} monthRows={monthRows} />
-      </SectionCard>
+        <SectionCard title="Training & fitness">
+          <div style={{ maxHeight: 300, overflowY: 'auto' }}>
+            <TrainingBreakdownTable months={monthLabels} monthRows={monthRows} />
+          </div>
+        </SectionCard>
+      </div>
 
       <SectionCard title="Weight movement" style={{ marginTop: 16 }}>
         {weightSeries.length < 2
@@ -842,8 +848,8 @@ function StatCard({ label, value, accent }) {
 }
 
 // ─── chart primitives (plain SVG — no external chart library in this project) ──
-const CHART_W = 640, CHART_H = 210
-const CH_ML = 46, CH_MR = 20, CH_MT = 16, CH_MB = 28
+const CHART_W = 480, CHART_H = 170
+const CH_ML = 42, CH_MR = 16, CH_MT = 14, CH_MB = 26
 const PLOT_W = CHART_W - CH_ML - CH_MR
 const PLOT_H = CHART_H - CH_MT - CH_MB
 
