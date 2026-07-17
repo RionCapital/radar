@@ -106,17 +106,19 @@ function emptyWeek(weekStart) {
 }
 
 function weekStats(week) {
-  if (!week) return { meetings: 0, byType: {}, lodgedTotal: 0, settledTotal: 0, lodgedCount: 0 }
+  if (!week) return { meetings: 0, byType: {}, lodgedTotal: 0, settledTotal: 0, lodgedCount: 0, settledCount: 0 }
   const byType = {}
   MEETING_TYPES.forEach(t => { byType[t] = 0 })
   week.meetings.forEach(m => { byType[m.type] = (byType[m.type] || 0) + 1 })
   const lodgedTotal = week.lodgements.reduce((s, l) => s + (Number(l.amount) || 0), 0)
   const settledTotal = week.settlements.reduce((s, l) => s + (Number(l.amount) || 0), 0)
-  return { meetings: week.meetings.length, byType, lodgedTotal, settledTotal, lodgedCount: week.lodgements.length }
+  return { meetings: week.meetings.length, byType, lodgedTotal, settledTotal, lodgedCount: week.lodgements.length, settledCount: week.settlements.length }
 }
 
 function trainingStats(week) {
   const totals = { Cardio: 0, Boxing: 0, Strength: 0, Recovery: 0 }
+  const byOption = {}
+  TRAINING_OPTIONS.forEach(o => { if (o.value) byOption[o.value] = 0 })
   let sessions = 0
   const days = (week.training && week.training.days) || {}
   DAYS.forEach(d => {
@@ -125,11 +127,11 @@ function trainingStats(week) {
       const val = slot[s]
       if (val) {
         const cat = TRAINING_CAT_BY_VALUE[val]
-        if (cat) { totals[cat] = (totals[cat] || 0) + 1; sessions++ }
+        if (cat) { totals[cat] = (totals[cat] || 0) + 1; sessions++; byOption[val] = (byOption[val] || 0) + 1 }
       }
     })
   })
-  return { totals, sessions }
+  return { totals, byOption, sessions }
 }
 
 // ─── small UI atoms ─────────────────────────────────────────────────────────
@@ -703,9 +705,11 @@ function AnalysisTab({ store, onUpdateMonthNotes }) {
       const key = monthKey(wk)
       if (!byMonth[key]) {
         byMonth[key] = {
-          key, meetings: 0, byType: {}, lodgedTotal: 0, settledTotal: 0, lodgedCount: 0,
+          key, meetings: 0, byType: {}, lodgedTotal: 0, settledTotal: 0, lodgedCount: 0, settledCount: 0,
           lodgementCountTargetSum: 0, settlementTargetSum: 0,
-          training: { Cardio: 0, Boxing: 0, Strength: 0, Recovery: 0 }, sessions: 0,
+          training: { Cardio: 0, Boxing: 0, Strength: 0, Recovery: 0 },
+          byOption: TRAINING_OPTIONS.reduce((o, t) => { if (t.value) o[t.value] = 0; return o }, {}),
+          sessions: 0,
           startWeight: null, endWeight: null, weeksCount: 0,
         }
       }
@@ -716,11 +720,13 @@ function AnalysisTab({ store, onUpdateMonthNotes }) {
       m.lodgedTotal += s.lodgedTotal
       m.settledTotal += s.settledTotal
       m.lodgedCount += s.lodgedCount
+      m.settledCount += s.settledCount
       m.lodgementCountTargetSum += Number(week.lodgementCountTarget) || 0
       m.settlementTargetSum += Number(week.settlementTarget) || 0
       m.weeksCount += 1
       const tr = trainingStats(week)
       TRAINING_CATS.forEach(c => { m.training[c] += tr.totals[c] || 0 })
+      Object.keys(m.byOption).forEach(k => { m.byOption[k] += tr.byOption[k] || 0 })
       m.sessions += tr.sessions
       if (week.training.startWeight && m.startWeight === null) m.startWeight = Number(week.training.startWeight)
       if (week.training.endWeight) m.endWeight = Number(week.training.endWeight)
@@ -728,17 +734,22 @@ function AnalysisTab({ store, onUpdateMonthNotes }) {
     return Object.values(byMonth).sort((a, b) => a.key.localeCompare(b.key)).slice(-6)
   }, [store.weeks])
 
+  const weightSeries = useMemo(() => {
+    return Object.keys(store.weeks).sort().map(wk => {
+      const week = { ...emptyWeek(wk), ...store.weeks[wk] }
+      return { weekStart: wk, weight: week.training.endWeight ? Number(week.training.endWeight) : null }
+    }).filter(w => w.weight !== null).slice(-16)
+  }, [store.weeks])
+
   if (!monthRows.length) return <EmptyRow text="No weeks recorded yet." />
 
-  const maxLodged = Math.max(1, ...monthRows.map(r => r.lodgedTotal))
-  const maxSettled = Math.max(1, ...monthRows.map(r => r.settledTotal))
-  const maxSessions = Math.max(1, ...monthRows.map(r => r.sessions))
   const avgMeetingsPerWeek = (monthRows.reduce((s, r) => s + r.meetings, 0) / monthRows.reduce((s, r) => s + r.weeksCount, 0)).toFixed(1)
   const totalSettled = monthRows.reduce((s, r) => s + r.settledTotal, 0)
   const monthsWithLodgeTarget = monthRows.filter(r => r.lodgementCountTargetSum > 0)
   const lodgeAchievementPct = monthsWithLodgeTarget.length
     ? Math.round(monthsWithLodgeTarget.reduce((s, r) => s + Math.min(1, r.lodgedCount / r.lodgementCountTargetSum), 0) / monthsWithLodgeTarget.length * 100)
     : null
+  const monthLabels = monthRows.map(r => monthLabel(r.key))
 
   return (
     <div>
@@ -770,24 +781,35 @@ function AnalysisTab({ store, onUpdateMonthNotes }) {
         </div>
       </SectionCard>
 
-      <SectionCard title="Lodgements ($) per month" style={{ marginTop: 16 }}>
-        <MonthBarList rows={monthRows} valueKey="lodgedTotal" max={maxLodged} color={PINK} formatter={fmtMoney} />
-      </SectionCard>
-      <SectionCard title="Settlements ($) per month" style={{ marginTop: 16 }}>
-        <MonthBarList rows={monthRows} valueKey="settledTotal" max={maxSettled} color={BRAND_PINK} formatter={fmtMoney} />
+      <SectionCard title="Meetings per month" style={{ marginTop: 16 }}>
+        <StackChart labels={monthLabels} series={MEETING_TYPES.map(t => ({ name: t, color: TYPE_COLOR[t], values: monthRows.map(r => r.byType[t] || 0) }))} />
+        <BreakdownTable
+          months={monthLabels}
+          rows={[
+            ...MEETING_TYPES.map(t => ({ label: t, values: monthRows.map(r => r.byType[t] || 0) })),
+            { label: 'Total', bold: true, values: monthRows.map(r => r.meetings) },
+          ]}
+        />
       </SectionCard>
 
-      <SectionCard title="Training & fitness trend" style={{ marginTop: 16 }}>
-        <MonthBarList rows={monthRows} valueKey="sessions" max={maxSessions} color={NAVY} formatter={v => `${v} sessions`} />
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 14 }}>
-          {monthRows.map(r => (
-            <div key={r.key} style={{ display: 'flex', alignItems: 'center', gap: 14, fontSize: 11, color: SLATE, flexWrap: 'wrap' }}>
-              <div style={{ width: 74, flexShrink: 0, fontWeight: 600, color: NAVY }}>{monthLabel(r.key)}</div>
-              {TRAINING_CATS.map(cat => <span key={cat}>{cat}: <b style={{ color: NAVY }}>{r.training[cat]}</b></span>)}
-              <span>Weight: <b style={{ color: NAVY }}>{r.startWeight ?? '—'} → {r.endWeight ?? '—'}</b></span>
-            </div>
-          ))}
-        </div>
+      <SectionCard title="Lodgements ($ and count) per month" style={{ marginTop: 16 }}>
+        <ComboChart labels={monthLabels} bars={monthRows.map(r => r.lodgedTotal)} line={monthRows.map(r => r.lodgedCount)}
+          barColor={PINK} lineColor={NAVY} barFormatter={fmtMoney} lineFormatter={v => v} />
+      </SectionCard>
+
+      <SectionCard title="Settlements ($ and count) per month" style={{ marginTop: 16 }}>
+        <ComboChart labels={monthLabels} bars={monthRows.map(r => r.settledTotal)} line={monthRows.map(r => r.settledCount)}
+          barColor={BRAND_PINK} lineColor={NAVY} barFormatter={fmtMoney} lineFormatter={v => v} />
+      </SectionCard>
+
+      <SectionCard title="Training & fitness" style={{ marginTop: 16 }}>
+        <TrainingBreakdownTable months={monthLabels} monthRows={monthRows} />
+      </SectionCard>
+
+      <SectionCard title="Weight movement" style={{ marginTop: 16 }}>
+        {weightSeries.length < 2
+          ? <EmptyRow text="Log a start/end weight on at least two weeks to see a trend line here." />
+          : <WeightLineChart labels={weightSeries.map(w => fmtShort(w.weekStart))} values={weightSeries.map(w => w.weight)} target={store.targetWeight ? Number(store.targetWeight) : null} />}
       </SectionCard>
 
       <SectionCard title="Monthly comments" style={{ marginTop: 16 }}>
@@ -819,22 +841,206 @@ function StatCard({ label, value, accent }) {
   )
 }
 
-function MonthBarList({ rows, valueKey, max, color, formatter }) {
+// ─── chart primitives (plain SVG — no external chart library in this project) ──
+const CHART_W = 640, CHART_H = 210
+const CH_ML = 46, CH_MR = 20, CH_MT = 16, CH_MB = 28
+const PLOT_W = CHART_W - CH_ML - CH_MR
+const PLOT_H = CHART_H - CH_MT - CH_MB
+
+function ComboChart({ labels, bars, line, barColor, lineColor, barFormatter, lineFormatter }) {
+  const n = Math.max(1, labels.length)
+  const barMax = Math.max(1, ...bars) * 1.25
+  const lineMax = Math.max(1, ...line) * 1.35
+  const step = PLOT_W / n
+  const barW = Math.min(38, step * 0.42)
+  const points = line.map((v, i) => [CH_ML + i * step + step / 2, CH_MT + PLOT_H - (v / lineMax) * PLOT_H])
+  const pathD = points.map((p, i) => (i === 0 ? 'M' : 'L') + p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ')
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-      {rows.map(r => {
-        const v = r[valueKey]
-        const pct = Math.max(2, Math.round(v / max * 100))
+    <svg viewBox={`0 0 ${CHART_W} ${CHART_H}`} style={{ width: '100%', height: 'auto', display: 'block' }}>
+      {[0, 0.25, 0.5, 0.75, 1].map((f, i) => (
+        <line key={i} x1={CH_ML} x2={CHART_W - CH_MR} y1={CH_MT + PLOT_H - f * PLOT_H} y2={CH_MT + PLOT_H - f * PLOT_H} stroke="#eef1f5" strokeWidth="1" />
+      ))}
+      {labels.map((l, i) => {
+        const x = CH_ML + i * step + step / 2
+        const barH = (bars[i] / barMax) * PLOT_H
         return (
-          <div key={r.key} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ width: 74, fontSize: 10, color: SLATE, flexShrink: 0 }}>{monthLabel(r.key)}</div>
-            <div style={{ flex: 1, height: 14, background: '#f0f2f5', borderRadius: 4, overflow: 'hidden' }}>
-              <div style={{ height: '100%', width: `${pct}%`, background: color, borderRadius: 4 }} />
-            </div>
-            <div style={{ width: 90, fontSize: 11, color: NAVY, fontWeight: 600, textAlign: 'right', flexShrink: 0 }}>{formatter(v)}</div>
-          </div>
+          <g key={l + i}>
+            <rect x={x - barW / 2} y={CH_MT + PLOT_H - barH} width={barW} height={Math.max(1, barH)} fill={barColor} rx="2" />
+            <text x={x} y={CHART_H - 8} fontSize="9" fill="#7A8090" textAnchor="middle">{l}</text>
+            {bars[i] > 0 && <text x={x} y={CH_MT + PLOT_H - barH - 6} fontSize="9" fill={NAVY} fontWeight="600" textAnchor="middle">{barFormatter(bars[i])}</text>}
+          </g>
         )
       })}
+      <path d={pathD} fill="none" stroke={lineColor} strokeWidth="2" />
+      {points.map((p, i) => (
+        <g key={i}>
+          <circle cx={p[0]} cy={p[1]} r="3.5" fill={lineColor} />
+          {line[i] > 0 && <text x={p[0]} y={p[1] - 8} fontSize="9" fill={lineColor} fontWeight="600" textAnchor="middle">{lineFormatter(line[i])}</text>}
+        </g>
+      ))}
+    </svg>
+  )
+}
+
+function StackChart({ labels, series }) {
+  const n = Math.max(1, labels.length)
+  const totals = labels.map((_, i) => series.reduce((s, ser) => s + (ser.values[i] || 0), 0))
+  const max = Math.max(1, ...totals) * 1.25
+  const step = PLOT_W / n
+  const barW = Math.min(44, step * 0.5)
+  return (
+    <div>
+      <svg viewBox={`0 0 ${CHART_W} ${CHART_H}`} style={{ width: '100%', height: 'auto', display: 'block' }}>
+        {[0, 0.25, 0.5, 0.75, 1].map((f, i) => (
+          <line key={i} x1={CH_ML} x2={CHART_W - CH_MR} y1={CH_MT + PLOT_H - f * PLOT_H} y2={CH_MT + PLOT_H - f * PLOT_H} stroke="#eef1f5" strokeWidth="1" />
+        ))}
+        {labels.map((l, i) => {
+          const x = CH_ML + i * step + step / 2
+          let yCursor = CH_MT + PLOT_H
+          return (
+            <g key={l + i}>
+              {series.map(ser => {
+                const v = ser.values[i] || 0
+                const h = (v / max) * PLOT_H
+                yCursor -= h
+                return v > 0 ? <rect key={ser.name} x={x - barW / 2} y={yCursor} width={barW} height={h} fill={ser.color} /> : null
+              })}
+              {totals[i] > 0 && <text x={x} y={CH_MT + PLOT_H - (totals[i] / max) * PLOT_H - 6} fontSize="9" fill={NAVY} fontWeight="600" textAnchor="middle">{totals[i]}</text>}
+              <text x={x} y={CHART_H - 8} fontSize="9" fill="#7A8090" textAnchor="middle">{l}</text>
+            </g>
+          )
+        })}
+      </svg>
+      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginTop: 6 }}>
+        {series.map(ser => (
+          <div key={ser.name} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 10, color: SLATE }}>
+            <span style={{ width: 8, height: 8, borderRadius: 2, background: ser.color, display: 'inline-block' }} /> {ser.name}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function WeightLineChart({ labels, values, target }) {
+  const n = Math.max(1, labels.length)
+  const all = target ? [...values, target] : values
+  const min = Math.min(...all) - 1
+  const max = Math.max(...all) + 1
+  const step = PLOT_W / Math.max(1, n - 1)
+  const yFor = v => CH_MT + PLOT_H - ((v - min) / (max - min)) * PLOT_H
+  const points = values.map((v, i) => [CH_ML + i * step, yFor(v)])
+  const pathD = points.map((p, i) => (i === 0 ? 'M' : 'L') + p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ')
+  return (
+    <svg viewBox={`0 0 ${CHART_W} ${CHART_H}`} style={{ width: '100%', height: 'auto', display: 'block' }}>
+      {[0, 0.25, 0.5, 0.75, 1].map((f, i) => (
+        <line key={i} x1={CH_ML} x2={CHART_W - CH_MR} y1={CH_MT + PLOT_H - f * PLOT_H} y2={CH_MT + PLOT_H - f * PLOT_H} stroke="#eef1f5" strokeWidth="1" />
+      ))}
+      {target && (
+        <>
+          <line x1={CH_ML} x2={CHART_W - CH_MR} y1={yFor(target)} y2={yFor(target)} stroke={BRAND_PINK} strokeWidth="1.5" strokeDasharray="4 3" />
+          <text x={CHART_W - CH_MR} y={yFor(target) - 4} fontSize="9" fill={BRAND_PINK} textAnchor="end" fontWeight="600">target {target}</text>
+        </>
+      )}
+      <path d={pathD} fill="none" stroke={NAVY} strokeWidth="2" />
+      {points.map((p, i) => (
+        <g key={i}>
+          <circle cx={p[0]} cy={p[1]} r="3.5" fill={NAVY} />
+          {(i === 0 || i === points.length - 1) && <text x={p[0]} y={p[1] - 8} fontSize="9" fill={NAVY} fontWeight="600" textAnchor="middle">{values[i]}</text>}
+          {n <= 10 && <text x={p[0]} y={CHART_H - 8} fontSize="8.5" fill="#7A8090" textAnchor="middle">{labels[i]}</text>}
+        </g>
+      ))}
+    </svg>
+  )
+}
+
+function BreakdownTable({ months, rows }) {
+  return (
+    <div style={{ overflowX: 'auto', marginTop: 12 }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+        <thead>
+          <tr>
+            <th style={{ textAlign: 'left', padding: '4px 8px', color: SLATE, fontWeight: 600 }}></th>
+            {months.map(m => <th key={m} style={{ padding: '4px 8px', color: SLATE, fontWeight: 600, textAlign: 'right' }}>{m}</th>)}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(r => (
+            <tr key={r.label} style={{ background: r.bg || 'transparent', borderTop: r.bold ? `1px solid #e2e6ed` : 'none' }}>
+              <td style={{ padding: '4px 8px', fontWeight: r.bold ? 700 : 400, color: r.bold ? NAVY : '#4a5568' }}>{r.label}</td>
+              {r.values.map((v, i) => <td key={i} style={{ padding: '4px 8px', textAlign: 'right', fontWeight: r.bold ? 700 : 400, color: r.bold ? NAVY : '#4a5568' }}>{v}</td>)}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+const TRAINING_ROWS = [
+  {
+    group: 'Cardio', bg: '#DCEBFB', totalBg: '#AFCFF0', totalLabel: 'Total Cardio',
+    items: [
+      { label: 'Run', value: 'Run' },
+      { label: 'Swim', value: 'Swim' },
+      { label: 'General PT', value: 'General PT' },
+      { label: 'Walk (min 6k steps)', value: 'Walk' },
+      { label: 'Hyrox', value: 'Hyrox' },
+    ],
+  },
+  {
+    group: 'Boxing', bg: '#FBE3D3', totalBg: '#F0B98F', totalLabel: 'Total Boxing',
+    items: [
+      { label: 'Shadow Box', value: 'Shadow Box' },
+      { label: 'Boxing', value: 'Boxing' },
+      { label: 'Boxing - Contact', value: 'Boxing Contact' },
+    ],
+  },
+  {
+    group: 'Strength', bg: '#DFF0D2', totalBg: '#A9D98C', totalLabel: 'Strength & Conditioning',
+    items: [
+      { label: 'Weights Upper', value: 'Weights Upper' },
+      { label: 'Weights Lower', value: 'Weights Lower' },
+      { label: 'Strength & Conditioning (Gen.)', value: 'Strength Cond' },
+    ],
+  },
+]
+
+function TrainingBreakdownTable({ months, monthRows }) {
+  return (
+    <div style={{ overflowX: 'auto' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+        <thead>
+          <tr>
+            <th style={{ textAlign: 'left', padding: '4px 8px', color: SLATE, fontWeight: 600 }}></th>
+            {months.map(m => <th key={m} style={{ padding: '4px 8px', color: SLATE, fontWeight: 600, textAlign: 'right' }}>{m}</th>)}
+          </tr>
+        </thead>
+        <tbody>
+          {TRAINING_ROWS.map(group => (
+            <React.Fragment key={group.group}>
+              {group.items.map(it => (
+                <tr key={it.value} style={{ background: group.bg }}>
+                  <td style={{ padding: '4px 8px', color: DEEP }}>{it.label}</td>
+                  {monthRows.map(r => <td key={r.key} style={{ padding: '4px 8px', textAlign: 'right', color: DEEP }}>{r.byOption[it.value] || 0}</td>)}
+                </tr>
+              ))}
+              <tr style={{ background: group.totalBg }}>
+                <td style={{ padding: '4px 8px', fontWeight: 700, color: DEEP }}>{group.totalLabel}</td>
+                {monthRows.map(r => <td key={r.key} style={{ padding: '4px 8px', textAlign: 'right', fontWeight: 700, color: DEEP }}>{group.items.reduce((s, it) => s + (r.byOption[it.value] || 0), 0)}</td>)}
+              </tr>
+            </React.Fragment>
+          ))}
+          <tr style={{ borderTop: '1px solid #d8dde5' }}>
+            <td style={{ padding: '4px 8px', fontWeight: 700, color: NAVY }}>Total Workouts</td>
+            {monthRows.map(r => <td key={r.key} style={{ padding: '4px 8px', textAlign: 'right', fontWeight: 700, color: NAVY }}>{r.sessions}</td>)}
+          </tr>
+          <tr style={{ background: '#FAD7EA' }}>
+            <td style={{ padding: '4px 8px', color: DEEP }}>Recovery</td>
+            {monthRows.map(r => <td key={r.key} style={{ padding: '4px 8px', textAlign: 'right', color: DEEP }}>{r.byOption['Recovery'] || 0}</td>)}
+          </tr>
+        </tbody>
+      </table>
     </div>
   )
 }
