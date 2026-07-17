@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { loadDeals, saveDeals, syncDealsFromSupabase } from '../lib/deals'
 import { sbDeleteDeal } from '../lib/supabase'
+import { sbUploadAttachment, sbGetAttachmentUrl, sbDeleteAttachment } from '../lib/supabase'
 import { notifySaveFailed } from '../lib/saveStatus'
 import CRMTopbar from '../components/CRMTopbar'
 import ReferrerPicker from '../components/ReferrerPicker'
@@ -345,16 +346,112 @@ const OTHER_INCOME_TYPES = ['Rental Income','Centrelink / Family Tax Benefit','D
 // Keyed by Category (not Transaction Type) — Cameron confirmed Category is
 // the right driver here. 'Other' is the fallback for a deal with no Category
 // set yet.
+// Base items apply to every entity on this transaction type; conditions are
+// additional items that only apply depending on who/what this entity is —
+// e.g. an Individual on PAYG income needs payslips, a Company needs tax
+// returns and financials. A given entity can tick more than one condition
+// (e.g. a Trust with a corporate trustee is both 'Trust' and 'Company').
 const ATTACHMENT_TEMPLATES = {
-  'Residential': ['ID — Driver\'s Licence / Passport','Payslips (2 recent)','3 months bank statements','Contract of Sale (if purchasing)','Current loan statement (if refinancing)','Evidence of deposit / savings','Rates notice'],
-  'Commercial': ['ID — Driver\'s Licence / Passport','2 years financials (P&L + BS)','Contract of Sale / current facility statement','Business bank statements (6 mths)','ASIC extract','Lease agreement / tenancy schedule (if applicable)'],
-  'Full Commercial (BANK RM)': ['Group structure chart','2–3 years financials (all entities)','Security register / GSA details','ASIC extracts (all entities)','Trust deed(s) (if applicable)','Existing facility statements across the relationship'],
-  'SMSF': ['SMSF trust deed','Fund financials','Member statements','ID — Trustees','Contract of Sale (if purchasing)','Current loan statement (if refinancing)'],
-  'Business Loan': ['2 years financials (P&L + BS)','ATO Portal / ITRs','Business bank statements (6 mths)','ASIC extract','Security / GSA details'],
-  'Trade & Invoice Finance': ['Debtor ledger / aged receivables','2 years financials','Business bank statements (6 mths)','ASIC extract','Trade references'],
-  'Asset Finance': ['Asset invoice / quote','ID — Driver\'s Licence / Passport','ABN / entity details','Recent BAS','Insurance details'],
-  'Development': ['Feasibility study','Development approval (DA)','Fixed price building contract','QS report','Land title / Contract of Sale','2–3 years financials','Presales evidence (if applicable)'],
-  'Other': ['ID — Driver\'s Licence / Passport','Supporting documents as advised'],
+  'Home Loan': {
+    base: [
+      'Credit Guide & Privacy Statement (attached)',
+      'Fact Find',
+      "Driver's licence (both front & back) and passport",
+      'Two most recent rental statements for investment properties',
+      'Everyday bank account statements (6 months)',
+      'All existing home loan statements (6 months)',
+      'Credit cards / personal loans / leases (most recent statement)',
+      'Superannuation statement (most recent)',
+    ],
+    conditions: {
+      'Construction': ['Building Contract', 'Building Plans', 'Schedule of Payments', 'DA/CDC Approval (if available)'],
+      'Purchase': ['Signed Contract of Sale for the property being purchased', 'Transaction account showing savings for the purchase'],
+      'PAYG': ['Two most recent payslips', "Most recent year's ATO Income Statement", 'Salary transaction account statements (3 months, if different from everyday account)'],
+      'Company': ['Individual Tax Returns & Notices of Assessment (2 years)', 'Business Tax Returns & Financials for all trading entities (2 years)'],
+      'Commercial': ['12 months ATO ICA & ITA portals for all entities'],
+      'Trust': ['Executed and dated Trust Deed, certified by a JP'],
+    },
+  },
+  'Commercial': {
+    base: [
+      'Credit Guide & Privacy Disclosure Agreement (signed)',
+      'Asset & Liability Statement (signed)',
+      'Individual Tax Returns & Notices of Assessment (2 years)',
+      'Business Tax Returns & Financial Statements for all trading entities (2 years)',
+      'YTD Management Financial Statements (Profit & Loss and Balance Sheet)',
+      '12 months ATO portal statements — ICA & ITA, all commercial entities',
+      'Aged Accounts Receivable & Payable ledgers',
+      'Completed invoice trail — Tax Invoice, Purchase Order, Proof of Delivery, Remittance Advice (4 invoices)',
+      'Transaction-specific documents (e.g. Quote/Invoice for the asset, incl. terms of trade)',
+    ],
+    conditions: {
+      'Trust': ['Trust Deed'],
+    },
+  },
+  'SMSF': {
+    base: [
+      'Credit Guide & Privacy Statement',
+      'RION Asset & Liability Statement (completed)',
+    ],
+    conditions: {
+      'Established Fund': ['12 months SMSF bank statements evidencing regular member contributions', 'SMSF tax returns & financial accounts (2 years)'],
+      'New / Recently Established Fund': ['12 months superannuation statements for all SMSF beneficiaries (current fund)', '2 years bank/fund statements being rolled over, evidencing contributions and balances'],
+      'Company': ['Business Tax Returns & Financials for all trading entities (2 years)', 'Individual Tax Returns & Notices of Assessment (2 years)'],
+      'PAYG': ['2 most recent payslips showing super contributions'],
+      'Trust': ['Certified copy of SMSF Trust Deed (if available)'],
+    },
+  },
+  'Asset Finance — Commercial Full Doc': {
+    base: [
+      'Credit Guide & Privacy Disclosure Agreement (signed)',
+      'Asset & Liability Statement (signed)',
+      "Driver's licence (both sides) and Medicare card (or passport)",
+      'Individual Tax Returns & Notices of Assessment (2 years)',
+      'Business Tax Returns & Financial Statements for all trading entities (2 years)',
+      'YTD Management Financial Statements (Profit & Loss and Balance Sheet)',
+      '12 months ATO portal statements — ICA & ITA',
+      'Aged Accounts Receivable & Payable ledgers',
+      'Transaction-specific documents (e.g. Quote/Invoice for the asset, incl. terms of trade)',
+    ],
+    conditions: {},
+  },
+  'Asset Finance — Commercial Low Doc': {
+    base: [
+      'Credit Guide & Privacy Disclosure Agreement (signed)',
+      'Asset & Liability Statement (signed)',
+      "Driver's licence (both sides) and Medicare card (or passport)",
+      'Transaction-specific documents (e.g. Quote/Invoice for the asset, incl. terms of trade)',
+      'Statement for a comparable existing facility, if available (e.g. current vehicle/equipment loan)',
+    ],
+    conditions: {},
+  },
+  'Asset Finance — Personal Use': {
+    base: [
+      'Credit Guide & Privacy Disclosure Agreement (signed)',
+      'Fact Find',
+      "Driver's licence (both sides) and passport",
+      'Two most recent rental statements for investment properties',
+      'Two most recent payslips',
+      "Most recent year's ATO Income Statement",
+      'Transaction-specific documents (e.g. Quote/Invoice for the asset, incl. terms of trade)',
+      'All existing home loan statements (3 months)',
+      'Transaction account showing savings for the purchase (3 months)',
+      'Credit cards / personal loans / leases (most recent statement)',
+      'Superannuation statement (most recent)',
+    ],
+    conditions: {},
+  },
+}
+
+// Best-guess starting template based on the deal's own Category — Cameron
+// can always change it per entity, this just saves a click in the common
+// case.
+function defaultAttachmentTemplate(category) {
+  if (category === 'Residential') return 'Home Loan'
+  if (category === 'SMSF') return 'SMSF'
+  if (category === 'Asset Finance') return 'Asset Finance — Commercial Full Doc'
+  if (['Commercial', 'Full Commercial (BANK RM)', 'Business Loan', 'Trade & Invoice Finance', 'Development'].includes(category)) return 'Commercial'
+  return 'Home Loan'
 }
 
 function Pill({ children, tone='slate' }) {
@@ -1742,35 +1839,204 @@ function StructureTab({ d, editing, set }) {
 
 function AttachmentsTab({ deal, deals, setDeals, editing, d, set }) {
   const att = d._attachments || {}
-  const category = deal.Categories || ''
-  const items = ATTACHMENT_TEMPLATES[category] || ATTACHMENT_TEMPLATES['Other']
-  const checked = att.checked || {}
+  const entities = att.entities || []
 
-  // Checklist toggling saves straight away, same pattern as Contacts/Referrer — no need to enter edit mode just to tick a box.
-  function toggle(item) {
-    const updatedAtt = { ...att, checked: { ...checked, [item]: !checked[item] } }
+  function saveEntities(next) {
+    const updatedAtt = { ...att, entities: next }
     const updated = deals.map(x => x['Transaction Name'] === deal['Transaction Name'] ? { ...x, _attachments: updatedAtt } : x)
     setDeals(updated); saveDeals(updated)
     if (editing) set('_attachments', updatedAtt)
   }
 
+  // Adds any of `texts` not already present (by exact text match) as new
+  // unchecked items — used when a condition gets ticked or the transaction
+  // type changes, so the right template items appear automatically without
+  // ever silently wiping out items Cameron has already edited, removed, or
+  // added by hand. Nothing here is ever auto-removed — removal is always a
+  // deliberate action via the ✕ on that row.
+  function mergeItemsIn(existingItems, texts) {
+    const existingTexts = new Set(existingItems.map(it => it.text))
+    const toAdd = texts.filter(t => !existingTexts.has(t)).map(t => ({ id: `${Date.now()}-${Math.random().toString(36).slice(2,7)}`, text: t, checked: false }))
+    return [...existingItems, ...toAdd]
+  }
+
+  function addEntity() {
+    const template = ATTACHMENT_TEMPLATES[defaultAttachmentTemplate(deal.Categories)]
+    const next = [...entities, {
+      id: Date.now(), label: `Entity ${entities.length + 1}`,
+      transactionType: defaultAttachmentTemplate(deal.Categories),
+      conditions: [], items: mergeItemsIn([], template.base), files: [],
+    }]
+    saveEntities(next)
+  }
+  function updateEntity(id, patch) { saveEntities(entities.map(e => e.id === id ? { ...e, ...patch } : e)) }
+  function removeEntity(id) { saveEntities(entities.filter(e => e.id !== id)) }
+
+  function toggleCondition(id, cond) {
+    const e = entities.find(x => x.id === id)
+    const conds = e.conditions || []
+    const template = ATTACHMENT_TEMPLATES[e.transactionType] || ATTACHMENT_TEMPLATES['Home Loan']
+    const nowSelected = !conds.includes(cond)
+    const patch = { conditions: nowSelected ? [...conds, cond] : conds.filter(c => c !== cond) }
+    // Ticking a condition on brings its items in automatically. Ticking it
+    // off does NOT remove them — they might already be actioned/uploaded,
+    // so removal stays a deliberate ✕ click rather than an automatic side
+    // effect of unticking a box.
+    if (nowSelected) patch.items = mergeItemsIn(e.items || [], template.conditions[cond] || [])
+    updateEntity(id, patch)
+  }
+  function changeTransactionType(id, newType) {
+    const e = entities.find(x => x.id === id)
+    const template = ATTACHMENT_TEMPLATES[newType] || ATTACHMENT_TEMPLATES['Home Loan']
+    updateEntity(id, { transactionType: newType, conditions: [], items: mergeItemsIn(e.items || [], template.base) })
+  }
+  function toggleItemChecked(id, itemId) {
+    const e = entities.find(x => x.id === id)
+    updateEntity(id, { items: e.items.map(it => it.id === itemId ? { ...it, checked: !it.checked } : it) })
+  }
+  function updateItemText(id, itemId, text) {
+    const e = entities.find(x => x.id === id)
+    updateEntity(id, { items: e.items.map(it => it.id === itemId ? { ...it, text } : it) })
+  }
+  function removeItem(id, itemId) {
+    const e = entities.find(x => x.id === id)
+    updateEntity(id, { items: e.items.filter(it => it.id !== itemId) })
+  }
+  function addCustomItem(id, text) {
+    if (!text.trim()) return
+    const e = entities.find(x => x.id === id)
+    updateEntity(id, { items: [...(e.items || []), { id: `${Date.now()}-${Math.random().toString(36).slice(2,7)}`, text: text.trim(), checked: false }] })
+  }
+
+  const [uploading, setUploading] = useState(null)
+  async function uploadFile(id, file) {
+    setUploading(id)
+    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+    const path = `${deal['Transaction Name']}/${id}/${Date.now()}_${safeName}`
+    const res = await sbUploadAttachment(path, file)
+    setUploading(null)
+    if (!res.ok) { notifySaveFailed('attachments', { error: res.error }); return }
+    const e = entities.find(x => x.id === id)
+    updateEntity(id, { files: [...(e.files || []), { name: file.name, path, size: file.size, uploadedAt: new Date().toISOString() }] })
+  }
+  async function removeFile(id, fileIdx) {
+    const e = entities.find(x => x.id === id)
+    const f = e.files[fileIdx]
+    await sbDeleteAttachment(f.path)
+    updateEntity(id, { files: e.files.filter((_, i) => i !== fileIdx) })
+  }
+  async function viewFile(path) {
+    const url = await sbGetAttachmentUrl(path)
+    if (url) window.open(url, '_blank')
+    else notifySaveFailed('attachments', { error: 'Could not generate a link for this file — check the deal-attachments Storage bucket exists.' })
+  }
+
   return (
     <div>
-      <TabCard title="Required Documents" right={<Pill tone="slate">Auto-read: coming soon</Pill>}>
-        {category
-          ? <div style={{ fontSize:11, color:'#7A8090', marginBottom:10 }}>Checklist for <strong style={{color:'#2A3545'}}>{category}</strong> — set in Loan Details. Change the Category there if this isn't the right list.</div>
-          : <div style={{ fontSize:11, color:'#9ca3af', marginBottom:10 }}>No Category set yet — showing the general checklist. Set a Category in Loan Details for the right one.</div>
-        }
-        {items.map((item, i) => (
-          <div key={i} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'9px 4px', borderBottom: i<items.length-1 ? '0.5px solid #f0f0f0' : 'none' }}>
-            <label style={{ display:'flex', alignItems:'center', gap:10, cursor:'pointer', flex:1 }}>
-              <input type="checkbox" checked={!!checked[item]} onChange={()=>toggle(item)} />
-              <span style={{ fontSize:12.5, color: checked[item] ? '#B0B5BD' : '#2A3545', textDecoration: checked[item] ? 'line-through' : 'none' }}>{item}</span>
-            </label>
-          </div>
-        ))}
-      </TabCard>
-      <div style={{ fontSize:11, color:'#9ca3af' }}>Next pass: reading uploaded ID/bank statements/financials to auto-populate Loan Details, Structure and Servicing fields.</div>
+      {entities.length === 0 && (
+        <TabCard>
+          <div style={{ fontSize:12, color:'#7A8090', marginBottom:10 }}>No document checklists yet. Add one for each applicant or entity involved — e.g. one for each individual, one for a company or trust — and pick who's providing each so the right documents show.</div>
+          <button onClick={addEntity} style={addBtnStyle}>+ Add entity checklist</button>
+        </TabCard>
+      )}
+
+      {entities.map((e) => {
+        const template = ATTACHMENT_TEMPLATES[e.transactionType] || ATTACHMENT_TEMPLATES['Home Loan']
+        const conditionKeys = Object.keys(template.conditions || {})
+        const selectedConditions = e.conditions || []
+        const items = e.items || []
+        const doneCount = items.filter(it => it.checked).length
+
+        return (
+          <TabCard key={e.id} right={<button onClick={()=>removeEntity(e.id)} style={rmBtnStyle}>✕ Remove</button>}>
+            <div style={{ display:'flex', gap:10, marginBottom:12, flexWrap:'wrap' }}>
+              <input value={e.label} onChange={ev=>updateEntity(e.id,{label:ev.target.value})} placeholder="e.g. Applicant 1 — John Smith"
+                style={{ border:'1px solid #e8eaed', borderRadius:6, padding:'6px 10px', fontSize:12.5, fontWeight:600, flex:'1 1 220px', fontFamily:'inherit' }}/>
+              <select value={e.transactionType} onChange={ev=>changeTransactionType(e.id, ev.target.value)}
+                style={{ border:'1px solid #e8eaed', borderRadius:6, padding:'6px 10px', fontSize:12, flex:'1 1 200px', fontFamily:'inherit' }}>
+                {Object.keys(ATTACHMENT_TEMPLATES).map(k => <option key={k} value={k}>{k}</option>)}
+              </select>
+              <span style={{ fontSize:10.5, color:'#9ca3af', alignSelf:'center' }}>{doneCount}/{items.length} received</span>
+            </div>
+
+            {conditionKeys.length > 0 && (
+              <div style={{ marginBottom:12 }}>
+                <div style={{ fontSize:10, fontWeight:700, color:'#7A8090', textTransform:'uppercase', marginBottom:6 }}>Who's providing / applicable conditions</div>
+                <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
+                  {conditionKeys.map(c => (
+                    <label key={c} style={{ display:'flex', alignItems:'center', gap:5, fontSize:11, padding:'4px 10px', borderRadius:16, border:`1px solid ${selectedConditions.includes(c)?'#EB99C2':'#e8eaed'}`, background:selectedConditions.includes(c)?'#fdf0f6':'#fff', cursor:'pointer' }}>
+                      <input type="checkbox" checked={selectedConditions.includes(c)} onChange={()=>toggleCondition(e.id,c)} style={{ margin:0 }}/>
+                      {c}
+                    </label>
+                  ))}
+                </div>
+                <div style={{ fontSize:9.5, color:'#9ca3af', marginTop:4 }}>Ticking adds that condition's items below automatically — unticking won't remove anything already added; remove items you don't need with the ✕ on that row.</div>
+              </div>
+            )}
+
+            <div style={{ marginBottom:10 }}>
+              {items.length === 0 && <div style={{ fontSize:11.5, color:'#9ca3af', padding:'6px 0' }}>No items yet — add one below.</div>}
+              {items.map((it, i) => (
+                <div key={it.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'6px 4px', borderBottom: i<items.length-1 ? '0.5px solid #f0f0f0' : 'none' }}>
+                  <input type="checkbox" checked={!!it.checked} onChange={()=>toggleItemChecked(e.id,it.id)} style={{ flexShrink:0 }} />
+                  <input
+                    value={it.text}
+                    onChange={ev=>updateItemText(e.id, it.id, ev.target.value)}
+                    style={{ flex:1, border:'none', background:'transparent', fontSize:12, fontFamily:'inherit', padding:'2px 4px', borderRadius:4, color: it.checked ? '#B0B5BD' : '#2A3545', textDecoration: it.checked ? 'line-through' : 'none' }}
+                    onFocus={ev=>{ ev.target.style.background='#f8f9fa' }}
+                    onBlur={ev=>{ ev.target.style.background='transparent' }}
+                  />
+                  <button onClick={()=>removeItem(e.id,it.id)} style={{...rmBtnStyle, flexShrink:0}}>✕</button>
+                </div>
+              ))}
+              <AddChecklistItemRow onAdd={text=>addCustomItem(e.id, text)} />
+            </div>
+
+            <div>
+              <div style={{ fontSize:10, fontWeight:700, color:'#7A8090', textTransform:'uppercase', marginBottom:6 }}>Uploaded files</div>
+              {(e.files || []).length === 0 && <div style={{ fontSize:11, color:'#9ca3af', marginBottom:6 }}>No files uploaded yet</div>}
+              {(e.files || []).map((f, fi) => (
+                <div key={fi} style={{ display:'flex', alignItems:'center', gap:8, padding:'5px 0' }}>
+                  <span onClick={()=>viewFile(f.path)} style={{ fontSize:11.5, color:'#EB99C2', cursor:'pointer', textDecoration:'underline' }}>{f.name}</span>
+                  <span style={{ fontSize:10, color:'#9ca3af' }}>{f.size ? `${(f.size/1024).toFixed(0)}KB` : ''}</span>
+                  <button onClick={()=>removeFile(e.id,fi)} style={rmBtnStyle}>✕</button>
+                </div>
+              ))}
+              <label style={{ ...addBtnStyle, display:'inline-block', marginTop:8, cursor:'pointer' }}>
+                {uploading === e.id ? 'Uploading…' : '+ Upload file'}
+                <input type="file" style={{ display:'none' }} disabled={uploading === e.id}
+                  onChange={ev => { if (ev.target.files[0]) uploadFile(e.id, ev.target.files[0]); ev.target.value = '' }} />
+              </label>
+            </div>
+          </TabCard>
+        )
+      })}
+
+      {entities.length > 0 && <button onClick={addEntity} style={addBtnStyle}>+ Add another entity checklist</button>}
+    </div>
+  )
+}
+
+// Small "type a new item, press Enter or click Add" row — for one-off
+// requirements a template wouldn't know about (special applications,
+// lender-specific requests, etc).
+function AddChecklistItemRow({ onAdd }) {
+  const [val, setVal] = useState('')
+  function commit() {
+    if (!val.trim()) return
+    onAdd(val)
+    setVal('')
+  }
+  return (
+    <div style={{ display:'flex', gap:8, marginTop:8 }}>
+      <input
+        value={val}
+        onChange={ev=>setVal(ev.target.value)}
+        onKeyDown={ev=>{ if (ev.key==='Enter') { ev.preventDefault(); commit() } }}
+        placeholder="Add a document for this specific application…"
+        style={{ flex:1, border:'1px solid #e8eaed', borderRadius:6, padding:'6px 10px', fontSize:12, fontFamily:'inherit' }}
+      />
+      <button onClick={commit} style={addBtnStyle}>+ Add item</button>
     </div>
   )
 }
