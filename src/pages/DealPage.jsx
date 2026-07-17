@@ -1322,9 +1322,12 @@ function StrategyTab({ deal, updateDeal }) {
                       <button onClick={()=>rmEquityTable(i)} style={rmBtnStyle}>Remove table</button>
                     </div>
                   </div>
-                  <MiniTable widths={['18%','16%','8%','15%','13%','15%','14%','4%']} columns={['Property','Lender','LVR %','Valuation','LV','Debt','Equity','']} rows={(et.rows||[]).map((r,ri) => {
+                  <MiniTable widths={['17%','14%','7%','13%','10%','13%','10%','13%','3%']} columns={['Property','Lender','LVR %','Valuation','LV','Debt','Actual LVR','Equity','']} rows={(et.rows||[]).map((r,ri) => {
                     const lv = (Number(r.valuation)||0) * (Number(r.lvr)||0) / 100
                     const equity = lv - (Number(r.debt)||0)
+                    const val = Number(r.valuation)||0
+                    const debt = Number(r.debt)||0
+                    const actualLVR = val > 0 ? (debt / val * 100) : null
                     return [
                       <LiveText small value={r.property} onCommit={v=>updEquityRow(i,ri,'property',v)}/>,
                       <LiveText small value={r.lender} onCommit={v=>updEquityRow(i,ri,'lender',v)}/>,
@@ -1332,6 +1335,11 @@ function StrategyTab({ deal, updateDeal }) {
                       <LiveNumberFormatted small value={r.valuation} onCommit={v=>updEquityRow(i,ri,'valuation',v)}/>,
                       fmtM(lv),
                       <LiveNumberFormatted small value={r.debt} onCommit={v=>updEquityRow(i,ri,'debt',v)}/>,
+                      // Calculated only — debt against the bank's actual
+                      // valuation, not editable. Distinct from the LVR %
+                      // input above, which is an assumed/target rate used
+                      // to work out lending value, not what's actually owed.
+                      <span style={{ color:'#7A8090' }}>{actualLVR != null ? `${actualLVR.toFixed(1)}%` : '—'}</span>,
                       <span style={{ color: equity < 0 ? '#dc2626' : '#16a34a', fontWeight:600 }}>{fmtM(equity)}</span>,
                       <button onClick={()=>rmEquityRow(i,ri)} style={rmBtnStyle}>✕</button>,
                     ]
