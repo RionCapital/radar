@@ -29,6 +29,7 @@ import CommissionImportPage from './pages/CommissionImportPage'
 import SecurityReviewEmail from './pages/SecurityReviewEmail'
 import EmailBuilder from './pages/EmailBuilder'
 import Marketing from './pages/Marketing'
+import Planner from './pages/Planner'
 
 // Top-level error boundary — prevents one broken page crashing the whole app
 class AppErrorBoundary extends React.Component {
@@ -343,6 +344,7 @@ export default function App() {
           <Route path="/radar/clients/:name/security-review/:secIdx" element={<RequireAuth><SecurityReviewEmail clients={clients} updateClient={updateClient} /></RequireAuth>} />
           <Route path="/radar/clients/:name/email" element={<RequireAuth><EmailBuilder clients={clients} updateClient={updateClient} /></RequireAuth>} />
           <Route path="/marketing" element={<RequireAuth><Marketing /></RequireAuth>} />
+          <Route path="/planner" element={<RequireAuth><Planner /></RequireAuth>} />
           <Route path="/radar/studio" element={<RequireAuth><ProjectStudio /></RequireAuth>} />
         </Routes>
       </AppErrorBoundary>

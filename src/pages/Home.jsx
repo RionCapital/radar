@@ -24,7 +24,7 @@ const TOOLS = [
   { id: 'crm',       label: 'CRM',       icon: icon_crm,       desc: 'Pipeline management',       path: '/crm',             active: true  },
   { id: 'radar',     label: 'Rradar',     icon: icon_radar,     desc: 'Relationship Management',   path: '/radar/dashboard', active: true  },
   { id: 'marketing', label: 'Marketing', icon: icon_marketing, desc: 'Client & referral lists',   path: '/marketing',       active: true  },
-  { id: 'planner',   label: 'Planner',   icon: icon_planner,   desc: 'Weekly & monthly organiser',path: null,               active: false },
+  { id: 'planner',   label: 'Planner',   icon: icon_planner,   desc: 'Weekly & monthly organiser',path: '/planner',         active: true  },
   { id: 'studio',    label: 'Project Studio', icon: icon_studio,  desc: 'Projects & milestones',     path: '/radar/studio',    active: true  },
   { id: 'settings',  label: 'Settings',  icon: null,            desc: 'Rates, preferences & users', path: '/settings',        active: true  },
 ]
