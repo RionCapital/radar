@@ -400,10 +400,15 @@ function SideTabs({ tabs, active, onChange }) {
   )
 }
 
-function MiniTable({ columns, rows, empty='No rows yet' }) {
+function MiniTable({ columns, rows, empty='No rows yet', widths }) {
   return (
     <div style={{ overflowX:'auto' }}>
-      <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+      <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12, tableLayout: widths ? 'fixed' : 'auto' }}>
+        {widths && (
+          <colgroup>
+            {widths.map((w,i) => <col key={i} style={{ width:w }} />)}
+          </colgroup>
+        )}
         <thead>
           <tr>
             {columns.map(c => (
@@ -462,6 +467,32 @@ function LiveNumber({ value, onCommit, placeholder, step, small }) {
       placeholder={placeholder}
       onChange={e=>setVal(e.target.value)}
       onBlur={()=>{
+        const num = val === '' ? '' : Number(val)
+        if (num !== (value ?? '')) onCommit(num)
+      }}
+    />
+  )
+}
+// Same commit-on-blur behaviour as LiveNumber, but displays with comma
+// thousand-separators once you click away — e.g. typing 1400000 shows
+// 1,400,000 after leaving the field. Uses type="text" rather than
+// type="number" because a native number input rejects commas outright, the
+// same issue that caused the LVR alignment bug earlier in this file.
+function LiveNumberFormatted({ value, onCommit, placeholder, small }) {
+  const [val, setVal] = useState(value ?? '')
+  const [focused, setFocused] = useState(false)
+  useEffect(() => { if (!focused) setVal(value ?? '') }, [value, focused])
+  const display = focused ? val : (value !== '' && value != null ? Number(value).toLocaleString() : '')
+  return (
+    <input
+      style={small ? rowInp : inp}
+      type="text" inputMode="decimal"
+      value={display}
+      placeholder={placeholder}
+      onFocus={()=>{ setFocused(true); setVal(value ?? '') }}
+      onChange={e=>setVal(e.target.value.replace(/[^0-9.]/g,''))}
+      onBlur={()=>{
+        setFocused(false)
         const num = val === '' ? '' : Number(val)
         if (num !== (value ?? '')) onCommit(num)
       }}
@@ -1291,17 +1322,17 @@ function StrategyTab({ deal, updateDeal }) {
                       <button onClick={()=>rmEquityTable(i)} style={rmBtnStyle}>Remove table</button>
                     </div>
                   </div>
-                  <MiniTable columns={['Property','Lender','LVR %','Valuation','LV','Debt','Equity','']} rows={(et.rows||[]).map((r,ri) => {
+                  <MiniTable widths={['18%','16%','8%','15%','13%','15%','14%','4%']} columns={['Property','Lender','LVR %','Valuation','LV','Debt','Equity','']} rows={(et.rows||[]).map((r,ri) => {
                     const lv = (Number(r.valuation)||0) * (Number(r.lvr)||0) / 100
                     const equity = lv - (Number(r.debt)||0)
                     return [
                       <LiveText small value={r.property} onCommit={v=>updEquityRow(i,ri,'property',v)}/>,
                       <LiveText small value={r.lender} onCommit={v=>updEquityRow(i,ri,'lender',v)}/>,
                       <LiveNumber small value={r.lvr} onCommit={v=>updEquityRow(i,ri,'lvr',v)}/>,
-                      <LiveNumber small value={r.valuation} onCommit={v=>updEquityRow(i,ri,'valuation',v)}/>,
+                      <LiveNumberFormatted small value={r.valuation} onCommit={v=>updEquityRow(i,ri,'valuation',v)}/>,
                       fmtM(lv),
-                      <LiveNumber small value={r.debt} onCommit={v=>updEquityRow(i,ri,'debt',v)}/>,
-                      fmtM(equity),
+                      <LiveNumberFormatted small value={r.debt} onCommit={v=>updEquityRow(i,ri,'debt',v)}/>,
+                      <span style={{ color: equity < 0 ? '#dc2626' : '#16a34a', fontWeight:600 }}>{fmtM(equity)}</span>,
                       <button onClick={()=>rmEquityRow(i,ri)} style={rmBtnStyle}>✕</button>,
                     ]
                   })} empty="No properties in this table yet"/>
