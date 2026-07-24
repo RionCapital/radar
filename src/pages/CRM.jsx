@@ -1,11 +1,9 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react'
 import ReactDOM from 'react-dom'
 import { useNavigate } from 'react-router-dom'
-import { sbSaveDeals } from '../lib/supabase'
-import { loadDeals, syncDealsFromSupabase } from '../lib/deals'
+import { loadDeals, saveDeals as libSaveDeals, syncDealsFromSupabase } from '../lib/deals'
 import { loadSettings, calcUpfront } from '../lib/settings'
 import { fmt } from '../lib/data'
-import { notifySaveFailed } from '../lib/saveStatus'
 import CRMTopbar, { getBusinessDaysLeft, MONTH_NAMES } from '../components/CRMTopbar'
 import NewOpportunityModal from '../components/NewOpportunityModal'
 import { SettleModal, applySettlement } from '../components/SettleModal'
@@ -347,7 +345,7 @@ export default function CRM({ clients, onUpdateClients }) {
   const [searchTerm, setSearchTerm] = useState('')
   const [showWithdrawn, setShowWithdrawn] = useState(false)
 
-  function saveDeals(d) { setDeals(d); try { localStorage.setItem('rion-crm-deals',JSON.stringify(d)) } catch {} sbSaveDeals(d).then(ok => { if (!ok) notifySaveFailed('deals') }).catch(err => notifySaveFailed('deals', { error: String(err) })) }
+  function saveDeals(d) { setDeals(d); libSaveDeals(d) }
 
   function updateFinanceDate(deal, newDate) {
     saveDeals(deals.map(d => d['Transaction Name'] === deal['Transaction Name']
@@ -765,8 +763,7 @@ export default function CRM({ clients, onUpdateClients }) {
           onCreated={(newDeal) => {
             setDeals(prev => {
               const updated = [...prev, newDeal]
-              try { localStorage.setItem('rion-crm-deals', JSON.stringify(updated)) } catch {}
-              sbSaveDeals(updated).catch(() => {})
+              libSaveDeals(updated)
               return updated
             })
             navigate(`/crm/deal/${encodeURIComponent(newDeal['Transaction Name'])}`)

@@ -458,7 +458,8 @@ function ReferrerClientsPanel({ contact, rradarClients, allClients, onSave }) {
   // ── CRM deals (ALL statuses) matching this referrer ───────────────────────
   const allCrmDeals = useMemo(() => {
     try {
-      const deals = JSON.parse(localStorage.getItem('rion-crm-deals') || '[]')
+      const parsed = JSON.parse(localStorage.getItem('rion-crm-deals') || '[]')
+      const deals = Array.isArray(parsed) ? parsed : (Array.isArray(parsed?.data) ? parsed.data : [])
       const rn = referrerName.toLowerCase()
       return deals.filter(d => {
         const ref = (d['_referrers'] || []).map(r => r.name.toLowerCase())

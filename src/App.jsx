@@ -2,7 +2,8 @@ import React, { useState, useCallback, useEffect } from 'react'
 import { Routes, Route, useLocation, Navigate } from 'react-router-dom'
 import { loadClients, saveClients, syncFromSupabase } from './lib/data'
 import { syncSettingsFromSupabase } from './lib/settings'
-import { sbSaveDeals, sbSaveClients, sbSaveSettings } from './lib/supabase'
+import { sbSaveClients, sbSaveSettings } from './lib/supabase'
+import { saveDeals as libSaveDeals } from './lib/deals'
 import { COMMISSION_HISTORY_BY_ACC, COMMISSION_SEED_VERSION } from './lib/commissionSeed'
 import Topbar from './components/Topbar'
 import Login from './pages/Login'
@@ -68,13 +69,19 @@ export default function App() {
   const [clients, setClients] = useState(() => loadClients())
   const [showBirthdays, setShowBirthdays] = useState(true)
   const [crmDeals, setCrmDeals] = useState(() => {
-    try { const s = localStorage.getItem('rion-crm-deals'); if (s) return JSON.parse(s) } catch {}
+    try {
+      const s = localStorage.getItem('rion-crm-deals')
+      if (s) {
+        const parsed = JSON.parse(s)
+        if (Array.isArray(parsed)) return parsed
+        if (parsed && Array.isArray(parsed.data)) return parsed.data
+      }
+    } catch {}
     return null // CRM page loads its own data
   })
   function updateCrmDeals(updated) {
     setCrmDeals(updated)
-    try { localStorage.setItem('rion-crm-deals', JSON.stringify(updated)) } catch {}
-    sbSaveDeals(updated).catch(() => {})
+    libSaveDeals(updated)
   } // show on load
 
   // ─── Supabase startup sync ───────────────────────────────────────────────
@@ -167,16 +174,15 @@ export default function App() {
         return prev
       })
 
-      // 2. Push local deals up to Supabase
-      try {
-        const localDeals = localStorage.getItem('rion-crm-deals')
-        if (localDeals) {
-          const parsed = JSON.parse(localDeals)
-          if (parsed && Array.isArray(parsed)) {
-            sbSaveDeals(parsed).catch(e => console.warn('deals push failed:', e))
-          }
-        }
-      } catch (e) { console.warn('deals read failed:', e) }
+      // Deals sync (proper newer-wins comparison, not a blind push) now
+      // happens via syncDealsFromSupabase() on the CRM/Deal pages
+      // themselves — this used to unconditionally push whatever was in
+      // localStorage up to Supabase on every mount, with no regard for
+      // whether it was actually the freshest copy. That blind push was
+      // part of why deals didn't sync properly across devices/sessions;
+      // removed rather than fixed in place, since the proper mechanism
+      // already exists and doing both would just reintroduce the same
+      // kind of race we've already had to fix twice for clients.
 
       // 3. Push settings up to Supabase
       try {

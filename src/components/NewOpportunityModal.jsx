@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { sbSaveDeals } from '../lib/supabase'
-import { notifySaveFailed } from '../lib/saveStatus'
+import { loadDeals, saveDeals as libSaveDeals } from '../lib/deals'
 import { mapRradarContactToDealContact } from '../lib/data'
 
 const STAGES = ['1. Lead','2. Strategy','3. Pre-Lodged','4. Lodged','5. Conditional','6. Unconditional','7. Settled','8. Withdrawn']
@@ -45,17 +44,13 @@ function loadClients() {
   } catch { return [] }
 }
 
-// Load deals from localStorage
-function loadDeals() {
-  try {
-    const s = localStorage.getItem('rion-crm-deals')
-    return s ? JSON.parse(s) : []
-  } catch { return [] }
-}
+// Deals loading now comes from lib/deals.js (imported above) — this used to
+// be its own local copy that assumed the old plain-array storage format,
+// which broke silently once saves started writing the wrapped
+// {data, savedAt} format.
 
 function saveDeals(deals) {
-  try { localStorage.setItem('rion-crm-deals', JSON.stringify(deals)) } catch {}
-  sbSaveDeals(deals).then(ok => { if (!ok) notifySaveFailed('deals') }).catch(err => notifySaveFailed('deals', { error: String(err) }))
+  libSaveDeals(deals)
 }
 
 export default function NewOpportunityModal({ onClose, onCreated, prefillClientName = '' }) {

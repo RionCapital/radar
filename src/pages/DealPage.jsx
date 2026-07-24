@@ -2317,7 +2317,7 @@ export default function DealPage({ onUpdateDeals, clients = [], onUpdateClients 
   async function deleteDeal() {
     const updated = deals.filter(x => x['Transaction Name'] !== decodedName)
     setDeals(updated)
-    try { localStorage.setItem('rion-crm-deals', JSON.stringify(updated)) } catch {}
+    try { localStorage.setItem('rion-crm-deals', JSON.stringify({ data: updated, savedAt: Date.now() })) } catch {}
     if (onUpdateDeals) onUpdateDeals(updated)
     // Deletion goes through its own dedicated cloud path rather than the
     // regular save — the regular save's merge-safety logic exists to

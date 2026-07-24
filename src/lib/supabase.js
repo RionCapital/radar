@@ -105,54 +105,72 @@ async function _doSaveClients(payload) {
 export async function sbLoadDeals() {
   const { data, error } = await supabase
     .from('deals')
-    .select('data')
+    .select('data,updated_at')
     .eq('id', 1)
     .single()
   if (error || !data) return null
   return data.data
 }
 
-export async function sbSaveDeals(deals) {
-  return queued('deals', () => _doSaveDeals(deals))
+export async function sbSaveDeals(payload) {
+  return queued('deals', () => _doSaveDeals(payload))
 }
 
-async function _doSaveDeals(deals) {
+async function _doSaveDeals(payload) {
   try {
-    // Merge-safe write. Every save previously pushed the caller's full local
-    // array straight over whatever Supabase held — so a save from one
-    // device/tab could silently wipe a deal that was added or edited
-    // elsewhere in the meantime (the same shape of bug that lost the
-    // April/May commission data). Before writing, pull the freshest cloud
-    // copy and fold back in any deal that exists there but is missing from
-    // what we're about to write, keyed on 'Transaction Name'.
-    //
-    // This lives here rather than in deals.js because CRM.jsx and
-    // NewOpportunityModal.jsx each define their own local saveDeals()
-    // wrapper that calls sbSaveDeals() directly, bypassing deals.js
-    // entirely — putting the merge here protects every save path at once.
-    //
+    // Merge-safe write, same reasoning as sbSaveClients above — plus the
+    // same staleness guard. Deals previously had NO timestamp concept at
+    // all, unlike clients: this function used to just merge blindly by
+    // 'Transaction Name' with no sense of which side was newer, and the
+    // callers wrote/read a plain array with no savedAt. That's the actual
+    // reason cross-device sync silently failed for deals while it worked
+    // fine for clients/marketing — a browser that already had ANY deals
+    // cached would never pull fresh cloud data again (see
+    // syncDealsFromSupabase in lib/deals.js), and saves carried no
+    // freshness signal to protect against a stale write clobbering a
+    // newer one either. This brings deals up to the same standard as
+    // clients, not just a patch.
+    const { data: existing } = await supabase
+      .from('deals')
+      .select('data,updated_at')
+      .eq('id', 1)
+      .single()
+
+    const incomingArr = Array.isArray(payload) ? payload : (payload?.data || [])
+    const incomingLastSyncedAt = Array.isArray(payload) ? 0 : (payload?.lastSyncedAt || 0)
+    const cloudWrapped = existing?.data
+    const cloudArr = Array.isArray(cloudWrapped) ? cloudWrapped : (cloudWrapped?.data || [])
+    const cloudUpdatedAt = existing?.updated_at ? new Date(existing.updated_at).getTime() : 0
+
+    const STALE_THRESHOLD_MS = 5 * 60 * 1000
+    const isStale = cloudUpdatedAt > 0 && incomingLastSyncedAt > 0 && (cloudUpdatedAt - incomingLastSyncedAt) > STALE_THRESHOLD_MS
+
+    let mergedArr
+    if (isStale && Array.isArray(cloudArr) && cloudArr.length > 0) {
+      const cloudNames = new Set(cloudArr.map(d => d['Transaction Name']))
+      const newFromStaleSave = incomingArr.filter(d => !cloudNames.has(d['Transaction Name']))
+      mergedArr = [...cloudArr, ...newFromStaleSave]
+      console.warn(`[sbSaveDeals] Stale save detected (session last synced ${Math.round((cloudUpdatedAt - incomingLastSyncedAt)/60000)} min before the cloud's last update) — kept cloud data for existing deals, only added ${newFromStaleSave.length} new one(s).`)
+    } else {
+      mergedArr = incomingArr
+      if (Array.isArray(cloudArr) && cloudArr.length > 0) {
+        const localNames = new Set(incomingArr.map(d => d['Transaction Name']))
+        const cloudOnly = cloudArr.filter(d => !localNames.has(d['Transaction Name']))
+        if (cloudOnly.length > 0) mergedArr = [...incomingArr, ...cloudOnly]
+      }
+    }
+
     // IMPORTANT: this recovery logic assumes anything missing from the local
     // write is missing by accident (a stale save), never on purpose. Now
     // that a real "Delete deal" exists (see sbDeleteDeal below), deletion
     // deliberately does NOT go through this function — it would otherwise
     // get silently undone by the exact protection meant to prevent data
     // loss.
-    const { data: existing } = await supabase
-      .from('deals')
-      .select('data')
-      .eq('id', 1)
-      .single()
-
-    let merged = deals
-    if (existing?.data && Array.isArray(existing.data)) {
-      const localNames = new Set(deals.map(d => d['Transaction Name']))
-      const cloudOnly = existing.data.filter(d => !localNames.has(d['Transaction Name']))
-      if (cloudOnly.length > 0) merged = [...deals, ...cloudOnly]
-    }
+    const mergedPayload = Array.isArray(payload) ? mergedArr : { ...payload, data: mergedArr }
 
     const { error } = await supabase
       .from('deals')
-      .upsert({ id: 1, data: merged, updated_at: new Date().toISOString() })
+      .upsert({ id: 1, data: mergedPayload, updated_at: new Date().toISOString() })
     return !error
   } catch {
     return false

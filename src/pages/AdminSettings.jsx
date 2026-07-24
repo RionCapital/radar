@@ -76,9 +76,15 @@ export default function AdminSettings() {
   ]
 
   // ── Data backup / restore ──────────────────────────────────────────────────
+  // 'rion-radar-clients-v12' and 'rion-settings' below were stale — the
+  // actual keys moved to v13 and -v1 respectively a while back, so backup
+  // and restore had silently been missing both entirely, with no error to
+  // show for it. Found while investigating the CRM deals sync bug.
   const BACKUP_KEYS = [
-    'rion-radar-clients-v12',
+    'rion-radar-clients-v13',
+    'rion-radar-clients-lastsync',
     'rion-crm-deals',
+    'rion-crm-deals-lastsync',
     'rion-marketing-referrers',
     'rion-marketing-clients',
     'rion-marketing-lenders',
@@ -86,7 +92,7 @@ export default function AdminSettings() {
     'rion-radar-ticked',
     'rion-comm-seed-version',
     'rion-marketing-referrers-version',
-    'rion-settings',
+    'rion-settings-v1',
   ]
 
   function exportBackup() {
