@@ -874,6 +874,7 @@ function LoanDetailsTab({ deal, updateDeal, deals, setDeals, clients }) {
 // stays sourced from the commission statement alone, deliberately, to
 // avoid any risk of double-counting real money.
 function CommissionTab({ deal, updateDeal }) {
+  const fmtAmt = v => v ? `$${Number(v).toLocaleString()}` : '—'
   const ov = deal._commission || {}
   const standardRate = getUpfrontRate(deal.Categories) * 100
   const isOverridden = dealCommissionIsOverridden(deal)
