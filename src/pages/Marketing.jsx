@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { loadClients } from '../lib/data'
 import { sbLoadMarketing, sbSaveMarketing } from '../lib/supabase'
-import { loadSettings } from '../lib/settings'
+import { loadSettings, dealUpfrontCommission } from '../lib/settings'
 
 const C = {
   navy:    '#3D4F6B',
@@ -670,6 +670,9 @@ function ReferrerClientsPanel({ contact, rradarClients, allClients, onSave }) {
                 <div style={{ textAlign:'right', flexShrink:0 }}>
                   <div style={{ fontSize:11, fontWeight:700, color:C.pinkBtn, fontFamily:'Montserrat,sans-serif' }}>
                     {d.Amount ? `$${Number(d.Amount).toLocaleString()}` : '—'}
+                  </div>
+                  <div style={{ fontSize:9, color:'#2A7A2A', fontFamily:'Montserrat,sans-serif', marginTop:1 }}>
+                    {d.Amount ? `~$${dealUpfrontCommission(d).toLocaleString()} upfront` : ''}
                   </div>
                   <div style={{ fontSize:9, fontWeight:600, color:col, background:col+'20',
                     padding:'1px 6px', borderRadius:8, fontFamily:'Montserrat,sans-serif', marginTop:2 }}>

@@ -2,7 +2,7 @@ import React, { useState, useMemo, useRef, useEffect } from 'react'
 import ReactDOM from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { loadDeals, saveDeals as libSaveDeals, syncDealsFromSupabase } from '../lib/deals'
-import { loadSettings, calcUpfront } from '../lib/settings'
+import { loadSettings, calcUpfront, dealUpfrontCommission } from '../lib/settings'
 import { fmt } from '../lib/data'
 import CRMTopbar, { getBusinessDaysLeft, MONTH_NAMES } from '../components/CRMTopbar'
 import NewOpportunityModal from '../components/NewOpportunityModal'
@@ -216,13 +216,13 @@ function ForecastPanel({ deals, settings }) {
   function calcColUpfront(colIdx) {
     return stageRows.filter(r=>!['7. Settled','8. Withdrawn'].includes(r.stage)).reduce((sum, r) => {
       const colDeals = deals.filter(d => d.Status===r.stage && d['Month of Settlement']?.startsWith(months[colIdx]))
-      return sum + colDeals.reduce((s,d) => s + calcUpfront(d.Amount, d.Categories), 0)
+      return sum + colDeals.reduce((s,d) => s + dealUpfrontCommission(d), 0)
     }, 0)
   }
   function calcBeyondUpfront() {
     return stageRows.filter(r=>!['7. Settled','8. Withdrawn'].includes(r.stage)).reduce((sum, r) => {
       const bDeals = deals.filter(d => d.Status===r.stage && d['Month of Settlement'] && !months.some(m=>d['Month of Settlement'].startsWith(m)))
-      return sum + bDeals.reduce((s,d) => s + calcUpfront(d.Amount, d.Categories), 0)
+      return sum + bDeals.reduce((s,d) => s + dealUpfrontCommission(d), 0)
     }, 0)
   }
 
@@ -545,7 +545,7 @@ export default function CRM({ clients, onUpdateClients }) {
                   const bc = BAND_COLORS[band]
                   const activeTotal = monthDeals.filter(d=>ACTIVE_STAGES.includes(d.Status)).reduce((s,d)=>s+(d.Amount||0),0)
                   const total = monthDeals.reduce((s,d)=>s+(d.Amount||0),0)
-                  const potUpfront = monthDeals.filter(d=>ACTIVE_STAGES.includes(d.Status)).reduce((s,d)=>s+calcUpfront(d.Amount,d.Categories),0)
+                  const potUpfront = monthDeals.filter(d=>ACTIVE_STAGES.includes(d.Status)).reduce((s,d)=>s+dealUpfrontCommission(d),0)
                   return (
                     <React.Fragment key={month}>
                       <tr>

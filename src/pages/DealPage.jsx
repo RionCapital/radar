@@ -7,7 +7,7 @@ import { notifySaveFailed } from '../lib/saveStatus'
 import CRMTopbar from '../components/CRMTopbar'
 import ReferrerPicker from '../components/ReferrerPicker'
 import { SettleModal, applySettlement } from '../components/SettleModal'
-import { calcUpfront, getUpfrontRate } from '../lib/settings'
+import { calcUpfront, getUpfrontRate, dealUpfrontCommission, dealUpfrontRateEffective, dealCommissionIsOverridden } from '../lib/settings'
 import { mapRradarContactToDealContact } from '../lib/data'
 
 const STAGES = ['1. Lead','2. Strategy','3. Pre-Lodged','4. Lodged','5. Conditional','6. Unconditional','7. Settled','8. Withdrawn']
@@ -779,6 +779,7 @@ function LoanDetailsTab({ deal, updateDeal, deals, setDeals, clients }) {
   const LOAN_DETAILS_SUBS = [
     { id:'details', label:'Loan Details' },
     { id:'contacts', label:'Clients & Contacts' },
+    { id:'commission', label:'Commission' },
   ]
 
   return (
@@ -821,8 +822,11 @@ function LoanDetailsTab({ deal, updateDeal, deals, setDeals, clients }) {
               <TabCard title="Estimated commission">
                 <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
                   <div style={{ background:'#f8f9fa', borderRadius:8, padding:'10px 12px' }}>
-                    <div style={{ fontSize:10, color:'#9ca3af' }}>Est. upfront ({(getUpfrontRate(deal.Categories)*100).toFixed(2)}%)</div>
-                    <div style={{ fontSize:16, fontWeight:700, color:'#22c55e', marginTop:2 }}>{deal.Amount ? `$${calcUpfront(deal.Amount, deal.Categories).toLocaleString()}` : '—'}</div>
+                    <div style={{ fontSize:10, color:'#9ca3af', display:'flex', alignItems:'center', gap:6 }}>
+                      Est. upfront ({dealUpfrontRateEffective(deal).toFixed(2)}%)
+                      {dealCommissionIsOverridden(deal) && <span style={{ fontSize:9, fontWeight:700, color:'#fff', background:'#EB99C2', borderRadius:10, padding:'1px 6px' }}>Negotiated</span>}
+                    </div>
+                    <div style={{ fontSize:16, fontWeight:700, color:'#22c55e', marginTop:2 }}>{deal.Amount ? `$${dealUpfrontCommission(deal).toLocaleString()}` : '—'}</div>
                   </div>
                   <div style={{ background:'#f8f9fa', borderRadius:8, padding:'10px 12px' }}>
                     <div style={{ fontSize:10, color:'#9ca3af' }}>Deal amount</div>
@@ -855,7 +859,100 @@ function LoanDetailsTab({ deal, updateDeal, deals, setDeals, clients }) {
             </TabCard>
           </div>
         )}
+
+        {sub === 'commission' && <CommissionTab deal={deal} updateDeal={updateDeal} />}
       </div>
+    </div>
+  )
+}
+
+// Commission for this specific deal — defaults to the standard category
+// rate from Settings, with the ability to override for a negotiated
+// facility. This is forecasting information only: it feeds the CRM
+// Pipeline forecast and Marketing's Inflight Deals view for deals not yet
+// settled. It never writes anywhere near a client's actual income — that
+// stays sourced from the commission statement alone, deliberately, to
+// avoid any risk of double-counting real money.
+function CommissionTab({ deal, updateDeal }) {
+  const ov = deal._commission || {}
+  const standardRate = getUpfrontRate(deal.Categories) * 100
+  const isOverridden = dealCommissionIsOverridden(deal)
+  const mode = ov.upfrontAmountOverride !== undefined && ov.upfrontAmountOverride !== null && ov.upfrontAmountOverride !== ''
+    ? 'amount'
+    : (ov.upfrontRateOverride !== undefined && ov.upfrontRateOverride !== null && ov.upfrontRateOverride !== '' ? 'rate' : 'default')
+
+  function setMode(newMode) {
+    if (newMode === 'default') {
+      updateDeal({ _commission: { ...ov, upfrontRateOverride: null, upfrontAmountOverride: null } })
+    } else if (newMode === 'rate') {
+      updateDeal({ _commission: { ...ov, upfrontAmountOverride: null, upfrontRateOverride: ov.upfrontRateOverride ?? standardRate } })
+    } else if (newMode === 'amount') {
+      updateDeal({ _commission: { ...ov, upfrontRateOverride: null, upfrontAmountOverride: ov.upfrontAmountOverride ?? dealUpfrontCommission(deal) } })
+    }
+  }
+
+  return (
+    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
+      <TabCard title="Commission — This Deal">
+        <div style={{ fontSize:12, color:'#7A8090', marginBottom:14 }}>
+          <strong style={{color:'#2A3545'}}>{deal.Categories || 'No category set'}</strong> deals are set to <strong style={{color:'#2A3545'}}>{standardRate.toFixed(2)}%</strong> upfront in Settings. Use this if a facility has a negotiated rate that's different from the standard.
+        </div>
+
+        <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:16 }}>
+          <label style={{ display:'flex', alignItems:'center', gap:8, padding:'9px 12px', borderRadius:7, border:`1.5px solid ${mode==='default'?'#3D4F6B':'#e8eaed'}`, background:mode==='default'?'#f0f2f5':'#fff', cursor:'pointer' }}>
+            <input type="radio" checked={mode==='default'} onChange={()=>setMode('default')} />
+            <div>
+              <div style={{ fontSize:12, fontWeight:600, color:'#2A3545' }}>Use category rate ({standardRate.toFixed(2)}%)</div>
+              <div style={{ fontSize:10.5, color:'#7A8090' }}>Standard rate, from Settings — this is the default for every deal.</div>
+            </div>
+          </label>
+          <label style={{ display:'flex', alignItems:'center', gap:8, padding:'9px 12px', borderRadius:7, border:`1.5px solid ${mode==='rate'?'#EB99C2':'#e8eaed'}`, background:mode==='rate'?'#fdf0f6':'#fff', cursor:'pointer' }}>
+            <input type="radio" checked={mode==='rate'} onChange={()=>setMode('rate')} />
+            <div style={{ flex:1 }}>
+              <div style={{ fontSize:12, fontWeight:600, color:'#2A3545' }}>Negotiated rate (%)</div>
+              {mode==='rate' && (
+                <div style={{ display:'flex', alignItems:'center', gap:6, marginTop:6 }}>
+                  <input type="number" step="0.01" value={ov.upfrontRateOverride ?? ''} onChange={e=>updateDeal({ _commission:{ ...ov, upfrontRateOverride: e.target.value===''?'':Number(e.target.value), upfrontAmountOverride:null } })}
+                    style={{ width:90, border:'1px solid #e8eaed', borderRadius:5, padding:'5px 8px', fontSize:12, fontFamily:'inherit' }} />
+                  <span style={{ fontSize:11, color:'#7A8090' }}>% of deal amount ({fmtAmt(deal.Amount)})</span>
+                </div>
+              )}
+            </div>
+          </label>
+          <label style={{ display:'flex', alignItems:'center', gap:8, padding:'9px 12px', borderRadius:7, border:`1.5px solid ${mode==='amount'?'#EB99C2':'#e8eaed'}`, background:mode==='amount'?'#fdf0f6':'#fff', cursor:'pointer' }}>
+            <input type="radio" checked={mode==='amount'} onChange={()=>setMode('amount')} />
+            <div style={{ flex:1 }}>
+              <div style={{ fontSize:12, fontWeight:600, color:'#2A3545' }}>Negotiated flat amount ($)</div>
+              {mode==='amount' && (
+                <div style={{ display:'flex', alignItems:'center', gap:6, marginTop:6 }}>
+                  <span style={{ fontSize:12, color:'#7A8090' }}>$</span>
+                  <input type="number" value={ov.upfrontAmountOverride ?? ''} onChange={e=>updateDeal({ _commission:{ ...ov, upfrontAmountOverride: e.target.value===''?'':Number(e.target.value), upfrontRateOverride:null } })}
+                    style={{ width:120, border:'1px solid #e8eaed', borderRadius:5, padding:'5px 8px', fontSize:12, fontFamily:'inherit' }} />
+                </div>
+              )}
+            </div>
+          </label>
+        </div>
+
+        <div>
+          <div style={{ fontSize:10, fontWeight:700, color:'#7A8090', textTransform:'uppercase', marginBottom:6 }}>Note (optional)</div>
+          <textarea value={ov.note||''} onChange={e=>updateDeal({ _commission:{ ...ov, note:e.target.value } })} placeholder="e.g. Negotiated with lender due to volume, or non-bank asset finance facility"
+            style={{ width:'100%', minHeight:60, border:'1px solid #e8eaed', borderRadius:7, padding:'8px 10px', fontSize:12, fontFamily:'inherit', boxSizing:'border-box', resize:'vertical' }} />
+        </div>
+      </TabCard>
+
+      <TabCard title="Effective Commission">
+        <div style={{ background:'#f8f9fa', borderRadius:8, padding:'12px 14px', marginBottom:10 }}>
+          <div style={{ fontSize:10, color:'#9ca3af', display:'flex', alignItems:'center', gap:6 }}>
+            Est. upfront ({dealUpfrontRateEffective(deal).toFixed(2)}%)
+            {isOverridden && <span style={{ fontSize:9, fontWeight:700, color:'#fff', background:'#EB99C2', borderRadius:10, padding:'1px 6px' }}>Negotiated</span>}
+          </div>
+          <div style={{ fontSize:20, fontWeight:700, color:'#22c55e', marginTop:2 }}>{deal.Amount ? `$${dealUpfrontCommission(deal).toLocaleString()}` : '—'}</div>
+        </div>
+        <div style={{ fontSize:11, color:'#9ca3af' }}>
+          This figure feeds the CRM's pipeline forecast and Marketing's Inflight Deals view while this deal is active. It has no effect on any client's actual recorded income — that only ever comes from the commission statement, once this deal is settled and the statement is imported.
+        </div>
+      </TabCard>
     </div>
   )
 }
