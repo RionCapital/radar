@@ -46,7 +46,15 @@ const TRAINING_CAT_BY_VALUE = TRAINING_OPTIONS.reduce((m, o) => { if (o.value) m
 const TRAINING_CATS = ['Cardio', 'Boxing', 'Strength', 'Recovery']
 
 // ─── date helpers ───────────────────────────────────────────────────────────
-function toISO(d) { return d.toISOString().slice(0, 10) }
+function toISO(d) {
+  // Local date components only — never toISOString(), which converts to UTC
+  // and silently shifts the date backward a day in AEST/AEDT (this was the
+  // cause of the Monday date drifting when paging between weeks).
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
 function parseISO(s) { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d) }
 function getMonday(d) {
   const date = new Date(d)
@@ -113,6 +121,21 @@ function weekStats(week) {
   const lodgedTotal = week.lodgements.reduce((s, l) => s + (Number(l.amount) || 0), 0)
   const settledTotal = week.settlements.reduce((s, l) => s + (Number(l.amount) || 0), 0)
   return { meetings: week.meetings.length, byType, lodgedTotal, settledTotal, lodgedCount: week.lodgements.length, settledCount: week.settlements.length }
+}
+
+// Same shape as weekStats, but only counts items actually ticked "done" —
+// used for the Analysis tab so it reflects performance (what happened),
+// not the plan (what was listed).
+function completedStats(week) {
+  const doneMeetings = week.meetings.filter(m => m.done)
+  const doneLodgements = week.lodgements.filter(l => l.done)
+  const doneSettlements = week.settlements.filter(s => s.done)
+  const byType = {}
+  MEETING_TYPES.forEach(t => { byType[t] = 0 })
+  doneMeetings.forEach(m => { byType[m.type] = (byType[m.type] || 0) + 1 })
+  const lodgedTotal = doneLodgements.reduce((s, l) => s + (Number(l.amount) || 0), 0)
+  const settledTotal = doneSettlements.reduce((s, l) => s + (Number(l.amount) || 0), 0)
+  return { meetings: doneMeetings.length, byType, lodgedTotal, settledTotal, lodgedCount: doneLodgements.length, settledCount: doneSettlements.length }
 }
 
 function trainingStats(week) {
@@ -456,7 +479,7 @@ function WeekTab({
               <select value={m.type} onChange={e => updateMeeting(m.id, { type: e.target.value })} style={{ ...inp(), width: 84 }}>
                 {MEETING_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
               </select>
-              <input value={m.notes} onChange={e => updateMeeting(m.id, { notes: e.target.value })} placeholder="Who / what" style={{ ...inp(), flex: 1 }} />
+              <input value={m.notes} onChange={e => updateMeeting(m.id, { notes: e.target.value })} placeholder="Who / what" style={{ ...inp(), flex: 1, textDecoration: m.done ? 'line-through' : 'none', color: m.done ? SLATE : '#1a1a1a' }} />
               {isAdminDay && <span title="Mon & Fri are meeting-free admin/follow-up days" style={{ fontSize: 14 }}>⚠️</span>}
               <IconBtn danger title="Remove" onClick={() => removeMeeting(m.id)}>✕</IconBtn>
             </div>
@@ -479,8 +502,8 @@ function WeekTab({
             <div key={l.id} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '6px 0', borderBottom: '1px solid #f0f2f5' }}>
               <input type="checkbox" checked={l.done} onChange={e => updateLodgement(l.id, { done: e.target.checked })} />
               <input type="number" value={l.priority} onChange={e => updateLodgement(l.id, { priority: e.target.value })} style={{ ...inp(), width: 40 }} />
-              <input value={l.name} onChange={e => updateLodgement(l.id, { name: e.target.value })} placeholder="Deal name" style={{ ...inp(), flex: 1 }} />
-              <input type="number" value={l.amount} onChange={e => updateLodgement(l.id, { amount: e.target.value })} placeholder="$" style={{ ...inp(), width: 100, textAlign: 'right' }} />
+              <input value={l.name} onChange={e => updateLodgement(l.id, { name: e.target.value })} placeholder="Deal name" style={{ ...inp(), flex: 1, textDecoration: l.done ? 'line-through' : 'none', color: l.done ? SLATE : '#1a1a1a' }} />
+              <input type="number" value={l.amount} onChange={e => updateLodgement(l.id, { amount: e.target.value })} placeholder="$" style={{ ...inp(), width: 100, textAlign: 'right', textDecoration: l.done ? 'line-through' : 'none', color: l.done ? SLATE : '#1a1a1a' }} />
               <IconBtn danger title="Remove" onClick={() => removeLodgement(l.id)}>✕</IconBtn>
             </div>
           ))}
@@ -503,8 +526,8 @@ function WeekTab({
           {week.settlements.map(s => (
             <div key={s.id} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '6px 0', borderBottom: '1px solid #f0f2f5' }}>
               <input type="checkbox" checked={s.done} onChange={e => updateSettlement(s.id, { done: e.target.checked })} />
-              <input value={s.name} onChange={e => updateSettlement(s.id, { name: e.target.value })} placeholder="Deal name" style={{ ...inp(), flex: 1 }} />
-              <input type="number" value={s.amount} onChange={e => updateSettlement(s.id, { amount: e.target.value })} placeholder="$" style={{ ...inp(), width: 100, textAlign: 'right' }} />
+              <input value={s.name} onChange={e => updateSettlement(s.id, { name: e.target.value })} placeholder="Deal name" style={{ ...inp(), flex: 1, textDecoration: s.done ? 'line-through' : 'none', color: s.done ? SLATE : '#1a1a1a' }} />
+              <input type="number" value={s.amount} onChange={e => updateSettlement(s.id, { amount: e.target.value })} placeholder="$" style={{ ...inp(), width: 100, textAlign: 'right', textDecoration: s.done ? 'line-through' : 'none', color: s.done ? SLATE : '#1a1a1a' }} />
               <IconBtn danger title="Remove" onClick={() => removeSettlement(s.id)}>✕</IconBtn>
             </div>
           ))}
@@ -529,26 +552,30 @@ function WeekTab({
         </div>
 
         <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 640 }}>
+          <table style={{ width: '100%', maxWidth: 360, borderCollapse: 'collapse' }}>
             <thead>
               <tr>
                 <th style={thTd}></th>
-                {DAYS.map(d => <th key={d} style={{ ...thTd, fontSize: 10, color: SLATE, fontWeight: 600 }}>{d}</th>)}
+                <th style={{ ...thTd, fontSize: 10, color: SLATE, fontWeight: 600, textTransform: 'uppercase' }}>AM</th>
+                <th style={{ ...thTd, fontSize: 10, color: SLATE, fontWeight: 600, textTransform: 'uppercase' }}>PM</th>
               </tr>
             </thead>
             <tbody>
-              {['am', 'pm'].map(slot => (
-                <tr key={slot}>
-                  <td style={{ ...thTd, fontSize: 10, color: SLATE, fontWeight: 600, textTransform: 'uppercase' }}>{slot}</td>
-                  {DAYS.map(d => (
-                    <td key={d} style={thTd}>
-                      <select value={week.training.days[d]?.[slot] || ''} onChange={e => updateTrainingSlot(d, slot, e.target.value)} style={{ ...inp(), width: '100%', fontSize: 10, padding: '4px 4px' }}>
-                        {TRAINING_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                      </select>
-                    </td>
-                  ))}
-                </tr>
-              ))}
+              {DAYS.map(d => {
+                const isAdminDay = d === 'Mon' || d === 'Fri'
+                return (
+                  <tr key={d}>
+                    <td style={{ ...thTd, fontSize: 10, color: SLATE, fontWeight: 600, textAlign: 'left', background: isAdminDay ? '#fef3e2' : 'transparent' }}>{d}</td>
+                    {['am', 'pm'].map(slot => (
+                      <td key={slot} style={thTd}>
+                        <select value={week.training.days[d]?.[slot] || ''} onChange={e => updateTrainingSlot(d, slot, e.target.value)} style={{ ...inp(), width: '100%', fontSize: 10, padding: '4px 4px' }}>
+                          {TRAINING_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                        </select>
+                      </td>
+                    ))}
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>
@@ -714,7 +741,7 @@ function AnalysisTab({ store, onUpdateMonthNotes }) {
         }
       }
       const m = byMonth[key]
-      const s = weekStats(week)
+      const s = completedStats(week)
       MEETING_TYPES.forEach(t => { m.byType[t] = (m.byType[t] || 0) + (s.byType[t] || 0) })
       m.meetings += s.meetings
       m.lodgedTotal += s.lodgedTotal
