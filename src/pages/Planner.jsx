@@ -106,7 +106,7 @@ function emptyWeek(weekStart) {
     training: {
       startWeight: '',
       endWeight: '',
-      days: DAYS.reduce((m, d) => { m[d] = { am: '', pm: '' }; return m }, {}),
+      days: DAYS.reduce((m, d) => { m[d] = { am: '', pm: '', amDone: false, pmDone: false }; return m }, {}),
     },
     notes: '',
     createdAt: Date.now(),
@@ -148,7 +148,8 @@ function trainingStats(week) {
     const slot = days[d] || {}
     ;['am', 'pm'].forEach(s => {
       const val = slot[s]
-      if (val) {
+      const done = slot[`${s}Done`]
+      if (val && done) {
         const cat = TRAINING_CAT_BY_VALUE[val]
         if (cat) { totals[cat] = (totals[cat] || 0) + 1; sessions++; byOption[val] = (byOption[val] || 0) + 1 }
       }
@@ -328,7 +329,13 @@ export default function Planner() {
     updateWeek({ training: { ...week.training, ...patch } })
   }
   function updateTrainingSlot(day, slot, value) {
-    const days = { ...week.training.days, [day]: { ...week.training.days[day], [slot]: value } }
+    const patch = { [slot]: value }
+    if (!value) patch[`${slot}Done`] = false
+    const days = { ...week.training.days, [day]: { ...week.training.days[day], ...patch } }
+    updateWeek({ training: { ...week.training, days } })
+  }
+  function updateTrainingDone(day, slot, checked) {
+    const days = { ...week.training.days, [day]: { ...week.training.days[day], [`${slot}Done`]: checked } }
     updateWeek({ training: { ...week.training, days } })
   }
 
@@ -386,7 +393,7 @@ export default function Planner() {
             addLodgementFromDeal={addLodgementFromDeal} addSettlementFromDeal={addSettlementFromDeal}
             lodgementDealOptions={lodgementDealOptions} settlementDealOptions={settlementDealOptions}
             pullSettledFromCRM={pullSettledFromCRM}
-            updateTrainingField={updateTrainingField} updateTrainingSlot={updateTrainingSlot}
+            updateTrainingField={updateTrainingField} updateTrainingSlot={updateTrainingSlot} updateTrainingDone={updateTrainingDone}
           />
         )}
         {tab === 'rhythm' && <RhythmTab />}
@@ -405,7 +412,7 @@ function WeekTab({
   addLodgement, updateLodgement, removeLodgement,
   addSettlement, updateSettlement, removeSettlement,
   addLodgementFromDeal, addSettlementFromDeal, lodgementDealOptions, settlementDealOptions,
-  pullSettledFromCRM, updateTrainingField, updateTrainingSlot,
+  pullSettledFromCRM, updateTrainingField, updateTrainingSlot, updateTrainingDone,
 }) {
   const settlePct = week.settlementTarget ? Math.min(100, Math.round(stats.settledTotal / week.settlementTarget * 100)) : 0
   const lodgeCountPct = week.lodgementCountTarget ? Math.min(100, Math.round(stats.lodgedCount / week.lodgementCountTarget * 100)) : 0
@@ -566,13 +573,20 @@ function WeekTab({
                 return (
                   <tr key={d}>
                     <td style={{ ...thTd, fontSize: 10, color: SLATE, fontWeight: 600, textAlign: 'left', background: isAdminDay ? '#fef3e2' : 'transparent' }}>{d}</td>
-                    {['am', 'pm'].map(slot => (
-                      <td key={slot} style={thTd}>
-                        <select value={week.training.days[d]?.[slot] || ''} onChange={e => updateTrainingSlot(d, slot, e.target.value)} style={{ ...inp(), width: '100%', fontSize: 10, padding: '4px 4px' }}>
-                          {TRAINING_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                        </select>
-                      </td>
-                    ))}
+                    {['am', 'pm'].map(slot => {
+                      const val = week.training.days[d]?.[slot] || ''
+                      const done = !!week.training.days[d]?.[`${slot}Done`]
+                      return (
+                        <td key={slot} style={thTd}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                            <input type="checkbox" checked={done} disabled={!val} title={val ? 'Mark this session done' : 'Pick an activity first'} onChange={e => updateTrainingDone(d, slot, e.target.checked)} />
+                            <select value={val} onChange={e => updateTrainingSlot(d, slot, e.target.value)} style={{ ...inp(), width: '100%', fontSize: 10, padding: '4px 4px', textDecoration: done ? 'line-through' : 'none', color: done ? SLATE : '#1a1a1a' }}>
+                              {TRAINING_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                            </select>
+                          </div>
+                        </td>
+                      )
+                    })}
                   </tr>
                 )
               })}
