@@ -67,6 +67,38 @@ function getMonday(d) {
   return date
 }
 function addDays(iso, n) { const d = parseISO(iso); d.setDate(d.getDate() + n); return toISO(d) }
+
+// One-time repair for a past bug: weeks were briefly being saved under the
+// day *before* the real Monday (a UTC-conversion quirk in the old date
+// helper). Any key that isn't an actual Monday is a week from before that
+// fix — shift it forward one day to the Monday it was always meant to be,
+// merging rather than overwriting in the rare case both keys exist.
+function mergeWeeks(a, b) {
+  return {
+    ...a, ...b,
+    meetings: [...(a.meetings || []), ...(b.meetings || [])],
+    lodgements: [...(a.lodgements || []), ...(b.lodgements || [])],
+    settlements: [...(a.settlements || []), ...(b.settlements || [])],
+    notes: [a.notes, b.notes].filter(Boolean).join('\n'),
+  }
+}
+function migrateWeekKeys(store) {
+  if (!store || !store.weeks) return store
+  let changed = false
+  const weeks = {}
+  Object.keys(store.weeks).forEach(key => {
+    const entry = store.weeks[key]
+    const isMonday = parseISO(key).getDay() === 1
+    const fixedKey = isMonday ? key : addDays(key, 1)
+    if (!isMonday) changed = true
+    weeks[fixedKey] = weeks[fixedKey] ? mergeWeeks(weeks[fixedKey], entry) : entry
+    weeks[fixedKey] = { ...weeks[fixedKey], weekStart: fixedKey }
+  })
+  if (!changed) return store
+  let viewWeek = store.viewWeek
+  if (viewWeek && parseISO(viewWeek).getDay() !== 1) viewWeek = addDays(viewWeek, 1)
+  return { ...store, weeks, viewWeek }
+}
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 function fmtShort(iso) { const d = parseISO(iso); return `${d.getDate()} ${MONTHS[d.getMonth()]}` }
 function fmtRange(mondayIso) {
@@ -278,7 +310,7 @@ export default function Planner() {
   const [store, setStore] = useState(() => {
     try {
       const s = localStorage.getItem(STORAGE_KEY)
-      if (s) return JSON.parse(s)
+      if (s) return migrateWeekKeys(JSON.parse(s))
     } catch {}
     const monday = toISO(getMonday(new Date()))
     return { weeks: { [monday]: emptyWeek(monday) }, viewWeek: monday, targetWeight: '', monthNotes: {} }
@@ -291,11 +323,25 @@ export default function Planner() {
       if (cloud?._planner?.weeks && Object.keys(cloud._planner.weeks).length) {
         const localRaw = localStorage.getItem(STORAGE_KEY)
         if (!localRaw) {
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(cloud._planner))
-          setStore(cloud._planner)
+          const migrated = migrateWeekKeys(cloud._planner)
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated))
+          setStore(migrated)
         }
       }
     }).catch(() => {})
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Re-run the same repair against whatever ended up in state (covers the
+  // case where the local copy itself still had old-style keys) and persist
+  // the correction straight away so it sticks.
+  useEffect(() => {
+    setStore(prev => {
+      const migrated = migrateWeekKeys(prev)
+      if (migrated === prev) return prev
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated)) } catch {}
+      sbSaveMarketing({ _planner: migrated }, PLANNER_ROW_ID).catch(() => {})
+      return migrated
+    })
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const save = useCallback((next) => {
