@@ -10,6 +10,7 @@ const DEEP = '#2A3D54'
 const PINK = '#EB99C2'
 const BRAND_PINK = '#DA408D'
 const SLATE = '#7A8090'
+const BLUE = '#2E86C1'
 
 const STORAGE_KEY = 'rion-planner'
 // Dedicated row (id 4) in the shared `marketing` table -- same pattern as
@@ -533,11 +534,11 @@ function WeekTab({
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 16 }}>
-        {/* lodgement target — count based, 4/week by default */}
-        <SectionCard title="Weekly Target — Lodgements">
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 10 }}>
-            <span style={{ fontSize: 11, color: SLATE }}>Target (no. of loans)</span>
+      <SectionCard title="Weekly Targets" style={{ marginTop: 16 }}>
+        <div style={{ marginBottom: 10 }}>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 6 }}>
+            <span style={{ width: 8, height: 8, borderRadius: '50%', background: PINK, display: 'inline-block' }} />
+            <span style={{ fontSize: 11, color: SLATE }}>Lodgements — target (no. of loans)</span>
             <input type="number" value={week.lodgementCountTarget} onChange={e => updateWeek({ lodgementCountTarget: e.target.value })} style={{ ...inp(), width: 70 }} />
             <span style={{ fontSize: 11, color: SLATE, marginLeft: 'auto' }}>Lodged: <b style={{ color: NAVY }}>{stats.lodgedCount}</b> of {week.lodgementCountTarget || 0}</span>
           </div>
@@ -545,11 +546,21 @@ function WeekTab({
             <div style={{ height: '100%', width: `${lodgeCountPct}%`, background: PINK, borderRadius: 4, transition: 'width 0.2s' }} />
           </div>
           <div style={{ fontSize: 10, color: SLATE, marginTop: 4 }}>{lodgeCountPct}% of target &middot; {fmtMoney(stats.lodgedTotal)} in value</div>
-        </SectionCard>
-        <SectionCard title="Weekly Target — Settlements ($)">
-          <TargetRow value={week.settlementTarget} onChange={v => updateWeek({ settlementTarget: v })} actual={stats.settledTotal} pct={settlePct} color={NAVY} />
-        </SectionCard>
-      </div>
+        </div>
+
+        <div style={{ marginTop: 16 }}>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 6 }}>
+            <span style={{ width: 8, height: 8, borderRadius: '50%', background: BLUE, display: 'inline-block' }} />
+            <span style={{ fontSize: 11, color: SLATE }}>Settlements — target $</span>
+            <input type="number" value={week.settlementTarget} onChange={e => updateWeek({ settlementTarget: e.target.value })} style={{ ...inp(), width: 130 }} />
+            <span style={{ fontSize: 11, color: SLATE, marginLeft: 'auto' }}>Actual: <b style={{ color: NAVY }}>{fmtMoney(stats.settledTotal)}</b></span>
+          </div>
+          <div style={{ height: 8, background: '#f0f2f5', borderRadius: 4, overflow: 'hidden' }}>
+            <div style={{ height: '100%', width: `${settlePct}%`, background: BLUE, borderRadius: 4, transition: 'width 0.2s' }} />
+          </div>
+          <div style={{ fontSize: 10, color: SLATE, marginTop: 4 }}>{settlePct}% of target</div>
+        </div>
+      </SectionCard>
 
       {/* meetings */}
       <SectionCard title={`Meetings (${stats.meetings})`} style={{ marginTop: 16 }}
