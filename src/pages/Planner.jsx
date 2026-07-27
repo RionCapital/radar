@@ -31,6 +31,7 @@ const NEAR_SETTLEMENT_STAGES = ['4. Lodged', '5. Conditional', '6. Unconditional
 const DEFAULT_LODGEMENT_COUNT_TARGET = 4
 const DEFAULT_SETTLEMENT_COUNT_TARGET = 3
 const DEFAULT_SETTLEMENT_DOLLAR_TARGET = 1000000
+const DEFAULT_TRAINING_TARGET = 6
 
 const TRAINING_OPTIONS = [
   { value: '', label: '\u2014', cat: null },
@@ -117,16 +118,20 @@ function backfillTargets(store) {
   const weeks = {}
   Object.keys(store.weeks).forEach(key => {
     const entry = store.weeks[key]
+    let next = entry
     if (entry.settlementCountTarget === undefined) {
       changed = true
-      weeks[key] = {
-        ...entry,
+      next = {
+        ...next,
         settlementCountTarget: targets.settlementCount ?? DEFAULT_SETTLEMENT_COUNT_TARGET,
-        settlementTarget: entry.settlementTarget ? entry.settlementTarget : (targets.settlementDollar ?? DEFAULT_SETTLEMENT_DOLLAR_TARGET),
+        settlementTarget: next.settlementTarget ? next.settlementTarget : (targets.settlementDollar ?? DEFAULT_SETTLEMENT_DOLLAR_TARGET),
       }
-    } else {
-      weeks[key] = entry
     }
+    if (next.training && next.training.target === undefined) {
+      changed = true
+      next = { ...next, training: { ...next.training, target: targets.trainingSessions ?? DEFAULT_TRAINING_TARGET } }
+    }
+    weeks[key] = next
   })
   if (!changed) return store
   return { ...store, weeks }
@@ -174,6 +179,7 @@ function emptyWeek(weekStart) {
     training: {
       startWeight: '',
       endWeight: '',
+      target: targets.trainingSessions ?? DEFAULT_TRAINING_TARGET,
       days: DAYS.reduce((m, d) => { m[d] = { am: '', pm: '', amDone: false, pmDone: false }; return m }, {}),
     },
     notes: '',
@@ -730,62 +736,59 @@ function WeekTab({
       </div>
 
       {/* training / fitness */}
-      <SectionCard title="Training & Fitness" style={{ marginTop: 16 }}>
-        <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', marginBottom: 14 }}>
-          <WeightField label="Start weight" value={week.training.startWeight} onChange={v => updateTrainingField({ startWeight: v })} />
-          <WeightField label="End weight" value={week.training.endWeight} onChange={v => updateTrainingField({ endWeight: v })} />
-          <WeightField label="Target weight" value={targetWeight} onChange={onUpdateTargetWeight} accent={BRAND_PINK} />
-          {targetWeight && week.training.endWeight && (
-            <div>
-              <div style={{ fontSize: 9, color: SLATE, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Diff to target</div>
-              <div style={{ fontSize: 16, fontWeight: 700, color: NAVY }}>{(Number(week.training.endWeight) - Number(targetWeight)).toFixed(1)}</div>
-            </div>
-          )}
-        </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 16 }}>
+        <SectionCard title="Training & Fitness">
+          <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', marginBottom: 14 }}>
+            <WeightField label="Start weight" value={week.training.startWeight} onChange={v => updateTrainingField({ startWeight: v })} />
+            <WeightField label="End weight" value={week.training.endWeight} onChange={v => updateTrainingField({ endWeight: v })} />
+            <WeightField label="Target weight" value={targetWeight} onChange={onUpdateTargetWeight} accent={BRAND_PINK} />
+            {targetWeight && week.training.endWeight && (
+              <div>
+                <div style={{ fontSize: 9, color: SLATE, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Diff to target</div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: NAVY }}>{(Number(week.training.endWeight) - Number(targetWeight)).toFixed(1)}</div>
+              </div>
+            )}
+          </div>
 
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', maxWidth: 360, borderCollapse: 'collapse' }}>
-            <thead>
-              <tr>
-                <th style={thTd}></th>
-                <th style={{ ...thTd, fontSize: 10, color: SLATE, fontWeight: 600, textTransform: 'uppercase' }}>AM</th>
-                <th style={{ ...thTd, fontSize: 10, color: SLATE, fontWeight: 600, textTransform: 'uppercase' }}>PM</th>
-              </tr>
-            </thead>
-            <tbody>
-              {DAYS.map(d => {
-                const isAdminDay = d === 'Mon' || d === 'Fri'
-                return (
-                  <tr key={d}>
-                    <td style={{ ...thTd, fontSize: 10, color: SLATE, fontWeight: 600, textAlign: 'left', background: isAdminDay ? '#fef3e2' : 'transparent' }}>{d}</td>
-                    {['am', 'pm'].map(slot => {
-                      const val = week.training.days[d]?.[slot] || ''
-                      const done = !!week.training.days[d]?.[`${slot}Done`]
-                      return (
-                        <td key={slot} style={thTd}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                            <input type="checkbox" checked={done} disabled={!val} title={val ? 'Mark this session done' : 'Pick an activity first'} onChange={e => updateTrainingDone(d, slot, e.target.checked)} />
-                            <select value={val} onChange={e => updateTrainingSlot(d, slot, e.target.value)} style={{ ...inp(), width: '100%', fontSize: 10, padding: '4px 4px', textDecoration: done ? 'line-through' : 'none', color: done ? SLATE : '#1a1a1a' }}>
-                              {TRAINING_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                            </select>
-                          </div>
-                        </td>
-                      )
-                    })}
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', maxWidth: 360, borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>
+                  <th style={thTd}></th>
+                  <th style={{ ...thTd, fontSize: 10, color: SLATE, fontWeight: 600, textTransform: 'uppercase' }}>AM</th>
+                  <th style={{ ...thTd, fontSize: 10, color: SLATE, fontWeight: 600, textTransform: 'uppercase' }}>PM</th>
+                </tr>
+              </thead>
+              <tbody>
+                {DAYS.map(d => {
+                  const isAdminDay = d === 'Mon' || d === 'Fri'
+                  return (
+                    <tr key={d}>
+                      <td style={{ ...thTd, fontSize: 10, color: SLATE, fontWeight: 600, textAlign: 'left', background: isAdminDay ? '#fef3e2' : 'transparent' }}>{d}</td>
+                      {['am', 'pm'].map(slot => {
+                        const val = week.training.days[d]?.[slot] || ''
+                        const done = !!week.training.days[d]?.[`${slot}Done`]
+                        return (
+                          <td key={slot} style={thTd}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                              <input type="checkbox" checked={done} disabled={!val} title={val ? 'Mark this session done' : 'Pick an activity first'} onChange={e => updateTrainingDone(d, slot, e.target.checked)} />
+                              <select value={val} onChange={e => updateTrainingSlot(d, slot, e.target.value)} style={{ ...inp(), width: '100%', fontSize: 10, padding: '4px 4px', textDecoration: done ? 'line-through' : 'none', color: done ? SLATE : '#1a1a1a' }}>
+                                {TRAINING_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                              </select>
+                            </div>
+                          </td>
+                        )
+                      })}
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </SectionCard>
 
-        <div style={{ display: 'flex', gap: 18, marginTop: 12, flexWrap: 'wrap' }}>
-          {TRAINING_CATS.map(cat => (
-            <div key={cat} style={{ fontSize: 11, color: SLATE }}>{cat}: <b style={{ color: NAVY }}>{trStats.totals[cat] || 0}</b></div>
-          ))}
-          <div style={{ fontSize: 11, color: SLATE }}>Total sessions: <b style={{ color: NAVY }}>{trStats.sessions}</b></div>
-        </div>
-      </SectionCard>
+        <TrainingWeekPanel week={week} trStats={trStats} onUpdateTarget={v => updateTrainingField({ target: v })} targetWeight={targetWeight} />
+      </div>
 
       <SectionCard title="Notes" style={{ marginTop: 16 }}>
         <textarea value={week.notes} onChange={e => updateWeek({ notes: e.target.value })} rows={3}
@@ -822,6 +825,51 @@ function TargetBar({ color, label, value, onChange, actualLabel, pct, caption, l
       </div>
       <div style={{ fontSize: 10, color: SLATE, marginTop: 4 }}>{caption}</div>
     </div>
+  )
+}
+
+function TrainingWeekPanel({ week, trStats, onUpdateTarget, targetWeight }) {
+  const target = week.training.target || 0
+  const pct = target ? Math.min(100, Math.round(trStats.sessions / target * 100)) : 0
+  const maxCat = Math.max(1, ...TRAINING_CATS.map(c => trStats.totals[c] || 0))
+  const weightDiff = (week.training.startWeight && week.training.endWeight)
+    ? Number(week.training.endWeight) - Number(week.training.startWeight)
+    : null
+
+  return (
+    <SectionCard title="This Week's Training">
+      <TargetBar
+        color={NAVY} label="Sessions"
+        value={target} onChange={onUpdateTarget}
+        actualLabel={`${trStats.sessions} of ${target || 0} completed`}
+        pct={pct}
+        caption={`${pct}% of target this week`}
+        last
+      />
+
+      <div style={{ marginTop: 18 }}>
+        {TRAINING_CATS.map(cat => {
+          const v = trStats.totals[cat] || 0
+          const w = v ? Math.round(v / maxCat * 100) : 0
+          return (
+            <div key={cat} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <div style={{ width: 62, fontSize: 11, color: SLATE, flexShrink: 0 }}>{cat}</div>
+              <div style={{ flex: 1, height: 9, background: '#f0f2f5', borderRadius: 4, overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: `${w}%`, background: TRAINING_CAT_COLOR[cat], borderRadius: 4 }} />
+              </div>
+              <div style={{ width: 18, fontSize: 11, fontWeight: 600, color: NAVY, textAlign: 'right', flexShrink: 0 }}>{v}</div>
+            </div>
+          )
+        })}
+      </div>
+
+      {weightDiff !== null && (
+        <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid #f0f2f5', fontSize: 11, color: SLATE }}>
+          Weight this week: <b style={{ color: NAVY }}>{weightDiff > 0 ? '+' : ''}{weightDiff.toFixed(1)}</b>
+          {targetWeight && <span> &middot; target <b style={{ color: BRAND_PINK }}>{targetWeight}</b></span>}
+        </div>
+      )}
+    </SectionCard>
   )
 }
 
