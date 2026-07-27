@@ -11,6 +11,7 @@ const PINK = '#EB99C2'
 const BRAND_PINK = '#DA408D'
 const SLATE = '#7A8090'
 const BLUE = '#2E86C1'
+const BLUE_LIGHT = '#85C1E9'
 
 const STORAGE_KEY = 'rion-planner'
 // Dedicated row (id 4) in the shared `marketing` table -- same pattern as
@@ -27,6 +28,8 @@ const ACTIVE_STAGES = ['1. Lead', '2. Strategy', '3. Pre-Lodged', '4. Lodged', '
 const NEAR_SETTLEMENT_STAGES = ['4. Lodged', '5. Conditional', '6. Unconditional']
 
 const DEFAULT_LODGEMENT_COUNT_TARGET = 4
+const DEFAULT_SETTLEMENT_COUNT_TARGET = 3
+const DEFAULT_SETTLEMENT_DOLLAR_TARGET = 1000000
 
 const TRAINING_OPTIONS = [
   { value: '', label: '\u2014', cat: null },
@@ -133,7 +136,8 @@ function emptyWeek(weekStart) {
     weekStart,
     lodgementCountTarget: DEFAULT_LODGEMENT_COUNT_TARGET,
     lodgementTarget: 0,
-    settlementTarget: 0,
+    settlementCountTarget: DEFAULT_SETTLEMENT_COUNT_TARGET,
+    settlementTarget: DEFAULT_SETTLEMENT_DOLLAR_TARGET,
     meetings: [],
     lodgements: [],
     settlements: [],
@@ -544,8 +548,10 @@ function WeekTab({
   addLodgementFromDeal, addSettlementFromDeal, lodgementDealOptions, settlementDealOptions,
   pullSettledFromCRM, updateTrainingField, updateTrainingSlot, updateTrainingDone,
 }) {
-  const settlePct = week.settlementTarget ? Math.min(100, Math.round(stats.settledTotal / week.settlementTarget * 100)) : 0
-  const lodgeCountPct = week.lodgementCountTarget ? Math.min(100, Math.round(stats.lodgedCount / week.lodgementCountTarget * 100)) : 0
+  const completed = completedStats(week)
+  const settlePct = week.settlementTarget ? Math.min(100, Math.round(completed.settledTotal / week.settlementTarget * 100)) : 0
+  const settleCountPct = week.settlementCountTarget ? Math.min(100, Math.round(completed.settledCount / week.settlementCountTarget * 100)) : 0
+  const lodgeCountPct = week.lodgementCountTarget ? Math.min(100, Math.round(completed.lodgedCount / week.lodgementCountTarget * 100)) : 0
   const trStats = trainingStats(week)
 
   return (
@@ -581,28 +587,43 @@ function WeekTab({
       </div>
 
       <SectionCard title="Weekly Targets" style={{ marginTop: 16 }}>
-        <div style={{ marginBottom: 10 }}>
+        <div style={{ fontSize: 10, color: SLATE, marginBottom: 14, fontStyle: 'italic' }}>Only items you've ticked done count toward these bars — not everything listed below.</div>
+
+        <div style={{ marginBottom: 18 }}>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 6 }}>
             <span style={{ width: 8, height: 8, borderRadius: '50%', background: PINK, display: 'inline-block' }} />
             <span style={{ fontSize: 11, color: SLATE }}>Lodgements — target (no. of loans)</span>
             <input type="number" value={week.lodgementCountTarget} onChange={e => updateWeek({ lodgementCountTarget: e.target.value })} style={{ ...inp(), width: 70 }} />
-            <span style={{ fontSize: 11, color: SLATE, marginLeft: 'auto' }}>Lodged: <b style={{ color: NAVY }}>{stats.lodgedCount}</b> of {week.lodgementCountTarget || 0}</span>
+            <span style={{ fontSize: 11, color: SLATE, marginLeft: 'auto' }}>Completed: <b style={{ color: NAVY }}>{completed.lodgedCount}</b> of {week.lodgementCountTarget || 0}</span>
           </div>
           <div style={{ height: 8, background: '#f0f2f5', borderRadius: 4, overflow: 'hidden' }}>
             <div style={{ height: '100%', width: `${lodgeCountPct}%`, background: PINK, borderRadius: 4, transition: 'width 0.2s' }} />
           </div>
-          <div style={{ fontSize: 10, color: SLATE, marginTop: 4 }}>{lodgeCountPct}% of target &middot; {fmtMoney(stats.lodgedTotal)} in value</div>
+          <div style={{ fontSize: 10, color: SLATE, marginTop: 4 }}>{lodgeCountPct}% of target &middot; {fmtMoney(completed.lodgedTotal)} completed in value</div>
         </div>
 
-        <div style={{ marginTop: 16 }}>
+        <div style={{ marginBottom: 18 }}>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 6 }}>
             <span style={{ width: 8, height: 8, borderRadius: '50%', background: BLUE, display: 'inline-block' }} />
-            <span style={{ fontSize: 11, color: SLATE }}>Settlements — target $</span>
-            <input type="number" value={week.settlementTarget} onChange={e => updateWeek({ settlementTarget: e.target.value })} style={{ ...inp(), width: 130 }} />
-            <span style={{ fontSize: 11, color: SLATE, marginLeft: 'auto' }}>Actual: <b style={{ color: NAVY }}>{fmtMoney(stats.settledTotal)}</b></span>
+            <span style={{ fontSize: 11, color: SLATE }}>Settlements — target (no. of loans)</span>
+            <input type="number" value={week.settlementCountTarget} onChange={e => updateWeek({ settlementCountTarget: e.target.value })} style={{ ...inp(), width: 70 }} />
+            <span style={{ fontSize: 11, color: SLATE, marginLeft: 'auto' }}>Completed: <b style={{ color: NAVY }}>{completed.settledCount}</b> of {week.settlementCountTarget || 0}</span>
           </div>
           <div style={{ height: 8, background: '#f0f2f5', borderRadius: 4, overflow: 'hidden' }}>
-            <div style={{ height: '100%', width: `${settlePct}%`, background: BLUE, borderRadius: 4, transition: 'width 0.2s' }} />
+            <div style={{ height: '100%', width: `${settleCountPct}%`, background: BLUE, borderRadius: 4, transition: 'width 0.2s' }} />
+          </div>
+          <div style={{ fontSize: 10, color: SLATE, marginTop: 4 }}>{settleCountPct}% of target</div>
+        </div>
+
+        <div>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 6 }}>
+            <span style={{ width: 8, height: 8, borderRadius: '50%', background: BLUE_LIGHT, display: 'inline-block' }} />
+            <span style={{ fontSize: 11, color: SLATE }}>Settlements — target $</span>
+            <input type="number" value={week.settlementTarget} onChange={e => updateWeek({ settlementTarget: e.target.value })} style={{ ...inp(), width: 130 }} />
+            <span style={{ fontSize: 11, color: SLATE, marginLeft: 'auto' }}>Completed: <b style={{ color: NAVY }}>{fmtMoney(completed.settledTotal)}</b></span>
+          </div>
+          <div style={{ height: 8, background: '#f0f2f5', borderRadius: 4, overflow: 'hidden' }}>
+            <div style={{ height: '100%', width: `${settlePct}%`, background: BLUE_LIGHT, borderRadius: 4, transition: 'width 0.2s' }} />
           </div>
           <div style={{ fontSize: 10, color: SLATE, marginTop: 4 }}>{settlePct}% of target</div>
         </div>
