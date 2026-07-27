@@ -203,12 +203,19 @@ function monthGrid(year, month) {
   return cells
 }
 
-function MiniCalendar({ viewWeek, onSelectDate, onClose }) {
+function MiniCalendar({ viewWeek, onSelectDate, onClose, inline }) {
   const viewDate = parseISO(viewWeek)
   const [cal, setCal] = useState({ y: viewDate.getFullYear(), m: viewDate.getMonth() })
   const todayISO = toISO(new Date())
   const weekEnd = addDays(viewWeek, 6)
   const cells = monthGrid(cal.y, cal.m)
+
+  // keep the calendar's displayed month in step with whichever week is open
+  // (paging with the ← / → week buttons, "jump to this week", etc.)
+  useEffect(() => {
+    setCal({ y: viewDate.getFullYear(), m: viewDate.getMonth() })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewWeek])
 
   function shiftMonth(delta) {
     let y = cal.y, m = cal.m + delta
@@ -216,12 +223,16 @@ function MiniCalendar({ viewWeek, onSelectDate, onClose }) {
     setCal({ y, m })
   }
 
+  const containerStyle = inline
+    ? { background: '#fff', border: '1px solid #e2e6ed', borderRadius: 12, padding: 14, width: 240, flexShrink: 0 }
+    : {
+        position: 'absolute', top: '100%', left: 0, marginTop: 8, zIndex: 30,
+        background: '#fff', border: '1px solid #e2e6ed', borderRadius: 10, boxShadow: '0 10px 28px rgba(42,61,84,0.18)',
+        padding: 12, width: 240,
+      }
+
   return (
-    <div style={{
-      position: 'absolute', top: '100%', left: 0, marginTop: 8, zIndex: 30,
-      background: '#fff', border: '1px solid #e2e6ed', borderRadius: 10, boxShadow: '0 10px 28px rgba(42,61,84,0.18)',
-      padding: 12, width: 240,
-    }} onMouseLeave={onClose}>
+    <div style={containerStyle} onMouseLeave={onClose}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
         <button onClick={() => shiftMonth(-1)} style={{ background: 'none', border: 'none', color: NAVY, cursor: 'pointer', fontSize: 12, padding: 4 }}>‹</button>
         <div style={{ fontSize: 12, fontWeight: 700, color: NAVY }}>{MONTHS[cal.m]} {cal.y}</div>
@@ -489,43 +500,38 @@ function WeekTab({
   const settlePct = week.settlementTarget ? Math.min(100, Math.round(stats.settledTotal / week.settlementTarget * 100)) : 0
   const lodgeCountPct = week.lodgementCountTarget ? Math.min(100, Math.round(stats.lodgedCount / week.lodgementCountTarget * 100)) : 0
   const trStats = trainingStats(week)
-  const [showCalendar, setShowCalendar] = useState(false)
 
   return (
     <div>
-      {/* header row */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 20 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <button onClick={onPrev} style={navBtnStyle}>←</button>
-          <div style={{ position: 'relative' }}>
-            <div style={{ fontSize: 22, fontWeight: 800, color: NAVY, fontFamily: 'Georgia,serif' }}>Week of {fmtRange(viewWeek)}</div>
+      <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', marginBottom: 20 }}>
+        <MiniCalendar viewWeek={viewWeek} onSelectDate={iso => onJumpToDate(iso)} inline />
+
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {/* header row */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <button onClick={onToday} style={{ background: 'none', border: 'none', color: SLATE, fontSize: 11, cursor: 'pointer', padding: 0, textDecoration: 'underline' }}>jump to this week</button>
-              <button onClick={() => setShowCalendar(v => !v)} title="Pick a week from the calendar" style={{ background: 'none', border: 'none', color: showCalendar ? BRAND_PINK : SLATE, fontSize: 13, cursor: 'pointer', padding: 0 }}>📅</button>
+              <button onClick={onPrev} style={navBtnStyle}>←</button>
+              <div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: NAVY, fontFamily: 'Georgia,serif' }}>Week of {fmtRange(viewWeek)}</div>
+                <button onClick={onToday} style={{ background: 'none', border: 'none', color: SLATE, fontSize: 11, cursor: 'pointer', padding: 0, textDecoration: 'underline' }}>jump to this week</button>
+              </div>
+              <button onClick={onNext} style={navBtnStyle}>→</button>
             </div>
-            {showCalendar && (
-              <MiniCalendar
-                viewWeek={viewWeek}
-                onSelectDate={iso => { onJumpToDate(iso); setShowCalendar(false) }}
-                onClose={() => setShowCalendar(false)}
-              />
-            )}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ background: '#fff', border: '1px solid #e2e6ed', borderRadius: 8, padding: '8px 14px', textAlign: 'center' }}>
+                <div style={{ fontSize: 9, color: SLATE, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Bus. days left</div>
+                <div style={{ fontSize: 18, fontWeight: 700, color: NAVY }}>{daysLeft}</div>
+              </div>
+              <button onClick={onStartNewWeek} style={{ background: BRAND_PINK, border: 'none', borderRadius: 8, padding: '10px 18px', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer', letterSpacing: '0.04em' }}>
+                + START NEW WEEK
+              </button>
+            </div>
           </div>
-          <button onClick={onNext} style={navBtnStyle}>→</button>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ background: '#fff', border: '1px solid #e2e6ed', borderRadius: 8, padding: '8px 14px', textAlign: 'center' }}>
-            <div style={{ fontSize: 9, color: SLATE, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Bus. days left</div>
-            <div style={{ fontSize: 18, fontWeight: 700, color: NAVY }}>{daysLeft}</div>
-          </div>
-          <button onClick={onStartNewWeek} style={{ background: BRAND_PINK, border: 'none', borderRadius: 8, padding: '10px 18px', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer', letterSpacing: '0.04em' }}>
-            + START NEW WEEK
-          </button>
+
+          {/* rhythm strip */}
+          <RhythmStrip compact />
         </div>
       </div>
-
-      {/* rhythm strip */}
-      <RhythmStrip compact />
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 16 }}>
         {/* lodgement target — count based, 4/week by default */}
