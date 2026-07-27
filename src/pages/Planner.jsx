@@ -291,7 +291,7 @@ function MiniCalendar({ viewWeek, onSelectDate, onClose, inline }) {
   }
 
   const containerStyle = inline
-    ? { background: '#fff', border: '1px solid #e2e6ed', borderRadius: 12, padding: 14, width: 240, flexShrink: 0, height: '100%', boxSizing: 'border-box' }
+    ? { background: '#fff', border: '1px solid #e2e6ed', borderRadius: 12, padding: 14, width: 240, flexShrink: 0 }
     : {
         position: 'absolute', top: '100%', left: 0, marginTop: 8, zIndex: 30,
         background: '#fff', border: '1px solid #e2e6ed', borderRadius: 10, boxShadow: '0 10px 28px rgba(42,61,84,0.18)',
@@ -586,7 +586,7 @@ function WeekTab({
 
   return (
     <div>
-      <div style={{ display: 'flex', gap: 16, alignItems: 'stretch', marginBottom: 20 }}>
+      <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', marginBottom: 20 }}>
         <MiniCalendar viewWeek={viewWeek} onSelectDate={iso => onJumpToDate(iso)} inline />
 
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -613,35 +613,39 @@ function WeekTab({
 
           {/* rhythm strip */}
           <RhythmStrip compact />
-
-          <SectionCard title="Weekly Targets" style={{ marginTop: 16 }}>
-            <div style={{ fontSize: 10, color: SLATE, marginBottom: 16, fontStyle: 'italic' }}>Only items you've ticked done count toward these bars — not everything listed below.</div>
-
-            <TargetBar
-              color={PINK} label="Lodgements"
-              value={week.lodgementCountTarget} onChange={v => updateWeek({ lodgementCountTarget: v })}
-              actualLabel={`${completed.lodgedCount} of ${week.lodgementCountTarget || 0}`}
-              pct={lodgeCountPct}
-              caption={`${lodgeCountPct}% of target · ${fmtMoney(completed.lodgedTotal)} completed`}
-            />
-            <TargetBar
-              color={BLUE} label="Settlements"
-              value={week.settlementCountTarget} onChange={v => updateWeek({ settlementCountTarget: v })}
-              actualLabel={`${completed.settledCount} of ${week.settlementCountTarget || 0}`}
-              pct={settleCountPct}
-              caption={`${settleCountPct}% of target`}
-            />
-            <TargetBar
-              color={BLUE_LIGHT} label="Settlements $" wide
-              value={week.settlementTarget} onChange={v => updateWeek({ settlementTarget: v })}
-              actualLabel={fmtMoney(completed.settledTotal)}
-              pct={settlePct}
-              caption={`${settlePct}% of target`}
-              last
-            />
-          </SectionCard>
         </div>
       </div>
+
+      <SectionCard title="Weekly Targets" style={{ marginTop: 16 }}>
+        <div style={{ fontSize: 10, color: SLATE, marginBottom: 16, fontStyle: 'italic' }}>Only items you've ticked done count toward these bars — not everything listed below.</div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 24 }}>
+          <TargetBar
+            color={PINK} label="Lodgements"
+            value={week.lodgementCountTarget} onChange={v => updateWeek({ lodgementCountTarget: v })}
+            actualLabel={`${completed.lodgedCount} of ${week.lodgementCountTarget || 0}`}
+            pct={lodgeCountPct}
+            caption={`${lodgeCountPct}% of target · ${fmtMoney(completed.lodgedTotal)} completed`}
+            last
+          />
+          <TargetBar
+            color={BLUE} label="Settlements"
+            value={week.settlementCountTarget} onChange={v => updateWeek({ settlementCountTarget: v })}
+            actualLabel={`${completed.settledCount} of ${week.settlementCountTarget || 0}`}
+            pct={settleCountPct}
+            caption={`${settleCountPct}% of target`}
+            last
+          />
+          <TargetBar
+            color={BLUE_LIGHT} label="Settlements $"
+            value={week.settlementTarget} onChange={v => updateWeek({ settlementTarget: v })}
+            actualLabel={fmtMoney(completed.settledTotal)}
+            pct={settlePct}
+            caption={`${settlePct}% of target`}
+            last
+          />
+        </div>
+      </SectionCard>
 
       {/* meetings */}
       <SectionCard title={`Meetings (${stats.meetings})`} style={{ marginTop: 16 }}
@@ -831,20 +835,21 @@ const ghostBtnStyle = { background: 'transparent', border: `1px solid ${NAVY}`, 
 
 // ─── WEEKLY RHYTHM ──────────────────────────────────────────────────────────
 const RHYTHM_DAYS = [
-  { day: 'Monday', tag: 'Admin & Outreach', color: '#fef3e2', tagColor: '#b7770d', items: ['No meetings — protect this block', 'Weekly plan set from last Friday\'s review', 'Annual-review cadence: send initial review emails to 2–3 clients', 'Direct Sales: research 4–6 target businesses for the month'] },
-  { day: 'Tuesday', tag: 'Meetings', color: '#eef1f5', tagColor: NAVY, items: ['Client / referrer meetings', 'Gold & Silver referral touchpoints', 'Deal strategy & structuring calls'] },
-  { day: 'Wednesday', tag: 'Meetings', color: '#eef1f5', tagColor: NAVY, items: ['Client / referrer meetings', 'Annual-review cadence: send comparison / outcome email', 'Mid-week pipeline check'] },
-  { day: 'Thursday', tag: 'Meetings', color: '#eef1f5', tagColor: NAVY, items: ['Client / referrer meetings', 'Direct Sales: client review conversations from the back book'] },
-  { day: 'Friday', tag: 'Admin & Follow-up', color: '#fef3e2', tagColor: '#b7770d', items: ['No meetings — protect this block', 'Annual-review cadence: follow-up call if no response', 'Weekly review: what worked, what to adjust', 'Set next week\'s plan before you leave'] },
+  { day: 'Monday', tag: 'Admin & Outreach', color: '#fef3e2', tagColor: '#b7770d', blurb: 'No meetings — plan the week, research target businesses, send annual-review emails.', items: ['No meetings — protect this block', 'Weekly plan set from last Friday\'s review', 'Annual-review cadence: send initial review emails to 2–3 clients', 'Direct Sales: research 4–6 target businesses for the month'] },
+  { day: 'Tuesday', tag: 'Meetings', color: '#eef1f5', tagColor: NAVY, blurb: 'Client and referrer meetings, Gold/Silver touchpoints, deal strategy calls.', items: ['Client / referrer meetings', 'Gold & Silver referral touchpoints', 'Deal strategy & structuring calls'] },
+  { day: 'Wednesday', tag: 'Meetings', color: '#eef1f5', tagColor: NAVY, blurb: 'Meetings continue — send the annual-review comparison / outcome email.', items: ['Client / referrer meetings', 'Annual-review cadence: send comparison / outcome email', 'Mid-week pipeline check'] },
+  { day: 'Thursday', tag: 'Meetings', color: '#eef1f5', tagColor: NAVY, blurb: 'Client and referrer meetings, back-book review conversations.', items: ['Client / referrer meetings', 'Direct Sales: client review conversations from the back book'] },
+  { day: 'Friday', tag: 'Admin & Follow-up', color: '#fef3e2', tagColor: '#b7770d', blurb: 'No meetings — follow-up calls, weekly review, set next week\'s plan.', items: ['No meetings — protect this block', 'Annual-review cadence: follow-up call if no response', 'Weekly review: what worked, what to adjust', 'Set next week\'s plan before you leave'] },
 ]
 
 function RhythmStrip({ compact }) {
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8 }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 10 }}>
       {RHYTHM_DAYS.map(d => (
-        <div key={d.day} style={{ background: d.color, borderRadius: 8, padding: compact ? '8px 10px' : '12px 14px' }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: DEEP }}>{d.day}</div>
-          <div style={{ fontSize: 9, fontWeight: 600, color: d.tagColor, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{d.tag}</div>
+        <div key={d.day} style={{ background: d.color, borderRadius: 10, padding: compact ? '12px 14px' : '12px 14px', minHeight: compact ? 108 : 'auto' }}>
+          <div style={{ fontSize: 13, fontWeight: 800, color: DEEP, marginBottom: 3 }}>{d.day}</div>
+          <div style={{ fontSize: 9, fontWeight: 600, color: d.tagColor, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: compact ? 6 : 0 }}>{d.tag}</div>
+          {compact && <div style={{ fontSize: 10.5, color: '#5a6470', lineHeight: 1.5 }}>{d.blurb}</div>}
         </div>
       ))}
     </div>
