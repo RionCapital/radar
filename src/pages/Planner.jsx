@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { sbSaveMarketing, sbLoadMarketing } from '../lib/supabase'
 import { notifySaveFailed } from '../lib/saveStatus'
 import { loadDeals } from '../lib/deals'
+import { loadSettings } from '../lib/settings'
 import { logo_rion_notag } from '../lib/icons'
 
 const NAVY = '#3D5570'
@@ -102,6 +103,34 @@ function migrateWeekKeys(store) {
   if (viewWeek && parseISO(viewWeek).getDay() !== 1) viewWeek = addDays(viewWeek, 1)
   return { ...store, weeks, viewWeek }
 }
+
+// One-time backfill: weeks created before the settlement-count-target field
+// existed never got the (then also-missing) $ default either — they were
+// stuck at the old hardcoded 0. `settlementCountTarget === undefined` is a
+// reliable signal a week predates this feature, so it's safe to fill both
+// in from the current Settings > Planner Targets defaults without touching
+// anything a person has deliberately set since.
+function backfillTargets(store) {
+  if (!store || !store.weeks) return store
+  const targets = loadSettings().plannerTargets || {}
+  let changed = false
+  const weeks = {}
+  Object.keys(store.weeks).forEach(key => {
+    const entry = store.weeks[key]
+    if (entry.settlementCountTarget === undefined) {
+      changed = true
+      weeks[key] = {
+        ...entry,
+        settlementCountTarget: targets.settlementCount ?? DEFAULT_SETTLEMENT_COUNT_TARGET,
+        settlementTarget: entry.settlementTarget ? entry.settlementTarget : (targets.settlementDollar ?? DEFAULT_SETTLEMENT_DOLLAR_TARGET),
+      }
+    } else {
+      weeks[key] = entry
+    }
+  })
+  if (!changed) return store
+  return { ...store, weeks }
+}
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 function fmtShort(iso) { const d = parseISO(iso); return `${d.getDate()} ${MONTHS[d.getMonth()]}` }
 function fmtRange(mondayIso) {
@@ -132,12 +161,13 @@ function fmtMoney(n) {
 function uid() { return Date.now() + Math.random().toString(16).slice(2) }
 
 function emptyWeek(weekStart) {
+  const targets = loadSettings().plannerTargets || {}
   return {
     weekStart,
-    lodgementCountTarget: DEFAULT_LODGEMENT_COUNT_TARGET,
+    lodgementCountTarget: targets.lodgementCount ?? DEFAULT_LODGEMENT_COUNT_TARGET,
     lodgementTarget: 0,
-    settlementCountTarget: DEFAULT_SETTLEMENT_COUNT_TARGET,
-    settlementTarget: DEFAULT_SETTLEMENT_DOLLAR_TARGET,
+    settlementCountTarget: targets.settlementCount ?? DEFAULT_SETTLEMENT_COUNT_TARGET,
+    settlementTarget: targets.settlementDollar ?? DEFAULT_SETTLEMENT_DOLLAR_TARGET,
     meetings: [],
     lodgements: [],
     settlements: [],
@@ -314,7 +344,7 @@ export default function Planner() {
   const [store, setStore] = useState(() => {
     try {
       const s = localStorage.getItem(STORAGE_KEY)
-      if (s) return migrateWeekKeys(JSON.parse(s))
+      if (s) return backfillTargets(migrateWeekKeys(JSON.parse(s)))
     } catch {}
     const monday = toISO(getMonday(new Date()))
     return { weeks: { [monday]: emptyWeek(monday) }, viewWeek: monday, targetWeight: '', monthNotes: {} }
@@ -327,7 +357,7 @@ export default function Planner() {
       if (cloud?._planner?.weeks && Object.keys(cloud._planner.weeks).length) {
         const localRaw = localStorage.getItem(STORAGE_KEY)
         if (!localRaw) {
-          const migrated = migrateWeekKeys(cloud._planner)
+          const migrated = backfillTargets(migrateWeekKeys(cloud._planner))
           localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated))
           setStore(migrated)
         }
@@ -336,11 +366,11 @@ export default function Planner() {
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Re-run the same repair against whatever ended up in state (covers the
-  // case where the local copy itself still had old-style keys) and persist
-  // the correction straight away so it sticks.
+  // case where the local copy itself still had old-style keys or missing
+  // target defaults) and persist the correction straight away so it sticks.
   useEffect(() => {
     setStore(prev => {
-      const migrated = migrateWeekKeys(prev)
+      const migrated = backfillTargets(migrateWeekKeys(prev))
       if (migrated === prev) return prev
       try { localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated)) } catch {}
       sbSaveMarketing({ _planner: migrated }, PLANNER_ROW_ID).catch(() => {})
@@ -583,51 +613,51 @@ function WeekTab({
 
           {/* rhythm strip */}
           <RhythmStrip compact />
+
+          <SectionCard title="Weekly Targets" style={{ marginTop: 16 }}>
+            <div style={{ fontSize: 10, color: SLATE, marginBottom: 14, fontStyle: 'italic' }}>Only items you've ticked done count toward these bars — not everything listed below.</div>
+
+            <div style={{ marginBottom: 18 }}>
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 6, flexWrap: 'wrap' }}>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: PINK, display: 'inline-block' }} />
+                <span style={{ fontSize: 11, color: SLATE }}>Lodgements — target (no. of loans)</span>
+                <input type="number" value={week.lodgementCountTarget} onChange={e => updateWeek({ lodgementCountTarget: e.target.value })} style={{ ...inp(), width: 70 }} />
+                <span style={{ fontSize: 11, color: SLATE, marginLeft: 'auto' }}>Completed: <b style={{ color: NAVY }}>{completed.lodgedCount}</b> of {week.lodgementCountTarget || 0}</span>
+              </div>
+              <div style={{ height: 8, background: '#f0f2f5', borderRadius: 4, overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: `${lodgeCountPct}%`, background: PINK, borderRadius: 4, transition: 'width 0.2s' }} />
+              </div>
+              <div style={{ fontSize: 10, color: SLATE, marginTop: 4 }}>{lodgeCountPct}% of target &middot; {fmtMoney(completed.lodgedTotal)} completed in value</div>
+            </div>
+
+            <div style={{ marginBottom: 18 }}>
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 6, flexWrap: 'wrap' }}>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: BLUE, display: 'inline-block' }} />
+                <span style={{ fontSize: 11, color: SLATE }}>Settlements — target (no. of loans)</span>
+                <input type="number" value={week.settlementCountTarget} onChange={e => updateWeek({ settlementCountTarget: e.target.value })} style={{ ...inp(), width: 70 }} />
+                <span style={{ fontSize: 11, color: SLATE, marginLeft: 'auto' }}>Completed: <b style={{ color: NAVY }}>{completed.settledCount}</b> of {week.settlementCountTarget || 0}</span>
+              </div>
+              <div style={{ height: 8, background: '#f0f2f5', borderRadius: 4, overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: `${settleCountPct}%`, background: BLUE, borderRadius: 4, transition: 'width 0.2s' }} />
+              </div>
+              <div style={{ fontSize: 10, color: SLATE, marginTop: 4 }}>{settleCountPct}% of target</div>
+            </div>
+
+            <div>
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 6, flexWrap: 'wrap' }}>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: BLUE_LIGHT, display: 'inline-block' }} />
+                <span style={{ fontSize: 11, color: SLATE }}>Settlements — target $</span>
+                <input type="number" value={week.settlementTarget} onChange={e => updateWeek({ settlementTarget: e.target.value })} style={{ ...inp(), width: 130 }} />
+                <span style={{ fontSize: 11, color: SLATE, marginLeft: 'auto' }}>Completed: <b style={{ color: NAVY }}>{fmtMoney(completed.settledTotal)}</b></span>
+              </div>
+              <div style={{ height: 8, background: '#f0f2f5', borderRadius: 4, overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: `${settlePct}%`, background: BLUE_LIGHT, borderRadius: 4, transition: 'width 0.2s' }} />
+              </div>
+              <div style={{ fontSize: 10, color: SLATE, marginTop: 4 }}>{settlePct}% of target</div>
+            </div>
+          </SectionCard>
         </div>
       </div>
-
-      <SectionCard title="Weekly Targets" style={{ marginTop: 16 }}>
-        <div style={{ fontSize: 10, color: SLATE, marginBottom: 14, fontStyle: 'italic' }}>Only items you've ticked done count toward these bars — not everything listed below.</div>
-
-        <div style={{ marginBottom: 18 }}>
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 6 }}>
-            <span style={{ width: 8, height: 8, borderRadius: '50%', background: PINK, display: 'inline-block' }} />
-            <span style={{ fontSize: 11, color: SLATE }}>Lodgements — target (no. of loans)</span>
-            <input type="number" value={week.lodgementCountTarget} onChange={e => updateWeek({ lodgementCountTarget: e.target.value })} style={{ ...inp(), width: 70 }} />
-            <span style={{ fontSize: 11, color: SLATE, marginLeft: 'auto' }}>Completed: <b style={{ color: NAVY }}>{completed.lodgedCount}</b> of {week.lodgementCountTarget || 0}</span>
-          </div>
-          <div style={{ height: 8, background: '#f0f2f5', borderRadius: 4, overflow: 'hidden' }}>
-            <div style={{ height: '100%', width: `${lodgeCountPct}%`, background: PINK, borderRadius: 4, transition: 'width 0.2s' }} />
-          </div>
-          <div style={{ fontSize: 10, color: SLATE, marginTop: 4 }}>{lodgeCountPct}% of target &middot; {fmtMoney(completed.lodgedTotal)} completed in value</div>
-        </div>
-
-        <div style={{ marginBottom: 18 }}>
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 6 }}>
-            <span style={{ width: 8, height: 8, borderRadius: '50%', background: BLUE, display: 'inline-block' }} />
-            <span style={{ fontSize: 11, color: SLATE }}>Settlements — target (no. of loans)</span>
-            <input type="number" value={week.settlementCountTarget} onChange={e => updateWeek({ settlementCountTarget: e.target.value })} style={{ ...inp(), width: 70 }} />
-            <span style={{ fontSize: 11, color: SLATE, marginLeft: 'auto' }}>Completed: <b style={{ color: NAVY }}>{completed.settledCount}</b> of {week.settlementCountTarget || 0}</span>
-          </div>
-          <div style={{ height: 8, background: '#f0f2f5', borderRadius: 4, overflow: 'hidden' }}>
-            <div style={{ height: '100%', width: `${settleCountPct}%`, background: BLUE, borderRadius: 4, transition: 'width 0.2s' }} />
-          </div>
-          <div style={{ fontSize: 10, color: SLATE, marginTop: 4 }}>{settleCountPct}% of target</div>
-        </div>
-
-        <div>
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 6 }}>
-            <span style={{ width: 8, height: 8, borderRadius: '50%', background: BLUE_LIGHT, display: 'inline-block' }} />
-            <span style={{ fontSize: 11, color: SLATE }}>Settlements — target $</span>
-            <input type="number" value={week.settlementTarget} onChange={e => updateWeek({ settlementTarget: e.target.value })} style={{ ...inp(), width: 130 }} />
-            <span style={{ fontSize: 11, color: SLATE, marginLeft: 'auto' }}>Completed: <b style={{ color: NAVY }}>{fmtMoney(completed.settledTotal)}</b></span>
-          </div>
-          <div style={{ height: 8, background: '#f0f2f5', borderRadius: 4, overflow: 'hidden' }}>
-            <div style={{ height: '100%', width: `${settlePct}%`, background: BLUE_LIGHT, borderRadius: 4, transition: 'width 0.2s' }} />
-          </div>
-          <div style={{ fontSize: 10, color: SLATE, marginTop: 4 }}>{settlePct}% of target</div>
-        </div>
-      </SectionCard>
 
       {/* meetings */}
       <SectionCard title={`Meetings (${stats.meetings})`} style={{ marginTop: 16 }}

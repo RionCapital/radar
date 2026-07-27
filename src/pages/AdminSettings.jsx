@@ -72,19 +72,14 @@ export default function AdminSettings() {
   const TABS = [
     { id:'commissions', label:'Commission Rates' },
     { id:'business', label:'Business Details' },
+    { id:'planner', label:'Planner Targets' },
     ...(isAdmin ? [{ id:'team', label:'Team Members' }] : []),
   ]
 
   // ── Data backup / restore ──────────────────────────────────────────────────
-  // 'rion-radar-clients-v12' and 'rion-settings' below were stale — the
-  // actual keys moved to v13 and -v1 respectively a while back, so backup
-  // and restore had silently been missing both entirely, with no error to
-  // show for it. Found while investigating the CRM deals sync bug.
   const BACKUP_KEYS = [
-    'rion-radar-clients-v13',
-    'rion-radar-clients-lastsync',
+    'rion-radar-clients-v12',
     'rion-crm-deals',
-    'rion-crm-deals-lastsync',
     'rion-marketing-referrers',
     'rion-marketing-clients',
     'rion-marketing-lenders',
@@ -92,7 +87,7 @@ export default function AdminSettings() {
     'rion-radar-ticked',
     'rion-comm-seed-version',
     'rion-marketing-referrers-version',
-    'rion-settings-v1',
+    'rion-settings',
   ]
 
   function exportBackup() {
@@ -234,6 +229,33 @@ export default function AdminSettings() {
             </div>
             <div style={{ marginTop:12, padding:'10px 12px', background:'#fef9c3', borderRadius:7, fontSize:11, color:'#78350f' }}>
               💡 These details pre-populate email templates. Individual broker profiles are set in Team Members.
+            </div>
+          </Card>
+        )}
+
+        {/* Planner Targets */}
+        {tab==='planner' && (
+          <Card style={{ marginBottom:16 }}>
+            <CardTitle>Default weekly targets — Planner</CardTitle>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12 }}>
+              <div>
+                <div style={{ fontSize:11, fontWeight:500, color:'#7A8090', marginBottom:4 }}>Lodgements target (no. of loans)</div>
+                <input style={inp} type="number" value={settings.plannerTargets?.lodgementCount ?? 4}
+                  onChange={e => setSettings(s => ({ ...s, plannerTargets: { ...s.plannerTargets, lodgementCount: Number(e.target.value) } }))} />
+              </div>
+              <div>
+                <div style={{ fontSize:11, fontWeight:500, color:'#7A8090', marginBottom:4 }}>Settlements target (no. of loans)</div>
+                <input style={inp} type="number" value={settings.plannerTargets?.settlementCount ?? 3}
+                  onChange={e => setSettings(s => ({ ...s, plannerTargets: { ...s.plannerTargets, settlementCount: Number(e.target.value) } }))} />
+              </div>
+              <div>
+                <div style={{ fontSize:11, fontWeight:500, color:'#7A8090', marginBottom:4 }}>Settlements target ($)</div>
+                <input style={inp} type="number" value={settings.plannerTargets?.settlementDollar ?? 1000000}
+                  onChange={e => setSettings(s => ({ ...s, plannerTargets: { ...s.plannerTargets, settlementDollar: Number(e.target.value) } }))} />
+              </div>
+            </div>
+            <div style={{ marginTop:12, padding:'10px 12px', background:'#fef9c3', borderRadius:7, fontSize:11, color:'#78350f' }}>
+              💡 These are the defaults applied to every new week in the Planner. Any individual week can still be overridden on the This Week tab — changing these here only affects weeks that haven't started yet.
             </div>
           </Card>
         )}
