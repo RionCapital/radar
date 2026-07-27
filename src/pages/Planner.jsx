@@ -1023,9 +1023,9 @@ function AnalysisTab({ store, onUpdateMonthNotes }) {
 
         <SectionCard title="Meetings">
           <div style={{ maxHeight: 300, overflowY: 'auto' }}>
-            <StackChart labels={monthLabels} series={MEETING_TYPES.map(t => ({ name: t, color: TYPE_COLOR[t], values: monthRows.map(r => r.byType[t] || 0) }))} />
-            <BreakdownTable
-              months={monthLabels}
+            <MeetingsPanel
+              labels={monthLabels}
+              series={MEETING_TYPES.map(t => ({ name: t, color: TYPE_COLOR[t], values: monthRows.map(r => r.byType[t] || 0) }))}
               rows={[
                 ...MEETING_TYPES.map(t => ({ label: t, values: monthRows.map(r => r.byType[t] || 0) })),
                 { label: 'Total', bold: true, values: monthRows.map(r => r.meetings) },
@@ -1112,6 +1112,54 @@ function ComboChart({ labels, bars, line, barColor, lineColor, barFormatter, lin
         </g>
       ))}
     </svg>
+  )
+}
+
+function MeetingsPanel({ labels, series, rows }) {
+  const n = Math.max(1, labels.length)
+  const totals = labels.map((_, i) => series.reduce((s, ser) => s + (ser.values[i] || 0), 0))
+  const max = Math.max(1, ...totals)
+  const chartH = 120
+  const gridCols = `84px repeat(${n}, 1fr)`
+
+  return (
+    <div>
+      <div style={{ display: 'grid', gridTemplateColumns: gridCols, columnGap: 8, alignItems: 'end', height: chartH, marginTop: 18 }}>
+        <div />
+        {labels.map((l, i) => (
+          <div key={l} style={{ display: 'flex', flexDirection: 'column-reverse', height: '100%', position: 'relative' }}>
+            {totals[i] > 0 && <div style={{ position: 'absolute', top: -16, left: 0, right: 0, textAlign: 'center', fontSize: 9, fontWeight: 700, color: NAVY }}>{totals[i]}</div>}
+            {series.map(ser => {
+              const v = ser.values[i] || 0
+              const h = (v / max) * chartH
+              return v > 0 ? <div key={ser.name} style={{ height: h, background: ser.color, borderRadius: 2 }} /> : null
+            })}
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: gridCols, columnGap: 8, marginTop: 6, marginBottom: 12 }}>
+        <div />
+        {labels.map(l => <div key={l} style={{ fontSize: 9, color: SLATE, textAlign: 'center' }}>{l}</div>)}
+      </div>
+
+      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginBottom: 14 }}>
+        {series.map(ser => (
+          <div key={ser.name} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 10, color: SLATE }}>
+            <span style={{ width: 8, height: 8, borderRadius: 2, background: ser.color, display: 'inline-block' }} /> {ser.name}
+          </div>
+        ))}
+      </div>
+
+      <div>
+        {rows.map(r => (
+          <div key={r.label} style={{ display: 'grid', gridTemplateColumns: gridCols, columnGap: 8, padding: '5px 0', borderTop: r.bold ? '1px solid #e2e6ed' : 'none', fontSize: 11 }}>
+            <div style={{ fontWeight: r.bold ? 700 : 400, color: r.bold ? NAVY : '#4a5568' }}>{r.label}</div>
+            {r.values.map((v, i) => <div key={i} style={{ textAlign: 'right', fontWeight: r.bold ? 700 : 400, color: r.bold ? NAVY : '#4a5568' }}>{v}</div>)}
+          </div>
+        ))}
+      </div>
+    </div>
   )
 }
 
