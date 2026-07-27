@@ -44,6 +44,7 @@ const TRAINING_OPTIONS = [
 ]
 const TRAINING_CAT_BY_VALUE = TRAINING_OPTIONS.reduce((m, o) => { if (o.value) m[o.value] = o.cat; return m }, {})
 const TRAINING_CATS = ['Cardio', 'Boxing', 'Strength', 'Recovery']
+const TRAINING_CAT_COLOR = { Cardio: '#3D8BC4', Boxing: '#E0904F', Strength: '#6FAF4C', Recovery: PINK }
 
 // ─── date helpers ───────────────────────────────────────────────────────────
 function toISO(d) {
@@ -186,6 +187,76 @@ function dealLabel(d) {
   const stage = (d.Status || '').replace(/^\d+\.\s*/, '')
   const amt = d.Amount ? fmtMoney(d.Amount) : '\u2014'
   return `${d['Transaction Name']} \u2014 ${stage} \u2014 ${amt}`
+}
+
+const DAY_LETTERS = ['M', 'T', 'W', 'T', 'F', 'S', 'S']
+
+function monthGrid(year, month) {
+  const firstOfMonth = new Date(year, month, 1)
+  const start = getMonday(firstOfMonth)
+  const cells = []
+  for (let i = 0; i < 42; i++) {
+    const d = new Date(start)
+    d.setDate(d.getDate() + i)
+    cells.push(d)
+  }
+  return cells
+}
+
+function MiniCalendar({ viewWeek, onSelectDate, onClose }) {
+  const viewDate = parseISO(viewWeek)
+  const [cal, setCal] = useState({ y: viewDate.getFullYear(), m: viewDate.getMonth() })
+  const todayISO = toISO(new Date())
+  const weekEnd = addDays(viewWeek, 6)
+  const cells = monthGrid(cal.y, cal.m)
+
+  function shiftMonth(delta) {
+    let y = cal.y, m = cal.m + delta
+    if (m < 0) { m = 11; y-- } else if (m > 11) { m = 0; y++ }
+    setCal({ y, m })
+  }
+
+  return (
+    <div style={{
+      position: 'absolute', top: '100%', left: 0, marginTop: 8, zIndex: 30,
+      background: '#fff', border: '1px solid #e2e6ed', borderRadius: 10, boxShadow: '0 10px 28px rgba(42,61,84,0.18)',
+      padding: 12, width: 240,
+    }} onMouseLeave={onClose}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+        <button onClick={() => shiftMonth(-1)} style={{ background: 'none', border: 'none', color: NAVY, cursor: 'pointer', fontSize: 12, padding: 4 }}>‹</button>
+        <div style={{ fontSize: 12, fontWeight: 700, color: NAVY }}>{MONTHS[cal.m]} {cal.y}</div>
+        <button onClick={() => shiftMonth(1)} style={{ background: 'none', border: 'none', color: NAVY, cursor: 'pointer', fontSize: 12, padding: 4 }}>›</button>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2 }}>
+        {DAY_LETTERS.map((l, i) => (
+          <div key={i} style={{ fontSize: 9, color: SLATE, textAlign: 'center', fontWeight: 600, padding: '2px 0' }}>{l}</div>
+        ))}
+        {cells.map((d, i) => {
+          const iso = toISO(d)
+          const inMonth = d.getMonth() === cal.m
+          const isToday = iso === todayISO
+          const inSelectedWeek = iso >= viewWeek && iso <= weekEnd
+          return (
+            <button
+              key={i}
+              onClick={() => onSelectDate(iso)}
+              style={{
+                border: 'none', cursor: 'pointer', fontSize: 11, padding: '5px 0', borderRadius: 5,
+                background: inSelectedWeek ? '#FBE0EE' : 'transparent',
+                color: !inMonth ? '#c7ccd4' : (isToday ? '#fff' : DEEP),
+                fontWeight: isToday ? 700 : 400,
+                position: 'relative',
+              }}
+            >
+              {isToday
+                ? <span style={{ background: NAVY, borderRadius: '50%', width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto' }}>{d.getDate()}</span>
+                : d.getDate()}
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
 }
 
 // ─── main component ─────────────────────────────────────────────────────────
@@ -385,6 +456,7 @@ export default function Planner() {
             onPrev={() => goToWeek(addDays(viewWeek, -7))}
             onNext={() => goToWeek(addDays(viewWeek, 7))}
             onToday={() => goToWeek(toISO(getMonday(new Date())))}
+            onJumpToDate={iso => goToWeek(toISO(getMonday(parseISO(iso))))}
             onStartNewWeek={startNewWeek}
             updateWeek={updateWeek}
             addMeeting={addMeeting} updateMeeting={updateMeeting} removeMeeting={removeMeeting}
@@ -407,7 +479,7 @@ export default function Planner() {
 // ─── THIS WEEK ──────────────────────────────────────────────────────────────
 function WeekTab({
   week, viewWeek, daysLeft, stats, targetWeight, onUpdateTargetWeight,
-  onPrev, onNext, onToday, onStartNewWeek, updateWeek,
+  onPrev, onNext, onToday, onJumpToDate, onStartNewWeek, updateWeek,
   addMeeting, updateMeeting, removeMeeting,
   addLodgement, updateLodgement, removeLodgement,
   addSettlement, updateSettlement, removeSettlement,
@@ -417,6 +489,7 @@ function WeekTab({
   const settlePct = week.settlementTarget ? Math.min(100, Math.round(stats.settledTotal / week.settlementTarget * 100)) : 0
   const lodgeCountPct = week.lodgementCountTarget ? Math.min(100, Math.round(stats.lodgedCount / week.lodgementCountTarget * 100)) : 0
   const trStats = trainingStats(week)
+  const [showCalendar, setShowCalendar] = useState(false)
 
   return (
     <div>
@@ -424,9 +497,19 @@ function WeekTab({
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 20 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <button onClick={onPrev} style={navBtnStyle}>←</button>
-          <div>
+          <div style={{ position: 'relative' }}>
             <div style={{ fontSize: 22, fontWeight: 800, color: NAVY, fontFamily: 'Georgia,serif' }}>Week of {fmtRange(viewWeek)}</div>
-            <button onClick={onToday} style={{ background: 'none', border: 'none', color: SLATE, fontSize: 11, cursor: 'pointer', padding: 0, textDecoration: 'underline' }}>jump to this week</button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <button onClick={onToday} style={{ background: 'none', border: 'none', color: SLATE, fontSize: 11, cursor: 'pointer', padding: 0, textDecoration: 'underline' }}>jump to this week</button>
+              <button onClick={() => setShowCalendar(v => !v)} title="Pick a week from the calendar" style={{ background: 'none', border: 'none', color: showCalendar ? BRAND_PINK : SLATE, fontSize: 13, cursor: 'pointer', padding: 0 }}>📅</button>
+            </div>
+            {showCalendar && (
+              <MiniCalendar
+                viewWeek={viewWeek}
+                onSelectDate={iso => { onJumpToDate(iso); setShowCalendar(false) }}
+                onClose={() => setShowCalendar(false)}
+              />
+            )}
           </div>
           <button onClick={onNext} style={navBtnStyle}>→</button>
         </div>
@@ -847,9 +930,7 @@ function AnalysisTab({ store, onUpdateMonthNotes }) {
         </SectionCard>
 
         <SectionCard title="Training & fitness">
-          <div style={{ maxHeight: 300, overflowY: 'auto' }}>
-            <TrainingBreakdownTable months={monthLabels} monthRows={monthRows} />
-          </div>
+          <StackChart labels={monthLabels} series={TRAINING_CATS.map(cat => ({ name: cat, color: TRAINING_CAT_COLOR[cat], values: monthRows.map(r => r.training[cat] || 0) }))} />
         </SectionCard>
       </div>
 
@@ -1024,73 +1105,6 @@ function BreakdownTable({ months, rows }) {
   )
 }
 
-const TRAINING_ROWS = [
-  {
-    group: 'Cardio', bg: '#DCEBFB', totalBg: '#AFCFF0', totalLabel: 'Total Cardio',
-    items: [
-      { label: 'Run', value: 'Run' },
-      { label: 'Swim', value: 'Swim' },
-      { label: 'General PT', value: 'General PT' },
-      { label: 'Walk (min 6k steps)', value: 'Walk' },
-      { label: 'Hyrox', value: 'Hyrox' },
-    ],
-  },
-  {
-    group: 'Boxing', bg: '#FBE3D3', totalBg: '#F0B98F', totalLabel: 'Total Boxing',
-    items: [
-      { label: 'Shadow Box', value: 'Shadow Box' },
-      { label: 'Boxing', value: 'Boxing' },
-      { label: 'Boxing - Contact', value: 'Boxing Contact' },
-    ],
-  },
-  {
-    group: 'Strength', bg: '#DFF0D2', totalBg: '#A9D98C', totalLabel: 'Strength & Conditioning',
-    items: [
-      { label: 'Weights Upper', value: 'Weights Upper' },
-      { label: 'Weights Lower', value: 'Weights Lower' },
-      { label: 'Strength & Conditioning (Gen.)', value: 'Strength Cond' },
-    ],
-  },
-]
-
-function TrainingBreakdownTable({ months, monthRows }) {
-  return (
-    <div style={{ overflowX: 'auto' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
-        <thead>
-          <tr>
-            <th style={{ textAlign: 'left', padding: '4px 8px', color: SLATE, fontWeight: 600 }}></th>
-            {months.map(m => <th key={m} style={{ padding: '4px 8px', color: SLATE, fontWeight: 600, textAlign: 'right' }}>{m}</th>)}
-          </tr>
-        </thead>
-        <tbody>
-          {TRAINING_ROWS.map(group => (
-            <React.Fragment key={group.group}>
-              {group.items.map(it => (
-                <tr key={it.value} style={{ background: group.bg }}>
-                  <td style={{ padding: '4px 8px', color: DEEP }}>{it.label}</td>
-                  {monthRows.map(r => <td key={r.key} style={{ padding: '4px 8px', textAlign: 'right', color: DEEP }}>{r.byOption[it.value] || 0}</td>)}
-                </tr>
-              ))}
-              <tr style={{ background: group.totalBg }}>
-                <td style={{ padding: '4px 8px', fontWeight: 700, color: DEEP }}>{group.totalLabel}</td>
-                {monthRows.map(r => <td key={r.key} style={{ padding: '4px 8px', textAlign: 'right', fontWeight: 700, color: DEEP }}>{group.items.reduce((s, it) => s + (r.byOption[it.value] || 0), 0)}</td>)}
-              </tr>
-            </React.Fragment>
-          ))}
-          <tr style={{ borderTop: '1px solid #d8dde5' }}>
-            <td style={{ padding: '4px 8px', fontWeight: 700, color: NAVY }}>Total Workouts</td>
-            {monthRows.map(r => <td key={r.key} style={{ padding: '4px 8px', textAlign: 'right', fontWeight: 700, color: NAVY }}>{r.sessions}</td>)}
-          </tr>
-          <tr style={{ background: '#FAD7EA' }}>
-            <td style={{ padding: '4px 8px', color: DEEP }}>Recovery</td>
-            {monthRows.map(r => <td key={r.key} style={{ padding: '4px 8px', textAlign: 'right', color: DEEP }}>{r.byOption['Recovery'] || 0}</td>)}
-          </tr>
-        </tbody>
-      </table>
-    </div>
-  )
-}
 
 // ─── HISTORY ────────────────────────────────────────────────────────────────
 function HistoryTab({ store, onOpen, onDelete }) {
