@@ -291,7 +291,7 @@ function MiniCalendar({ viewWeek, onSelectDate, onClose, inline }) {
   }
 
   const containerStyle = inline
-    ? { background: '#fff', border: '1px solid #e2e6ed', borderRadius: 12, padding: 14, width: 240, flexShrink: 0 }
+    ? { background: '#fff', border: '1px solid #e2e6ed', borderRadius: 12, padding: 14, width: 240, flexShrink: 0, height: '100%', boxSizing: 'border-box' }
     : {
         position: 'absolute', top: '100%', left: 0, marginTop: 8, zIndex: 30,
         background: '#fff', border: '1px solid #e2e6ed', borderRadius: 10, boxShadow: '0 10px 28px rgba(42,61,84,0.18)',
@@ -586,7 +586,7 @@ function WeekTab({
 
   return (
     <div>
-      <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', marginBottom: 20 }}>
+      <div style={{ display: 'flex', gap: 16, alignItems: 'stretch', marginBottom: 20 }}>
         <MiniCalendar viewWeek={viewWeek} onSelectDate={iso => onJumpToDate(iso)} inline />
 
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -615,46 +615,30 @@ function WeekTab({
           <RhythmStrip compact />
 
           <SectionCard title="Weekly Targets" style={{ marginTop: 16 }}>
-            <div style={{ fontSize: 10, color: SLATE, marginBottom: 14, fontStyle: 'italic' }}>Only items you've ticked done count toward these bars — not everything listed below.</div>
+            <div style={{ fontSize: 10, color: SLATE, marginBottom: 16, fontStyle: 'italic' }}>Only items you've ticked done count toward these bars — not everything listed below.</div>
 
-            <div style={{ marginBottom: 18 }}>
-              <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 6, flexWrap: 'wrap' }}>
-                <span style={{ width: 8, height: 8, borderRadius: '50%', background: PINK, display: 'inline-block' }} />
-                <span style={{ fontSize: 11, color: SLATE }}>Lodgements — target (no. of loans)</span>
-                <input type="number" value={week.lodgementCountTarget} onChange={e => updateWeek({ lodgementCountTarget: e.target.value })} style={{ ...inp(), width: 70 }} />
-                <span style={{ fontSize: 11, color: SLATE, marginLeft: 'auto' }}>Completed: <b style={{ color: NAVY }}>{completed.lodgedCount}</b> of {week.lodgementCountTarget || 0}</span>
-              </div>
-              <div style={{ height: 8, background: '#f0f2f5', borderRadius: 4, overflow: 'hidden' }}>
-                <div style={{ height: '100%', width: `${lodgeCountPct}%`, background: PINK, borderRadius: 4, transition: 'width 0.2s' }} />
-              </div>
-              <div style={{ fontSize: 10, color: SLATE, marginTop: 4 }}>{lodgeCountPct}% of target &middot; {fmtMoney(completed.lodgedTotal)} completed in value</div>
-            </div>
-
-            <div style={{ marginBottom: 18 }}>
-              <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 6, flexWrap: 'wrap' }}>
-                <span style={{ width: 8, height: 8, borderRadius: '50%', background: BLUE, display: 'inline-block' }} />
-                <span style={{ fontSize: 11, color: SLATE }}>Settlements — target (no. of loans)</span>
-                <input type="number" value={week.settlementCountTarget} onChange={e => updateWeek({ settlementCountTarget: e.target.value })} style={{ ...inp(), width: 70 }} />
-                <span style={{ fontSize: 11, color: SLATE, marginLeft: 'auto' }}>Completed: <b style={{ color: NAVY }}>{completed.settledCount}</b> of {week.settlementCountTarget || 0}</span>
-              </div>
-              <div style={{ height: 8, background: '#f0f2f5', borderRadius: 4, overflow: 'hidden' }}>
-                <div style={{ height: '100%', width: `${settleCountPct}%`, background: BLUE, borderRadius: 4, transition: 'width 0.2s' }} />
-              </div>
-              <div style={{ fontSize: 10, color: SLATE, marginTop: 4 }}>{settleCountPct}% of target</div>
-            </div>
-
-            <div>
-              <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 6, flexWrap: 'wrap' }}>
-                <span style={{ width: 8, height: 8, borderRadius: '50%', background: BLUE_LIGHT, display: 'inline-block' }} />
-                <span style={{ fontSize: 11, color: SLATE }}>Settlements — target $</span>
-                <input type="number" value={week.settlementTarget} onChange={e => updateWeek({ settlementTarget: e.target.value })} style={{ ...inp(), width: 130 }} />
-                <span style={{ fontSize: 11, color: SLATE, marginLeft: 'auto' }}>Completed: <b style={{ color: NAVY }}>{fmtMoney(completed.settledTotal)}</b></span>
-              </div>
-              <div style={{ height: 8, background: '#f0f2f5', borderRadius: 4, overflow: 'hidden' }}>
-                <div style={{ height: '100%', width: `${settlePct}%`, background: BLUE_LIGHT, borderRadius: 4, transition: 'width 0.2s' }} />
-              </div>
-              <div style={{ fontSize: 10, color: SLATE, marginTop: 4 }}>{settlePct}% of target</div>
-            </div>
+            <TargetBar
+              color={PINK} label="Lodgements"
+              value={week.lodgementCountTarget} onChange={v => updateWeek({ lodgementCountTarget: v })}
+              actualLabel={`${completed.lodgedCount} of ${week.lodgementCountTarget || 0}`}
+              pct={lodgeCountPct}
+              caption={`${lodgeCountPct}% of target · ${fmtMoney(completed.lodgedTotal)} completed`}
+            />
+            <TargetBar
+              color={BLUE} label="Settlements"
+              value={week.settlementCountTarget} onChange={v => updateWeek({ settlementCountTarget: v })}
+              actualLabel={`${completed.settledCount} of ${week.settlementCountTarget || 0}`}
+              pct={settleCountPct}
+              caption={`${settleCountPct}% of target`}
+            />
+            <TargetBar
+              color={BLUE_LIGHT} label="Settlements $" wide
+              value={week.settlementTarget} onChange={v => updateWeek({ settlementTarget: v })}
+              actualLabel={fmtMoney(completed.settledTotal)}
+              pct={settlePct}
+              caption={`${settlePct}% of target`}
+              last
+            />
           </SectionCard>
         </div>
       </div>
@@ -819,18 +803,20 @@ function WeightField({ label, value, onChange, accent }) {
   )
 }
 
-function TargetRow({ value, onChange, actual, pct, color }) {
+function TargetBar({ color, label, value, onChange, actualLabel, pct, caption, last }) {
   return (
-    <div>
-      <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 10 }}>
-        <span style={{ fontSize: 11, color: SLATE }}>Target $</span>
-        <input type="number" value={value} onChange={e => onChange(e.target.value)} style={{ ...inp(), width: 130 }} />
-        <span style={{ fontSize: 11, color: SLATE, marginLeft: 'auto' }}>Actual: <b style={{ color: NAVY }}>{fmtMoney(actual)}</b></span>
+    <div style={{ marginBottom: last ? 0 : 16, paddingBottom: last ? 0 : 16, borderBottom: last ? 'none' : '1px solid #f0f2f5' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ width: 8, height: 8, borderRadius: '50%', background: color, flexShrink: 0 }} />
+        <span style={{ fontSize: 12, fontWeight: 600, color: NAVY, whiteSpace: 'nowrap' }}>{label}</span>
+        <span style={{ fontSize: 10, color: SLATE, marginLeft: 6 }}>target</span>
+        <input type="number" value={value} onChange={e => onChange(e.target.value)} style={{ ...inp(), width: 64, padding: '4px 7px' }} />
+        <span style={{ fontSize: 11, color: SLATE, marginLeft: 'auto', whiteSpace: 'nowrap', flexShrink: 0 }}>{actualLabel}</span>
       </div>
-      <div style={{ height: 8, background: '#f0f2f5', borderRadius: 4, overflow: 'hidden' }}>
+      <div style={{ height: 7, background: '#f0f2f5', borderRadius: 4, overflow: 'hidden', marginTop: 8 }}>
         <div style={{ height: '100%', width: `${pct}%`, background: color, borderRadius: 4, transition: 'width 0.2s' }} />
       </div>
-      <div style={{ fontSize: 10, color: SLATE, marginTop: 4 }}>{pct}% of target</div>
+      <div style={{ fontSize: 10, color: SLATE, marginTop: 4 }}>{caption}</div>
     </div>
   )
 }
