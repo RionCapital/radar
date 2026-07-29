@@ -365,12 +365,12 @@ const ATTACHMENT_TEMPLATES = {
   'Home Loan': {
     sections: [
       { heading: 'Personal Information', items: [
-        { text: 'Credit Guide & Privacy Statement (attached)', repeat:'Individual' },
-        { text: 'Fact Find', repeat:'Individual' },
+        { text: 'Credit Guide & Piracy Statement (attached) - This will be sent to you separately via DocuSign for ease of review and electronic signing.', repeat:'Individual' },
+        { text: "Fact Find - You'll receive an invitation to our secure Client Centre shortly, where you can provide the necessary information", repeat:'Individual' },
         { text: "A copy of your driver's licence (both front & back) and passport", repeat:'Individual' },
       ]},
       { heading: 'Financial Information', items: [
-        { text: 'A copy of your two most recent rental statements (or Rental Appraisal) for your investment properties:', repeat:'Property', seed:['Property Address 1','Property Address 2'] },
+        { text: 'A copy of your two most recent rental statements (or Rental Appraisal) for your investment properties:', repeat:'Property' },
         { text: 'A copy of your two most recent payslips', repeat:'Individual' },
         { text: "A copy of your most recent year's ATO Income Statement", repeat:'Individual' },
         { text: 'A copy of your 20XX and 20XX Individual Tax Returns and Notice of Assessments', repeat:'Individual' },
@@ -387,7 +387,6 @@ const ATTACHMENT_TEMPLATES = {
       ]},
       { heading: 'Additional Documents', items: [
         { text: 'IF PURCHASE – A copy of the signed Contract of Sale for the purchased property' },
-        { text: 'IF ASSET FINANCE - Specific Information to the transaction (e.g. Quote/Invoice)' },
         { text: 'IF CONSTRUCTION – A copy of the following construction documents:', repeat:'Document', seed:['Building Contract','Building Plans','Schedule of Payments','DA/CDC Approval (if available)'] },
       ]},
     ],
@@ -395,14 +394,14 @@ const ATTACHMENT_TEMPLATES = {
   'Commercial Applications — Property & Other': {
     sections: [
       { heading: 'Director/Shareholder Information', items: [
-        { text: 'Credit Guide & Privacy Statement (attached)', repeat:'Individual' },
-        { text: 'Asset & Liability Statement', repeat:'Individual' },
+        { text: 'Credit Guide & Piracy Statement (attached) - This will be sent to you separately via DocuSign for ease of review and electronic signing.', repeat:'Individual' },
+        { text: 'Review, sign, and return the attached Asset & Liability Statement', repeat:'Individual' },
         { text: "A copy of your driver's licence (both front & back) and passport", repeat:'Individual' },
         { text: 'A copy of your 20XX and 20XX Individual Tax Returns and Notice of Assessments', repeat:'Individual' },
-        { text: 'A copy of your two most recent rental statements (or Rental Appraisal) for your investment properties:', repeat:'Property', seed:['Property Address 1','Property Address 2'] },
+        { text: 'A copy of your two most recent rental statements (or Rental Appraisal) for your investment properties:', repeat:'Property' },
       ]},
       { heading: 'Financial Information', items: [
-        { text: 'A copy of the Lease Agreement and/or a Tenancy Schedule for:', repeat:'Property', seed:['Property Address 1','Property Address 2'] },
+        { text: 'A copy of the Lease Agreement and/or a Tenancy Schedule for:', repeat:'Property' },
         { text: 'A copy of your 20XX and 20XX Business Tax Returns and associated Financials for all Trading Entities', repeat:'Entity' },
         { text: 'YTD 20XX Management Financial Statements (including Profit & Loss Statement and Balance Sheet)', repeat:'Entity' },
         { text: '12 month ATO ICA & ITA Portals for all entities', repeat:'Entity' },
@@ -418,8 +417,8 @@ const ATTACHMENT_TEMPLATES = {
   'Asset Finance — Commercial Full Doc': {
     sections: [
       { heading: 'Required Documents', items: [
-        { text: 'Credit Guide & Privacy Statement (attached)', repeat:'Individual' },
-        { text: 'Asset & Liability Statement', repeat:'Individual' },
+        { text: 'Credit Guide & Piracy Statement (attached) - This will be sent to you separately via DocuSign for ease of review and electronic signing.', repeat:'Individual' },
+        { text: 'Review, sign, and return the attached Asset & Liability Statement', repeat:'Individual' },
         { text: "A copy of your driver's licence (both front & back) and passport (or Medicare Card)", repeat:'Individual' },
         { text: 'A copy of your 20XX and 20XX Individual Tax Returns and Notice of Assessments', repeat:'Individual' },
         { text: 'A copy of your 20XX and 20XX Business Tax Returns and associated Financials for all Trading Entities', repeat:'Entity' },
@@ -433,8 +432,8 @@ const ATTACHMENT_TEMPLATES = {
   'Asset Finance — Commercial Low Doc': {
     sections: [
       { heading: 'Required Documents', items: [
-        { text: 'Credit Guide & Privacy Statement (attached)', repeat:'Individual' },
-        { text: 'Asset & Liability Statement', repeat:'Individual' },
+        { text: 'Credit Guide & Piracy Statement (attached) - This will be sent to you separately via DocuSign for ease of review and electronic signing.', repeat:'Individual' },
+        { text: 'Review, sign, and return the attached Asset & Liability Statement', repeat:'Individual' },
         { text: "A copy of your driver's licence (both front & back) and passport (or Medicare Card)", repeat:'Individual' },
         { text: 'Specific Information to the transaction (e.g. Quote/Invoice for the Equipment being purchased, including terms of trade)' },
         { text: 'If available - a statement for any comparable existing credit facility (e.g. current vehicle or equipment loan) showing a satisfactory repayment history' },
@@ -444,12 +443,12 @@ const ATTACHMENT_TEMPLATES = {
   'Asset Finance — Personal Use': {
     sections: [
       { heading: 'Personal Information', items: [
-        { text: 'Credit Guide & Privacy Statement (attached)', repeat:'Individual' },
-        { text: 'Fact Find', repeat:'Individual' },
+        { text: 'Credit Guide & Piracy Statement (attached) - This will be sent to you separately via DocuSign for ease of review and electronic signing.', repeat:'Individual' },
+        { text: "Fact Find - You'll receive an invitation to our secure Client Centre shortly, where you can provide the necessary information", repeat:'Individual' },
         { text: "A copy of your driver's licence (both front & back) and passport", repeat:'Individual' },
       ]},
       { heading: 'Financial Information', items: [
-        { text: 'A copy of your two most recent rental statements (or Rental Appraisal) for your investment properties:', repeat:'Property', seed:['Property Address 1','Property Address 2'] },
+        { text: 'A copy of your two most recent rental statements (or Rental Appraisal) for your investment properties:', repeat:'Property' },
         { text: 'A copy of your two most recent payslips', repeat:'Individual' },
         { text: "A copy of your most recent year's ATO Income Statement", repeat:'Individual' },
         { text: 'A copy of your 20XX and 20XX Individual Tax Returns and Notice of Assessments', repeat:'Individual' },
@@ -470,8 +469,8 @@ const ATTACHMENT_TEMPLATES = {
   'SMSF': {
     sections: [
       { heading: 'Personal Information', items: [
-        { text: 'Credit Guide & Privacy Statement (attached)', repeat:'Individual' },
-        { text: 'Asset & Liability Statement', repeat:'Individual' },
+        { text: 'Credit Guide & Piracy Statement (attached) - This will be sent to you separately via DocuSign for ease of review and electronic signing.', repeat:'Individual' },
+        { text: 'Review, sign, and return the attached Asset & Liability Statement', repeat:'Individual' },
         { text: "A copy of your driver's licence (both front & back) and passport (or Medicare Card)", repeat:'Individual' },
         { text: 'IF PAYG – 2 Most Recent Payslips showing Super Contributions', repeat:'Individual' },
         { text: 'IF SE - A copy of your 20XX and 20XX Individual Tax Returns and Notice of Assessments', repeat:'Individual' },
