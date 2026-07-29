@@ -1476,7 +1476,7 @@ function StrategyTab({ deal, updateDeal }) {
                 <div style={{ marginTop:10, paddingTop:10, borderTop:'1px solid #e8eaed' }}>
                   <LiveRowCurrency label="Equity" value={strat.equity} onCommit={v=>s('equity', v)} />
                   <LiveRowCurrency label="Savings" value={strat.savings} onCommit={v=>s('savings', v)} />
-                  {strat.includeSaleProceeds && <ComputedRow label="Proceeds from Sale of Property" value={fmtM(calc.netSaleProceeds)} tone="navy" />}
+                  {strat.includeSaleProceeds && <ComputedRow label="Proceeds from Sale of Property" value={fmtM(calc.netSaleProceeds)} tone="yellow" />}
                 </div>
 
                 <div style={{ marginTop:10 }}>
@@ -2102,6 +2102,24 @@ function AttachmentsTab({ deal, deals, setDeals, editing, d, set }) {
   function removeItem(si, itemId) {
     updateSections(secs => secs.map((s, i) => i !== si ? s : { ...s, items: s.items.filter(it => it.id !== itemId) }))
   }
+  const [dragItem, setDragItem] = useState(null) // { si, id }
+  // Drag-and-drop reordering within a section — drop the dragged item onto
+  // another to have it take that item's position, shifting the rest along.
+  // Only reorders within the same section; dragging onto a different
+  // section is simply ignored rather than doing anything unexpected.
+  function reorderItem(si, draggedId, targetId) {
+    if (draggedId === targetId) return
+    updateSections(secs => secs.map((s, i) => {
+      if (i !== si) return s
+      const items = [...s.items]
+      const fromIdx = items.findIndex(it => it.id === draggedId)
+      const toIdx = items.findIndex(it => it.id === targetId)
+      if (fromIdx === -1 || toIdx === -1) return s
+      const [moved] = items.splice(fromIdx, 1)
+      items.splice(toIdx, 0, moved)
+      return { ...s, items }
+    }))
+  }
   // Picking an item that matches one of the template's own items (by exact
   // text, via the +Add Item suggestions) gives it that same item's repeat
   // behavior — e.g. picking the rental-statements line gets its own
@@ -2245,9 +2263,12 @@ function AttachmentsTab({ deal, deals, setDeals, editing, d, set }) {
               <span style={{ fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.04em' }}>Attachments</span>
             </div>
 
-            {sec.items.map(it => it.repeat ? (
+            {sec.items.map((it) => it.repeat ? (
               <React.Fragment key={it.id}>
-                <div style={{ display:'flex', alignItems:'center', gap:8, padding:'7px 4px', borderBottom:'0.5px solid #f0f0f0' }}>
+                <div draggable onDragStart={()=>setDragItem({si,id:it.id})} onDragOver={e=>e.preventDefault()}
+                  onDrop={()=>{ if (dragItem && dragItem.si===si) reorderItem(si, dragItem.id, it.id); setDragItem(null) }}
+                  style={{ display:'flex', alignItems:'center', gap:8, padding:'7px 4px', borderBottom:'0.5px solid #f0f0f0', opacity: dragItem?.id===it.id ? 0.4 : 1 }}>
+                  <span style={{ cursor:'grab', color:'#B0B5BD', fontSize:14, userSelect:'none', flexShrink:0 }} title="Drag to reorder">⋮</span>
                   <UploadTrigger uploadKey={it.id} onUpload={file=>uploadToItem(si,it.id,null,file)} />
                   <input type="checkbox" checked={masterChecked(it)}
                     onChange={()=>toggleMasterChecked(si,it.id)} title="Ticks/unticks every item below, once added" style={{ flexShrink:0 }} />
@@ -2275,7 +2296,10 @@ function AttachmentsTab({ deal, deals, setDeals, editing, d, set }) {
               </React.Fragment>
             ) : (
               <React.Fragment key={it.id}>
-                <div style={{ display:'flex', alignItems:'center', gap:8, padding:'7px 4px', borderBottom:'0.5px solid #f0f0f0' }}>
+                <div draggable onDragStart={()=>setDragItem({si,id:it.id})} onDragOver={e=>e.preventDefault()}
+                  onDrop={()=>{ if (dragItem && dragItem.si===si) reorderItem(si, dragItem.id, it.id); setDragItem(null) }}
+                  style={{ display:'flex', alignItems:'center', gap:8, padding:'7px 4px', borderBottom:'0.5px solid #f0f0f0', opacity: dragItem?.id===it.id ? 0.4 : 1 }}>
+                  <span style={{ cursor:'grab', color:'#B0B5BD', fontSize:14, userSelect:'none', flexShrink:0 }} title="Drag to reorder">⋮</span>
                   <UploadTrigger uploadKey={it.id} onUpload={file=>uploadToItem(si,it.id,null,file)} />
                   <input type="checkbox" checked={!!it.checked} onChange={()=>toggleItemChecked(si,it.id)} style={{ flexShrink:0 }} />
                   <ChecklistItemText value={it.text} onChange={text=>updateItemText(si,it.id,text)} done={it.checked} />
