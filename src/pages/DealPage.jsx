@@ -498,6 +498,15 @@ const ATTACHMENT_MASTER_ITEMS = Array.from(new Set(
   ]))
 ))
 
+// Maps an item's exact text to its repeat type (Individual/Entity/Property/
+// Statement/Document) wherever the template defines one — so picking that
+// same item from the +Add Item suggestions gives it the same "+ [Type]"
+// button and behavior it has in its home template, not just a plain line.
+const ATTACHMENT_ITEM_REPEAT_TYPES = {}
+Object.values(ATTACHMENT_TEMPLATES).forEach(t => t.sections.forEach(s => s.items.forEach(i => {
+  if (i.repeat) ATTACHMENT_ITEM_REPEAT_TYPES[i.text] = i.repeat
+})))
+
 // Best-guess starting template based on the deal's own Category — Cameron
 // can always change it per entity, this just saves a click in the common
 // case.
@@ -2074,6 +2083,15 @@ function AttachmentsTab({ deal, deals, setDeals, editing, d, set }) {
   function updateSections(updater) { saveAtt({ sections: updater(sections) }) }
 
   function isAllSubChecked(it) { return (it.subItems||[]).length > 0 && it.subItems.every(su => su.checked) }
+  // With sub-items present, the checkbox reflects/controls all of them. With
+  // none yet, it's just a normal standalone checkbox on the item itself —
+  // this matters because a repeatable item (e.g. Credit Guide, which now
+  // has a "+ Individual" button) shouldn't have a permanently disabled,
+  // unresponsive checkbox just because no one's clicked "+ Individual" on
+  // it. That was the actual bug — the checkbox wasn't broken, it was
+  // deliberately disabled whenever subItems was empty, which is most of the
+  // time for simple items nobody needs to split by person.
+  function masterChecked(it) { return (it.subItems||[]).length > 0 ? isAllSubChecked(it) : !!it.checked }
 
   function toggleItemChecked(si, itemId) {
     updateSections(secs => secs.map((s, i) => i !== si ? s : { ...s, items: s.items.map(it => it.id === itemId ? { ...it, checked: !it.checked } : it) }))
@@ -2084,9 +2102,20 @@ function AttachmentsTab({ deal, deals, setDeals, editing, d, set }) {
   function removeItem(si, itemId) {
     updateSections(secs => secs.map((s, i) => i !== si ? s : { ...s, items: s.items.filter(it => it.id !== itemId) }))
   }
+  // Picking an item that matches one of the template's own items (by exact
+  // text, via the +Add Item suggestions) gives it that same item's repeat
+  // behavior — e.g. picking the rental-statements line gets its own
+  // "+ Property" button, same as if it had come from the template
+  // directly. Anything typed that doesn't match a known item is just a
+  // plain flat line, same as before.
   function addItemToSection(si, text) {
     if (!text.trim()) return
-    updateSections(secs => secs.map((s, i) => i !== si ? s : { ...s, items: [...s.items, { id: mkAttachmentId(), text: text.trim(), checked: false }] }))
+    const trimmed = text.trim()
+    const repeatType = ATTACHMENT_ITEM_REPEAT_TYPES[trimmed]
+    const newItem = repeatType
+      ? { id: mkAttachmentId(), text: trimmed, repeat: repeatType, subItems: [] }
+      : { id: mkAttachmentId(), text: trimmed, checked: false }
+    updateSections(secs => secs.map((s, i) => i !== si ? s : { ...s, items: [...s.items, newItem] }))
   }
   // Repeatable items (Individual / Entity / Property / Statement / Document)
   // — the "+ [Type]" button adds one more indented, editable sub-line.
@@ -2102,18 +2131,17 @@ function AttachmentsTab({ deal, deals, setDeals, editing, d, set }) {
   function removeSubItem(si, itemId, subId) {
     updateSections(secs => secs.map((s, i) => i !== si ? s : { ...s, items: s.items.map(it => it.id !== itemId ? it : { ...it, subItems: it.subItems.filter(su => su.id !== subId) }) }))
   }
-  // The Master checkbox for a request with sub-items. It isn't its own
-  // stored value — it's always just "are all the sub-items ticked right
-  // now", so it can never drift out of sync with them. Clicking it
-  // cascades: tick it and every sub-item ticks; untick it and every
-  // sub-item unticks. Ticking every sub-item by hand ticks the master
-  // automatically too, for the same reason — it's the same computed value
-  // either way.
+  // The Master checkbox for a request. With sub-items present, it's not its
+  // own stored value — it's always just "are all the sub-items ticked right
+  // now", so it can never drift out of sync with them, and clicking it
+  // cascades to every sub-item. With no sub-items yet, it toggles a normal
+  // checked flag on the item itself instead (see masterChecked above).
   function toggleMasterChecked(si, itemId) {
     updateSections(secs => secs.map((s, i) => i !== si ? s : { ...s, items: s.items.map(it => {
       if (it.id !== itemId) return it
+      if ((it.subItems||[]).length === 0) return { ...it, checked: !it.checked }
       const makeAllChecked = !isAllSubChecked(it)
-      return { ...it, subItems: (it.subItems||[]).map(su => ({ ...su, checked: makeAllChecked })) }
+      return { ...it, subItems: it.subItems.map(su => ({ ...su, checked: makeAllChecked })) }
     }) }))
   }
 
@@ -2166,9 +2194,9 @@ function AttachmentsTab({ deal, deals, setDeals, editing, d, set }) {
           {sec.items.map(it => it.repeat ? (
             <div key={it.id}>
               <div style={{ display:'flex', alignItems:'center', gap:8, padding:'7px 4px', borderBottom:'0.5px solid #f0f0f0' }}>
-                <input type="checkbox" checked={isAllSubChecked(it)} disabled={(it.subItems||[]).length===0}
-                  onChange={()=>toggleMasterChecked(si,it.id)} title="Master checkbox — ticks or unticks every item below" style={{ flexShrink:0 }} />
-                <ChecklistItemText value={it.text} onChange={text=>updateItemText(si,it.id,text)} done={isAllSubChecked(it)} bold />
+                <input type="checkbox" checked={masterChecked(it)}
+                  onChange={()=>toggleMasterChecked(si,it.id)} title="Ticks/unticks every item below, once added" style={{ flexShrink:0 }} />
+                <ChecklistItemText value={it.text} onChange={text=>updateItemText(si,it.id,text)} done={masterChecked(it)} bold />
                 <button onClick={()=>addSubItem(si,it.id)} style={{...addBtnStyle, flexShrink:0}}>+ {it.repeat}</button>
                 <button onClick={()=>removeItem(si,it.id)} style={{...rmBtnStyle, flexShrink:0}}>✕</button>
               </div>
