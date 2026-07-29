@@ -365,16 +365,16 @@ const ATTACHMENT_TEMPLATES = {
   'Home Loan': {
     sections: [
       { heading: 'Personal Information', items: [
-        { text: 'Credit Guide & Privacy Statement (attached)' },
-        { text: 'Fact Find' },
-        { text: "A copy of your driver's licence (both front & back) and passport" },
+        { text: 'Credit Guide & Privacy Statement (attached)', repeat:'Individual' },
+        { text: 'Fact Find', repeat:'Individual' },
+        { text: "A copy of your driver's licence (both front & back) and passport", repeat:'Individual' },
       ]},
       { heading: 'Financial Information', items: [
         { text: 'A copy of your two most recent rental statements (or Rental Appraisal) for your investment properties:', repeat:'Property', seed:['Property Address 1','Property Address 2'] },
         { text: 'A copy of your two most recent payslips', repeat:'Individual' },
         { text: "A copy of your most recent year's ATO Income Statement", repeat:'Individual' },
-        { text: 'A copy of your Individual Tax Returns and Notice of Assessments (2 years)', repeat:'Individual' },
-        { text: 'A copy of your Business Tax Returns and associated Financials for all Trading Entities (2 years)', repeat:'Entity' },
+        { text: 'A copy of your 20XX and 20XX Individual Tax Returns and Notice of Assessments', repeat:'Individual' },
+        { text: 'A copy of your 20XX and 20XX Business Tax Returns and associated Financials for all Trading Entities', repeat:'Entity' },
         { text: '12 month ATO ICA & ITA Portals for all entities', repeat:'Entity' },
         { text: 'A copy of the following Statements:', repeat:'Statement', seed:[
           'Everyday bank account (from X to Present) 6 months',
@@ -398,13 +398,13 @@ const ATTACHMENT_TEMPLATES = {
         { text: 'Credit Guide & Privacy Statement (attached)', repeat:'Individual' },
         { text: 'Asset & Liability Statement', repeat:'Individual' },
         { text: "A copy of your driver's licence (both front & back) and passport", repeat:'Individual' },
-        { text: 'A copy of your Individual Tax Returns and Notice of Assessments (2 years)', repeat:'Individual' },
+        { text: 'A copy of your 20XX and 20XX Individual Tax Returns and Notice of Assessments', repeat:'Individual' },
         { text: 'A copy of your two most recent rental statements (or Rental Appraisal) for your investment properties:', repeat:'Property', seed:['Property Address 1','Property Address 2'] },
       ]},
       { heading: 'Financial Information', items: [
         { text: 'A copy of the Lease Agreement and/or a Tenancy Schedule for:', repeat:'Property', seed:['Property Address 1','Property Address 2'] },
-        { text: 'A copy of your Business Tax Returns and associated Financials for all Trading Entities (2 years)', repeat:'Entity' },
-        { text: 'Year-to-Date (YTD) Management Financial Statements (including Profit & Loss Statement and Balance Sheet)', repeat:'Entity' },
+        { text: 'A copy of your 20XX and 20XX Business Tax Returns and associated Financials for all Trading Entities', repeat:'Entity' },
+        { text: 'YTD 20XX Management Financial Statements (including Profit & Loss Statement and Balance Sheet)', repeat:'Entity' },
         { text: '12 month ATO ICA & ITA Portals for all entities', repeat:'Entity' },
         { text: 'Summarised and Aged Accounts Receivable & Payable Ledgers (preferably reconciled with the YTD Management Accounts)', repeat:'Entity' },
         { text: 'If Invoice Finance – Detailed Aged Receivables Ledger', repeat:'Entity' },
@@ -420,10 +420,10 @@ const ATTACHMENT_TEMPLATES = {
       { heading: 'Required Documents', items: [
         { text: 'Credit Guide & Privacy Statement (attached)', repeat:'Individual' },
         { text: 'Asset & Liability Statement', repeat:'Individual' },
-        { text: "A copy of your driver's licence (both front & back) and passport (or Medicare Card)" },
-        { text: 'A copy of your Individual Tax Returns and Notice of Assessments (2 years)', repeat:'Individual' },
-        { text: 'A copy of your Business Tax Returns and associated Financials for all Trading Entities (2 years)', repeat:'Entity' },
-        { text: 'Year-to-Date (YTD) Management Financial Statements (including Profit & Loss Statement and Balance Sheet)', repeat:'Entity' },
+        { text: "A copy of your driver's licence (both front & back) and passport (or Medicare Card)", repeat:'Individual' },
+        { text: 'A copy of your 20XX and 20XX Individual Tax Returns and Notice of Assessments', repeat:'Individual' },
+        { text: 'A copy of your 20XX and 20XX Business Tax Returns and associated Financials for all Trading Entities', repeat:'Entity' },
+        { text: 'YTD 20XX Management Financial Statements (including Profit & Loss Statement and Balance Sheet)', repeat:'Entity' },
         { text: '12 months of ATO portal statements for all commercial entities (including ICA & ITA)', repeat:'Entity' },
         { text: 'Summarised and Aged Accounts Receivable & Payable Ledgers (preferably reconciled with the YTD Management Accounts)', repeat:'Entity' },
         { text: 'Specific Information to the transaction (e.g. Quote/Invoice for the Equipment being purchased, including terms of trade)' },
@@ -444,16 +444,16 @@ const ATTACHMENT_TEMPLATES = {
   'Asset Finance — Personal Use': {
     sections: [
       { heading: 'Personal Information', items: [
-        { text: 'Credit Guide & Privacy Statement (attached)' },
-        { text: 'Fact Find' },
-        { text: "A copy of your driver's licence (both front & back) and passport" },
+        { text: 'Credit Guide & Privacy Statement (attached)', repeat:'Individual' },
+        { text: 'Fact Find', repeat:'Individual' },
+        { text: "A copy of your driver's licence (both front & back) and passport", repeat:'Individual' },
       ]},
       { heading: 'Financial Information', items: [
         { text: 'A copy of your two most recent rental statements (or Rental Appraisal) for your investment properties:', repeat:'Property', seed:['Property Address 1','Property Address 2'] },
         { text: 'A copy of your two most recent payslips', repeat:'Individual' },
         { text: "A copy of your most recent year's ATO Income Statement", repeat:'Individual' },
-        { text: 'A copy of your Individual Tax Returns and Notice of Assessments (2 years)', repeat:'Individual' },
-        { text: 'A copy of your Business Tax Returns and associated Financials for all Trading Entities (2 years)', repeat:'Entity' },
+        { text: 'A copy of your 20XX and 20XX Individual Tax Returns and Notice of Assessments', repeat:'Individual' },
+        { text: 'A copy of your 20XX and 20XX Business Tax Returns and associated Financials for all Trading Entities', repeat:'Entity' },
         { text: '12 month ATO ICA & ITA Portals for all entities', repeat:'Entity' },
         { text: 'A copy of the following Statements:', repeat:'Statement', seed:[
           'Everyday bank account (from X to Present) 6 months',
@@ -474,13 +474,13 @@ const ATTACHMENT_TEMPLATES = {
         { text: 'Asset & Liability Statement', repeat:'Individual' },
         { text: "A copy of your driver's licence (both front & back) and passport (or Medicare Card)", repeat:'Individual' },
         { text: 'IF PAYG – 2 Most Recent Payslips showing Super Contributions', repeat:'Individual' },
-        { text: 'IF SE - A copy of your Individual Tax Returns and Notice of Assessments (2 years)', repeat:'Individual' },
-        { text: 'IF SE - A copy of your Business Tax Returns and associated Financials for all trading entities (2 years)', repeat:'Entity' },
+        { text: 'IF SE - A copy of your 20XX and 20XX Individual Tax Returns and Notice of Assessments', repeat:'Individual' },
+        { text: 'IF SE - A copy of your 20XX and 20XX Business Tax Returns and associated Financials for all trading entities', repeat:'Entity' },
       ]},
       { heading: 'The Fund', items: [
         { text: 'Certified copy SMSF Trust Deed if currently available' },
         { text: 'Established Funds - 12 months SMSF bank statements evidencing regular member contributions' },
-        { text: 'Established Funds - A copy of your SMSF tax returns and associated Financial Accounts (2 years)' },
+        { text: 'Established Funds - A copy of your 20XX and 20XX SMSF tax returns and associated Financial Accounts' },
         { text: "New/recently established SMSF – 12 months superannuation statements for all the SMSF beneficiaries from their current industry fund/retail fund" },
         { text: 'New/recently established SMSF - Last two years bank account statements or current industry/retail fund statements to be rolled over, evidencing member contributions and cash/investments' },
       ]},
@@ -1993,6 +1993,42 @@ function StructureTab({ d, editing, set }) {
 
 function mkAttachmentId() { return `${Date.now()}-${Math.random().toString(36).slice(2,7)}` }
 
+// Highlights "20XX" and standalone "X" placeholders in red so it's obvious
+// at a glance what needs writing over (specific years, specific dates) —
+// but a plain <input> can't show mixed-color text, so this shows the
+// highlighted version at rest and swaps to a normal plain-text input the
+// moment you click in, so editing/selecting/retyping still works exactly
+// like any other field.
+function highlightPlaceholders(text) {
+  const parts = String(text||'').split(/(20XX|\bX\b)/g)
+  return parts.map((part, i) => (part === '20XX' || part === 'X')
+    ? <span key={i} style={{ color:'#dc2626', fontWeight:700 }}>{part}</span>
+    : <span key={i}>{part}</span>
+  )
+}
+function ChecklistItemText({ value, onChange, done, bold, placeholder }) {
+  const [focused, setFocused] = useState(false)
+  const [val, setVal] = useState(value)
+  useEffect(() => { if (!focused) setVal(value) }, [value, focused])
+  const baseStyle = { flex:1, fontSize:12, fontFamily:'inherit', padding:'2px 4px', borderRadius:4, fontWeight: bold ? 600 : 400 }
+  if (focused) {
+    return (
+      <input
+        autoFocus value={val} placeholder={placeholder}
+        onChange={ev=>setVal(ev.target.value)}
+        onKeyDown={ev=>{ if (ev.key==='Enter') ev.currentTarget.blur() }}
+        onBlur={()=>{ setFocused(false); if (val !== value) onChange(val) }}
+        style={{ ...baseStyle, border:'1px solid #EB99C2', background:'#fff', color:'#2A3545' }}
+      />
+    )
+  }
+  return (
+    <div onClick={()=>setFocused(true)} style={{ ...baseStyle, border:'1px solid transparent', cursor:'text', minHeight:'1.6em', display:'flex', alignItems:'center', color: done ? '#B0B5BD' : '#2A3545', textDecoration: done ? 'line-through' : 'none' }}>
+      {value ? highlightPlaceholders(value) : <span style={{ color:'#B0B5BD' }}>{placeholder}</span>}
+    </div>
+  )
+}
+
 function buildSectionsFromTemplate(template) {
   return template.sections.map(s => ({
     heading: s.heading,
@@ -2103,7 +2139,6 @@ function AttachmentsTab({ deal, deals, setDeals, editing, d, set }) {
     else notifySaveFailed('attachments', { error: 'Could not generate a link for this file — check the deal-attachments Storage bucket exists.' })
   }
 
-  const itemInputStyle = (done) => ({ flex:1, border:'none', background:'transparent', fontSize:12, fontFamily:'inherit', padding:'2px 4px', borderRadius:4, color: done ? '#B0B5BD' : '#2A3545', textDecoration: done ? 'line-through' : 'none' })
   const allLeaf = sections.flatMap(s => s.items.flatMap(it => it.repeat ? (it.subItems||[]) : [it]))
   const doneCount = allLeaf.filter(it => it.checked).length
 
@@ -2134,8 +2169,7 @@ function AttachmentsTab({ deal, deals, setDeals, editing, d, set }) {
               <div style={{ display:'flex', alignItems:'center', gap:8, padding:'7px 4px', borderBottom:'0.5px solid #f0f0f0' }}>
                 <input type="checkbox" checked={isAllSubChecked(it)} disabled={(it.subItems||[]).length===0}
                   onChange={()=>toggleMasterChecked(si,it.id)} title="Master checkbox — ticks or unticks every item below" style={{ flexShrink:0 }} />
-                <input value={it.text} onChange={ev=>updateItemText(si,it.id,ev.target.value)}
-                  style={{ flex:1, border:'none', background:'transparent', fontSize:12, fontWeight:600, fontFamily:'inherit', padding:'2px 4px', borderRadius:4, color: isAllSubChecked(it) ? '#B0B5BD' : '#2A3545', textDecoration: isAllSubChecked(it) ? 'line-through' : 'none' }} />
+                <ChecklistItemText value={it.text} onChange={text=>updateItemText(si,it.id,text)} done={isAllSubChecked(it)} bold />
                 <button onClick={()=>addSubItem(si,it.id)} style={{...addBtnStyle, flexShrink:0}}>+ {it.repeat}</button>
                 <button onClick={()=>removeItem(si,it.id)} style={{...rmBtnStyle, flexShrink:0}}>✕</button>
               </div>
@@ -2143,18 +2177,16 @@ function AttachmentsTab({ deal, deals, setDeals, editing, d, set }) {
                 {(it.subItems||[]).map(su => (
                   <div key={su.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'5px 4px', borderBottom:'0.5px solid #f7f7f7' }}>
                     <input type="checkbox" checked={!!su.checked} onChange={()=>toggleSubItemChecked(si,it.id,su.id)} style={{ flexShrink:0 }} />
-                    <input value={su.text} onChange={ev=>updateSubItemText(si,it.id,su.id,ev.target.value)} placeholder={`${it.repeat} name / details…`}
-                      style={itemInputStyle(su.checked)} />
+                    <ChecklistItemText value={su.text} onChange={text=>updateSubItemText(si,it.id,su.id,text)} done={su.checked} placeholder={`${it.repeat} name / details…`} />
                     <button onClick={()=>removeSubItem(si,it.id,su.id)} style={{...rmBtnStyle, flexShrink:0}}>✕</button>
                   </div>
                 ))}
-                {(it.subItems||[]).length === 0 && <div style={{ fontSize:10.5, color:'#9ca3af', padding:'4px 4px 8px' }}>Click "+ {it.repeat}" to add one.</div>}
               </div>
             </div>
           ) : (
             <div key={it.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'7px 4px', borderBottom:'0.5px solid #f0f0f0' }}>
               <input type="checkbox" checked={!!it.checked} onChange={()=>toggleItemChecked(si,it.id)} style={{ flexShrink:0 }} />
-              <input value={it.text} onChange={ev=>updateItemText(si,it.id,ev.target.value)} style={itemInputStyle(it.checked)} />
+              <ChecklistItemText value={it.text} onChange={text=>updateItemText(si,it.id,text)} done={it.checked} />
               <button onClick={()=>removeItem(si,it.id)} style={{...rmBtnStyle, flexShrink:0}}>✕</button>
             </div>
           ))}
