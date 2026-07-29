@@ -6,7 +6,7 @@ import React from 'react'
 // hard to miss and doesn't get buried by whatever else is on screen.
 export default function SaveFailedBanner({ failure, onDismiss }) {
   if (!failure) return null
-  const what = failure.kind === 'deals' ? 'a deal' : failure.kind === 'clients' ? 'a client record' : 'your change'
+  const what = failure.kind === 'deals' ? 'a deal' : failure.kind === 'clients' ? 'a client record' : failure.kind === 'attachments' ? 'a file' : 'your change'
   return (
     <div style={{
       position: 'fixed', top: 0, left: 0, right: 0, zIndex: 10000,
@@ -17,6 +17,7 @@ export default function SaveFailedBanner({ failure, onDismiss }) {
     }}>
       <span>
         ⚠️ A save didn't reach the server — {what} may only be saved on this device right now. Check your internet connection and try that change again before closing this tab.
+        {failure.error && <><br/><span style={{ fontFamily:'monospace', fontSize:11.5, opacity:0.9 }}>{String(failure.error)}</span></>}
       </span>
       <button onClick={onDismiss} style={{
         background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff',

@@ -2059,7 +2059,6 @@ function AttachmentsTab({ deal, deals, setDeals, editing, d, set }) {
 
   const transactionType = att.transactionType || defaultAttachmentTemplate(deal.Categories)
   const sections = att.sections || buildSectionsFromTemplate(ATTACHMENT_TEMPLATES[transactionType] || ATTACHMENT_TEMPLATES['Home Loan'])
-  const files = att.files || []
 
   // First time this deal's Attachments tab is opened, there's nothing saved
   // yet — persist the freshly-built default straight away so it's a real,
@@ -2072,9 +2071,10 @@ function AttachmentsTab({ deal, deals, setDeals, editing, d, set }) {
   // Changing the transaction type REPLACES the checklist with that
   // template's own list — it does not merge the two together. That's
   // deliberate: picking a different transaction type means "show me that
-  // type's requirements," not "add them to whatever's already here."
-  // Uploaded files are kept regardless, since they're not tied to the
-  // checklist shape.
+  // type's requirements," not "add them to whatever's already here." Files
+  // now live on individual items rather than a separate list, so this
+  // also removes any files that were attached to the old checklist's items
+  // — worth being careful with if files are already attached.
   function changeTransactionType(newType) {
     const template = ATTACHMENT_TEMPLATES[newType] || ATTACHMENT_TEMPLATES['Home Loan']
     saveAtt({ transactionType: newType, sections: buildSectionsFromTemplate(template) })
@@ -2145,25 +2145,67 @@ function AttachmentsTab({ deal, deals, setDeals, editing, d, set }) {
     }) }))
   }
 
-  const [uploading, setUploading] = useState(false)
-  async function uploadFile(file) {
-    setUploading(true)
+  const [uploadingKey, setUploadingKey] = useState(null)
+  // Uploads a file straight onto a specific checklist row — the master
+  // item itself (subId omitted) or one specific sub-item (subId given).
+  // Attaching a file automatically ticks that row, since realistically if
+  // you've attached the document, it's done — but the checkbox itself is
+  // never disabled or locked afterward. If the wrong file gets attached, or
+  // you just want to mark it outstanding again for any reason, unticking
+  // it works exactly like any other checkbox, regardless of what's
+  // attached.
+  async function uploadToItem(si, itemId, subId, file) {
+    const uploadKey = subId ? `${itemId}-${subId}` : itemId
+    setUploadingKey(uploadKey)
     const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
-    const path = `${deal['Transaction Name']}/${Date.now()}_${safeName}`
+    const path = `${deal['Transaction Name']}/${uploadKey}/${Date.now()}_${safeName}`
     const res = await sbUploadAttachment(path, file)
-    setUploading(false)
+    setUploadingKey(null)
     if (!res.ok) { notifySaveFailed('attachments', { error: res.error }); return }
-    saveAtt({ files: [...files, { name: file.name, path, size: file.size, uploadedAt: new Date().toISOString() }] })
+    const fileRecord = { name: file.name, path, size: file.size, uploadedAt: new Date().toISOString() }
+    updateSections(secs => secs.map((s, i) => i !== si ? s : { ...s, items: s.items.map(it => {
+      if (it.id !== itemId) return it
+      if (subId) return { ...it, subItems: it.subItems.map(su => su.id === subId ? { ...su, files: [...(su.files||[]), fileRecord], checked: true } : su) }
+      return { ...it, files: [...(it.files||[]), fileRecord], checked: true }
+    }) }))
   }
-  async function removeFile(fileIdx) {
-    const f = files[fileIdx]
+  async function removeItemFile(si, itemId, subId, fileIdx) {
+    const sec = sections[si]
+    const it = sec.items.find(x => x.id === itemId)
+    const target = subId ? (it.subItems||[]).find(su => su.id === subId) : it
+    const f = (target?.files||[])[fileIdx]
+    if (!f) return
     await sbDeleteAttachment(f.path)
-    saveAtt({ files: files.filter((_, i) => i !== fileIdx) })
+    updateSections(secs => secs.map((s, i) => i !== si ? s : { ...s, items: s.items.map(x => {
+      if (x.id !== itemId) return x
+      if (subId) return { ...x, subItems: x.subItems.map(su => su.id === subId ? { ...su, files: (su.files||[]).filter((_, fi) => fi !== fileIdx) } : su) }
+      return { ...x, files: (x.files||[]).filter((_, fi) => fi !== fileIdx) }
+    }) }))
   }
-  async function viewFile(path) {
+  async function viewItemFile(path) {
     const url = await sbGetAttachmentUrl(path)
     if (url) window.open(url, '_blank')
     else notifySaveFailed('attachments', { error: 'Could not generate a link for this file — check the deal-attachments Storage bucket exists.' })
+  }
+
+  // Renders the inline file links + attach control shared by every row —
+  // master items, plain items, and sub-items alike.
+  function RowFiles({ files, uploadKey, onUpload }) {
+    return (
+      <div style={{ display:'flex', alignItems:'center', gap:8, flexShrink:0 }}>
+        {(files||[]).map((f, fi) => (
+          <span key={fi} style={{ display:'flex', alignItems:'center', gap:3 }}>
+            <span onClick={()=>viewItemFile(f.path)} style={{ fontSize:11, color:'#2563eb', cursor:'pointer', textDecoration:'underline', whiteSpace:'nowrap' }}>{f.name}</span>
+            <button onClick={()=>onUpload.removeAt(fi)} style={{ ...rmBtnStyle, padding:'0 4px', fontSize:9 }}>✕</button>
+          </span>
+        ))}
+        <label style={{ fontSize:14, color:'#7A8090', cursor:'pointer', flexShrink:0 }} title="Attach a file">
+          {uploadingKey === uploadKey ? '…' : '📎'}
+          <input type="file" style={{ display:'none' }} disabled={uploadingKey === uploadKey}
+            onChange={ev => { if (ev.target.files[0]) onUpload.upload(ev.target.files[0]); ev.target.value = '' }} />
+        </label>
+      </div>
+    )
   }
 
   const allLeaf = sections.flatMap(s => s.items.flatMap(it => it.repeat ? (it.subItems||[]) : [it]))
@@ -2197,6 +2239,7 @@ function AttachmentsTab({ deal, deals, setDeals, editing, d, set }) {
                 <input type="checkbox" checked={masterChecked(it)}
                   onChange={()=>toggleMasterChecked(si,it.id)} title="Ticks/unticks every item below, once added" style={{ flexShrink:0 }} />
                 <ChecklistItemText value={it.text} onChange={text=>updateItemText(si,it.id,text)} done={masterChecked(it)} bold />
+                <RowFiles files={it.files} uploadKey={it.id} onUpload={{ upload: file=>uploadToItem(si,it.id,null,file), removeAt: fi=>removeItemFile(si,it.id,null,fi) }} />
                 <button onClick={()=>addSubItem(si,it.id)} style={{...addBtnStyle, flexShrink:0}}>+ {it.repeat}</button>
                 <button onClick={()=>removeItem(si,it.id)} style={{...rmBtnStyle, flexShrink:0}}>✕</button>
               </div>
@@ -2205,6 +2248,7 @@ function AttachmentsTab({ deal, deals, setDeals, editing, d, set }) {
                   <div key={su.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'5px 4px', borderBottom:'0.5px solid #f7f7f7' }}>
                     <input type="checkbox" checked={!!su.checked} onChange={()=>toggleSubItemChecked(si,it.id,su.id)} style={{ flexShrink:0 }} />
                     <ChecklistItemText value={su.text} onChange={text=>updateSubItemText(si,it.id,su.id,text)} done={su.checked} placeholder={`${it.repeat} name / details…`} />
+                    <RowFiles files={su.files} uploadKey={`${it.id}-${su.id}`} onUpload={{ upload: file=>uploadToItem(si,it.id,su.id,file), removeAt: fi=>removeItemFile(si,it.id,su.id,fi) }} />
                     <button onClick={()=>removeSubItem(si,it.id,su.id)} style={{...rmBtnStyle, flexShrink:0}}>✕</button>
                   </div>
                 ))}
@@ -2214,6 +2258,7 @@ function AttachmentsTab({ deal, deals, setDeals, editing, d, set }) {
             <div key={it.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'7px 4px', borderBottom:'0.5px solid #f0f0f0' }}>
               <input type="checkbox" checked={!!it.checked} onChange={()=>toggleItemChecked(si,it.id)} style={{ flexShrink:0 }} />
               <ChecklistItemText value={it.text} onChange={text=>updateItemText(si,it.id,text)} done={it.checked} />
+              <RowFiles files={it.files} uploadKey={it.id} onUpload={{ upload: file=>uploadToItem(si,it.id,null,file), removeAt: fi=>removeItemFile(si,it.id,null,fi) }} />
               <button onClick={()=>removeItem(si,it.id)} style={{...rmBtnStyle, flexShrink:0}}>✕</button>
             </div>
           ))}
@@ -2221,22 +2266,6 @@ function AttachmentsTab({ deal, deals, setDeals, editing, d, set }) {
           <AddSectionItemRow onAdd={text=>addItemToSection(si,text)} />
         </TabCard>
       ))}
-
-      <TabCard title="Uploaded files">
-        {files.length === 0 && <div style={{ fontSize:11, color:'#9ca3af', marginBottom:6 }}>No files uploaded yet</div>}
-        {files.map((f, fi) => (
-          <div key={fi} style={{ display:'flex', alignItems:'center', gap:8, padding:'5px 0' }}>
-            <span onClick={()=>viewFile(f.path)} style={{ fontSize:11.5, color:'#EB99C2', cursor:'pointer', textDecoration:'underline' }}>{f.name}</span>
-            <span style={{ fontSize:10, color:'#9ca3af' }}>{f.size ? `${(f.size/1024).toFixed(0)}KB` : ''}</span>
-            <button onClick={()=>removeFile(fi)} style={rmBtnStyle}>✕</button>
-          </div>
-        ))}
-        <label style={{ ...addBtnStyle, display:'inline-block', marginTop:8, cursor:'pointer' }}>
-          {uploading ? 'Uploading…' : '+ Upload file'}
-          <input type="file" style={{ display:'none' }} disabled={uploading}
-            onChange={ev => { if (ev.target.files[0]) uploadFile(ev.target.files[0]); ev.target.value = '' }} />
-        </label>
-      </TabCard>
     </div>
   )
 }
