@@ -2190,20 +2190,28 @@ function AttachmentsTab({ deal, deals, setDeals, editing, d, set }) {
 
   // Renders the inline file links + attach control shared by every row —
   // master items, plain items, and sub-items alike.
-  function RowFiles({ files, uploadKey, onUpload }) {
+  function UploadTrigger({ uploadKey, onUpload }) {
     return (
-      <div style={{ display:'flex', alignItems:'center', gap:8, flexShrink:0 }}>
+      <label style={{ fontSize:14, color:'#7A8090', cursor:'pointer', flexShrink:0 }} title="Attach a file">
+        {uploadingKey === uploadKey ? '…' : '📎'}
+        <input type="file" style={{ display:'none' }} disabled={uploadingKey === uploadKey}
+          onChange={ev => { if (ev.target.files[0]) onUpload(ev.target.files[0]); ev.target.value = '' }} />
+      </label>
+    )
+  }
+  // Sits in the Attachments column, aligned to its item's row. Multiple
+  // files for one item stack vertically here — the row itself (both this
+  // cell and its matching item cell on the left) grows to fit however many
+  // are stacked, since they're cells in the same CSS grid row.
+  function FileStack({ files, onRemove }) {
+    return (
+      <div style={{ display:'flex', flexDirection:'column', gap:5, padding: files?.length ? '7px 10px' : '0', justifyContent:'center', minHeight:'100%' }}>
         {(files||[]).map((f, fi) => (
-          <span key={fi} style={{ display:'flex', alignItems:'center', gap:3 }}>
-            <span onClick={()=>viewItemFile(f.path)} style={{ fontSize:11, color:'#2563eb', cursor:'pointer', textDecoration:'underline', whiteSpace:'nowrap' }}>{f.name}</span>
-            <button onClick={()=>onUpload.removeAt(fi)} style={{ ...rmBtnStyle, padding:'0 4px', fontSize:9 }}>✕</button>
-          </span>
+          <div key={fi} style={{ display:'flex', alignItems:'center', gap:6 }}>
+            <span onClick={()=>viewItemFile(f.path)} style={{ fontSize:11.5, color:'#2563eb', cursor:'pointer', textDecoration:'underline' }}>{f.name}</span>
+            <button onClick={()=>onRemove(fi)} style={{ ...rmBtnStyle, padding:'0 4px', fontSize:9, flexShrink:0 }}>✕</button>
+          </div>
         ))}
-        <label style={{ fontSize:14, color:'#7A8090', cursor:'pointer', flexShrink:0 }} title="Attach a file">
-          {uploadingKey === uploadKey ? '…' : '📎'}
-          <input type="file" style={{ display:'none' }} disabled={uploadingKey === uploadKey}
-            onChange={ev => { if (ev.target.files[0]) onUpload.upload(ev.target.files[0]); ev.target.value = '' }} />
-        </label>
       </div>
     )
   }
@@ -2229,41 +2237,60 @@ function AttachmentsTab({ deal, deals, setDeals, editing, d, set }) {
 
       {sections.map((sec, si) => (
         <TabCard key={sec.heading} title={null}>
-          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', background:'#3D4F6B', color:'#fff', padding:'8px 12px', borderRadius:6, marginBottom:2, marginTop:-4 }}>
-            <span style={{ fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.04em' }}>{sec.heading}</span>
-          </div>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 250px', columnGap:0 }}>
+            <div style={{ background:'#3D4F6B', color:'#fff', padding:'8px 12px', marginTop:-4, display:'flex', alignItems:'center' }}>
+              <span style={{ fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.04em' }}>{sec.heading}</span>
+            </div>
+            <div style={{ background:'#2A3545', color:'#fff', padding:'8px 12px', marginTop:-4, display:'flex', alignItems:'center' }}>
+              <span style={{ fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.04em' }}>Attachments</span>
+            </div>
 
-          {sec.items.map(it => it.repeat ? (
-            <div key={it.id}>
-              <div style={{ display:'flex', alignItems:'center', gap:8, padding:'7px 4px', borderBottom:'0.5px solid #f0f0f0' }}>
-                <input type="checkbox" checked={masterChecked(it)}
-                  onChange={()=>toggleMasterChecked(si,it.id)} title="Ticks/unticks every item below, once added" style={{ flexShrink:0 }} />
-                <ChecklistItemText value={it.text} onChange={text=>updateItemText(si,it.id,text)} done={masterChecked(it)} bold />
-                <RowFiles files={it.files} uploadKey={it.id} onUpload={{ upload: file=>uploadToItem(si,it.id,null,file), removeAt: fi=>removeItemFile(si,it.id,null,fi) }} />
-                <button onClick={()=>addSubItem(si,it.id)} style={{...addBtnStyle, flexShrink:0}}>+ {it.repeat}</button>
-                <button onClick={()=>removeItem(si,it.id)} style={{...rmBtnStyle, flexShrink:0}}>✕</button>
-              </div>
-              <div style={{ marginLeft:20 }}>
+            {sec.items.map(it => it.repeat ? (
+              <React.Fragment key={it.id}>
+                <div style={{ display:'flex', alignItems:'center', gap:8, padding:'7px 4px', borderBottom:'0.5px solid #f0f0f0' }}>
+                  <input type="checkbox" checked={masterChecked(it)}
+                    onChange={()=>toggleMasterChecked(si,it.id)} title="Ticks/unticks every item below, once added" style={{ flexShrink:0 }} />
+                  <ChecklistItemText value={it.text} onChange={text=>updateItemText(si,it.id,text)} done={masterChecked(it)} bold />
+                  <UploadTrigger uploadKey={it.id} onUpload={file=>uploadToItem(si,it.id,null,file)} />
+                  <button onClick={()=>addSubItem(si,it.id)} style={{...addBtnStyle, flexShrink:0}}>+ {it.repeat}</button>
+                  <button onClick={()=>removeItem(si,it.id)} style={{...rmBtnStyle, flexShrink:0}}>✕</button>
+                </div>
+                <div style={{ borderBottom:'0.5px solid #f0f0f0', borderLeft:'1px solid #f0f0f0' }}>
+                  <FileStack files={it.files} onRemove={fi=>removeItemFile(si,it.id,null,fi)} />
+                </div>
+
                 {(it.subItems||[]).map(su => (
-                  <div key={su.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'5px 4px', borderBottom:'0.5px solid #f7f7f7' }}>
-                    <input type="checkbox" checked={!!su.checked} onChange={()=>toggleSubItemChecked(si,it.id,su.id)} style={{ flexShrink:0 }} />
-                    <ChecklistItemText value={su.text} onChange={text=>updateSubItemText(si,it.id,su.id,text)} done={su.checked} placeholder={`${it.repeat} name / details…`} />
-                    <RowFiles files={su.files} uploadKey={`${it.id}-${su.id}`} onUpload={{ upload: file=>uploadToItem(si,it.id,su.id,file), removeAt: fi=>removeItemFile(si,it.id,su.id,fi) }} />
-                    <button onClick={()=>removeSubItem(si,it.id,su.id)} style={{...rmBtnStyle, flexShrink:0}}>✕</button>
-                  </div>
+                  <React.Fragment key={su.id}>
+                    <div style={{ display:'flex', alignItems:'center', gap:8, padding:'5px 4px 5px 24px', borderBottom:'0.5px solid #f7f7f7' }}>
+                      <input type="checkbox" checked={!!su.checked} onChange={()=>toggleSubItemChecked(si,it.id,su.id)} style={{ flexShrink:0 }} />
+                      <ChecklistItemText value={su.text} onChange={text=>updateSubItemText(si,it.id,su.id,text)} done={su.checked} placeholder={`${it.repeat} name / details…`} />
+                      <UploadTrigger uploadKey={`${it.id}-${su.id}`} onUpload={file=>uploadToItem(si,it.id,su.id,file)} />
+                      <button onClick={()=>removeSubItem(si,it.id,su.id)} style={{...rmBtnStyle, flexShrink:0}}>✕</button>
+                    </div>
+                    <div style={{ borderBottom:'0.5px solid #f7f7f7', borderLeft:'1px solid #f0f0f0' }}>
+                      <FileStack files={su.files} onRemove={fi=>removeItemFile(si,it.id,su.id,fi)} />
+                    </div>
+                  </React.Fragment>
                 ))}
-              </div>
-            </div>
-          ) : (
-            <div key={it.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'7px 4px', borderBottom:'0.5px solid #f0f0f0' }}>
-              <input type="checkbox" checked={!!it.checked} onChange={()=>toggleItemChecked(si,it.id)} style={{ flexShrink:0 }} />
-              <ChecklistItemText value={it.text} onChange={text=>updateItemText(si,it.id,text)} done={it.checked} />
-              <RowFiles files={it.files} uploadKey={it.id} onUpload={{ upload: file=>uploadToItem(si,it.id,null,file), removeAt: fi=>removeItemFile(si,it.id,null,fi) }} />
-              <button onClick={()=>removeItem(si,it.id)} style={{...rmBtnStyle, flexShrink:0}}>✕</button>
-            </div>
-          ))}
+              </React.Fragment>
+            ) : (
+              <React.Fragment key={it.id}>
+                <div style={{ display:'flex', alignItems:'center', gap:8, padding:'7px 4px', borderBottom:'0.5px solid #f0f0f0' }}>
+                  <input type="checkbox" checked={!!it.checked} onChange={()=>toggleItemChecked(si,it.id)} style={{ flexShrink:0 }} />
+                  <ChecklistItemText value={it.text} onChange={text=>updateItemText(si,it.id,text)} done={it.checked} />
+                  <UploadTrigger uploadKey={it.id} onUpload={file=>uploadToItem(si,it.id,null,file)} />
+                  <button onClick={()=>removeItem(si,it.id)} style={{...rmBtnStyle, flexShrink:0}}>✕</button>
+                </div>
+                <div style={{ borderBottom:'0.5px solid #f0f0f0', borderLeft:'1px solid #f0f0f0' }}>
+                  <FileStack files={it.files} onRemove={fi=>removeItemFile(si,it.id,null,fi)} />
+                </div>
+              </React.Fragment>
+            ))}
 
-          <AddSectionItemRow onAdd={text=>addItemToSection(si,text)} />
+            <div style={{ gridColumn:'1 / -1' }}>
+              <AddSectionItemRow onAdd={text=>addItemToSection(si,text)} />
+            </div>
+          </div>
         </TabCard>
       ))}
     </div>
