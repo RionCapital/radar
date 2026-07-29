@@ -388,10 +388,7 @@ const ATTACHMENT_TEMPLATES = {
       { heading: 'Additional Documents', items: [
         { text: 'IF PURCHASE – A copy of the signed Contract of Sale for the purchased property' },
         { text: 'IF ASSET FINANCE - Specific Information to the transaction (e.g. Quote/Invoice)' },
-        { text: 'IF CONSTRUCTION – Building Contract' },
-        { text: 'IF CONSTRUCTION – Building Plans' },
-        { text: 'IF CONSTRUCTION – Schedule of Payments' },
-        { text: 'IF CONSTRUCTION – DA/CDC Approval (if available)' },
+        { text: 'IF CONSTRUCTION – A copy of the following construction documents:', repeat:'Document', seed:['Building Contract','Building Plans','Schedule of Payments','DA/CDC Approval (if available)'] },
       ]},
     ],
   },
@@ -414,7 +411,7 @@ const ATTACHMENT_TEMPLATES = {
       ]},
       { heading: 'Additional Documents', items: [
         { text: 'Specific Information to the transaction (e.g. Quote/Invoice for the Equipment being purchased, including terms of trade)' },
-        { text: 'If Invoice Finance - 4 complete sample paper trail including:', repeat:'Entity', seed:['Customer Purchase Order','Invoice','Signed Delivery/Consignment or Timesheet','Customer Remittance Advice'] },
+        { text: 'If Invoice Finance - 4 complete sample paper trail including:', repeat:'Document', seed:['Customer Purchase Order','Invoice','Signed Delivery/Consignment or Timesheet','Customer Remittance Advice'] },
       ]},
     ],
   },
@@ -2006,105 +2003,99 @@ function buildSectionsFromTemplate(template) {
   }))
 }
 
-// Merges a fresh template's sections into whatever the entity already has —
-// by heading, then by item text within that heading — adding only what's
-// missing. Never touches or resets an item/sub-item that's already there,
-// so switching transaction type (or re-adding a section) never loses
-// anything already edited, ticked, or added by hand.
-function mergeSectionsIn(existingSections, newSections) {
-  const result = existingSections.map(s => ({ ...s, items: [...s.items] }))
-  newSections.forEach(newSec => {
-    const idx = result.findIndex(s => s.heading === newSec.heading)
-    if (idx === -1) {
-      result.push({ heading: newSec.heading, items: newSec.items.map(i => ({ ...i })) })
-    } else {
-      const existingTexts = new Set(result[idx].items.map(it => it.text))
-      const toAdd = newSec.items.filter(it => !existingTexts.has(it.text))
-      result[idx] = { ...result[idx], items: [...result[idx].items, ...toAdd] }
-    }
-  })
-  return result
-}
-
 function AttachmentsTab({ deal, deals, setDeals, editing, d, set }) {
   const att = d._attachments || {}
-  const entities = att.entities || []
 
-  function saveEntities(next) {
-    const updatedAtt = { ...att, entities: next }
+  function saveAtt(patch) {
+    const updatedAtt = { ...att, ...patch }
     const updated = deals.map(x => x['Transaction Name'] === deal['Transaction Name'] ? { ...x, _attachments: updatedAtt } : x)
     setDeals(updated); saveDeals(updated)
     if (editing) set('_attachments', updatedAtt)
   }
 
-  function addEntity() {
-    const key = defaultAttachmentTemplate(deal.Categories)
-    const template = ATTACHMENT_TEMPLATES[key]
-    const next = [...entities, {
-      id: Date.now(), label: `Entity ${entities.length + 1}`,
-      transactionType: key,
-      sections: buildSectionsFromTemplate(template),
-      files: [],
-    }]
-    saveEntities(next)
-  }
-  function updateEntity(id, patch) { saveEntities(entities.map(e => e.id === id ? { ...e, ...patch } : e)) }
-  function removeEntity(id) { saveEntities(entities.filter(e => e.id !== id)) }
+  const transactionType = att.transactionType || defaultAttachmentTemplate(deal.Categories)
+  const sections = att.sections || buildSectionsFromTemplate(ATTACHMENT_TEMPLATES[transactionType] || ATTACHMENT_TEMPLATES['Home Loan'])
+  const files = att.files || []
 
-  function changeTransactionType(id, newType) {
-    const e = entities.find(x => x.id === id)
+  // First time this deal's Attachments tab is opened, there's nothing saved
+  // yet — persist the freshly-built default straight away so it's a real,
+  // editable record from the first click rather than a throwaway preview
+  // that vanishes if you navigate away without editing anything.
+  useEffect(() => {
+    if (!att.sections) saveAtt({ transactionType, sections })
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Changing the transaction type REPLACES the checklist with that
+  // template's own list — it does not merge the two together. That's
+  // deliberate: picking a different transaction type means "show me that
+  // type's requirements," not "add them to whatever's already here."
+  // Uploaded files are kept regardless, since they're not tied to the
+  // checklist shape.
+  function changeTransactionType(newType) {
     const template = ATTACHMENT_TEMPLATES[newType] || ATTACHMENT_TEMPLATES['Home Loan']
-    updateEntity(id, { transactionType: newType, sections: mergeSectionsIn(e.sections || [], buildSectionsFromTemplate(template)) })
+    saveAtt({ transactionType: newType, sections: buildSectionsFromTemplate(template) })
   }
 
-  function updateSections(entityId, updater) {
-    const e = entities.find(x => x.id === entityId)
-    updateEntity(entityId, { sections: updater(e.sections || []) })
+  function updateSections(updater) { saveAtt({ sections: updater(sections) }) }
+
+  function isAllSubChecked(it) { return (it.subItems||[]).length > 0 && it.subItems.every(su => su.checked) }
+
+  function toggleItemChecked(si, itemId) {
+    updateSections(secs => secs.map((s, i) => i !== si ? s : { ...s, items: s.items.map(it => it.id === itemId ? { ...it, checked: !it.checked } : it) }))
   }
-  function toggleItemChecked(entityId, si, itemId) {
-    updateSections(entityId, secs => secs.map((s, i) => i !== si ? s : { ...s, items: s.items.map(it => it.id === itemId ? { ...it, checked: !it.checked } : it) }))
+  function updateItemText(si, itemId, text) {
+    updateSections(secs => secs.map((s, i) => i !== si ? s : { ...s, items: s.items.map(it => it.id === itemId ? { ...it, text } : it) }))
   }
-  function updateItemText(entityId, si, itemId, text) {
-    updateSections(entityId, secs => secs.map((s, i) => i !== si ? s : { ...s, items: s.items.map(it => it.id === itemId ? { ...it, text } : it) }))
+  function removeItem(si, itemId) {
+    updateSections(secs => secs.map((s, i) => i !== si ? s : { ...s, items: s.items.filter(it => it.id !== itemId) }))
   }
-  function removeItem(entityId, si, itemId) {
-    updateSections(entityId, secs => secs.map((s, i) => i !== si ? s : { ...s, items: s.items.filter(it => it.id !== itemId) }))
-  }
-  function addItemToSection(entityId, si, text) {
+  function addItemToSection(si, text) {
     if (!text.trim()) return
-    updateSections(entityId, secs => secs.map((s, i) => i !== si ? s : { ...s, items: [...s.items, { id: mkAttachmentId(), text: text.trim(), checked: false }] }))
+    updateSections(secs => secs.map((s, i) => i !== si ? s : { ...s, items: [...s.items, { id: mkAttachmentId(), text: text.trim(), checked: false }] }))
   }
-  // Repeatable items (Individual / Entity / Property / Statement) — the
-  // "+ [Type]" button adds one more indented, editable sub-line each click.
-  function addSubItem(entityId, si, itemId) {
-    updateSections(entityId, secs => secs.map((s, i) => i !== si ? s : { ...s, items: s.items.map(it => it.id !== itemId ? it : { ...it, subItems: [...(it.subItems||[]), { id: mkAttachmentId(), text: '', checked: false }] }) }))
+  // Repeatable items (Individual / Entity / Property / Statement / Document)
+  // — the "+ [Type]" button adds one more indented, editable sub-line.
+  function addSubItem(si, itemId) {
+    updateSections(secs => secs.map((s, i) => i !== si ? s : { ...s, items: s.items.map(it => it.id !== itemId ? it : { ...it, subItems: [...(it.subItems||[]), { id: mkAttachmentId(), text: '', checked: false }] }) }))
   }
-  function updateSubItemText(entityId, si, itemId, subId, text) {
-    updateSections(entityId, secs => secs.map((s, i) => i !== si ? s : { ...s, items: s.items.map(it => it.id !== itemId ? it : { ...it, subItems: it.subItems.map(su => su.id === subId ? { ...su, text } : su) }) }))
+  function updateSubItemText(si, itemId, subId, text) {
+    updateSections(secs => secs.map((s, i) => i !== si ? s : { ...s, items: s.items.map(it => it.id !== itemId ? it : { ...it, subItems: it.subItems.map(su => su.id === subId ? { ...su, text } : su) }) }))
   }
-  function toggleSubItemChecked(entityId, si, itemId, subId) {
-    updateSections(entityId, secs => secs.map((s, i) => i !== si ? s : { ...s, items: s.items.map(it => it.id !== itemId ? it : { ...it, subItems: it.subItems.map(su => su.id === subId ? { ...su, checked: !su.checked } : su) }) }))
+  function toggleSubItemChecked(si, itemId, subId) {
+    updateSections(secs => secs.map((s, i) => i !== si ? s : { ...s, items: s.items.map(it => it.id !== itemId ? it : { ...it, subItems: it.subItems.map(su => su.id === subId ? { ...su, checked: !su.checked } : su) }) }))
   }
-  function removeSubItem(entityId, si, itemId, subId) {
-    updateSections(entityId, secs => secs.map((s, i) => i !== si ? s : { ...s, items: s.items.map(it => it.id !== itemId ? it : { ...it, subItems: it.subItems.filter(su => su.id !== subId) }) }))
+  function removeSubItem(si, itemId, subId) {
+    updateSections(secs => secs.map((s, i) => i !== si ? s : { ...s, items: s.items.map(it => it.id !== itemId ? it : { ...it, subItems: it.subItems.filter(su => su.id !== subId) }) }))
+  }
+  // The Master checkbox for a request with sub-items. It isn't its own
+  // stored value — it's always just "are all the sub-items ticked right
+  // now", so it can never drift out of sync with them. Clicking it
+  // cascades: tick it and every sub-item ticks; untick it and every
+  // sub-item unticks. Ticking every sub-item by hand ticks the master
+  // automatically too, for the same reason — it's the same computed value
+  // either way.
+  function toggleMasterChecked(si, itemId) {
+    updateSections(secs => secs.map((s, i) => i !== si ? s : { ...s, items: s.items.map(it => {
+      if (it.id !== itemId) return it
+      const makeAllChecked = !isAllSubChecked(it)
+      return { ...it, subItems: (it.subItems||[]).map(su => ({ ...su, checked: makeAllChecked })) }
+    }) }))
   }
 
-  const [uploading, setUploading] = useState(null)
-  async function uploadFile(id, file) {
-    setUploading(id)
+  const [uploading, setUploading] = useState(false)
+  async function uploadFile(file) {
+    setUploading(true)
     const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
-    const path = `${deal['Transaction Name']}/${id}/${Date.now()}_${safeName}`
+    const path = `${deal['Transaction Name']}/${Date.now()}_${safeName}`
     const res = await sbUploadAttachment(path, file)
-    setUploading(null)
+    setUploading(false)
     if (!res.ok) { notifySaveFailed('attachments', { error: res.error }); return }
-    const e = entities.find(x => x.id === id)
-    updateEntity(id, { files: [...(e.files || []), { name: file.name, path, size: file.size, uploadedAt: new Date().toISOString() }] })
+    saveAtt({ files: [...files, { name: file.name, path, size: file.size, uploadedAt: new Date().toISOString() }] })
   }
-  async function removeFile(id, fileIdx) {
-    const e = entities.find(x => x.id === id)
-    const f = e.files[fileIdx]
+  async function removeFile(fileIdx) {
+    const f = files[fileIdx]
     await sbDeleteAttachment(f.path)
-    updateEntity(id, { files: e.files.filter((_, i) => i !== fileIdx) })
+    saveAtt({ files: files.filter((_, i) => i !== fileIdx) })
   }
   async function viewFile(path) {
     const url = await sbGetAttachmentUrl(path)
@@ -2113,94 +2104,80 @@ function AttachmentsTab({ deal, deals, setDeals, editing, d, set }) {
   }
 
   const itemInputStyle = (done) => ({ flex:1, border:'none', background:'transparent', fontSize:12, fontFamily:'inherit', padding:'2px 4px', borderRadius:4, color: done ? '#B0B5BD' : '#2A3545', textDecoration: done ? 'line-through' : 'none' })
+  const allLeaf = sections.flatMap(s => s.items.flatMap(it => it.repeat ? (it.subItems||[]) : [it]))
+  const doneCount = allLeaf.filter(it => it.checked).length
 
   return (
     <div>
       <datalist id="attachment-master-items">{ATTACHMENT_MASTER_ITEMS.map(t => <option key={t} value={t} />)}</datalist>
 
-      {entities.length === 0 && (
-        <TabCard>
-          <div style={{ fontSize:12, color:'#7A8090', marginBottom:10 }}>No document checklists yet. Add one for each applicant, entity, or guarantor involved in this deal.</div>
-          <button onClick={addEntity} style={addBtnStyle}>+ Add entity checklist</button>
-        </TabCard>
-      )}
+      <TabCard>
+        <div style={{ display:'flex', gap:10, marginBottom:16, flexWrap:'wrap', alignItems:'center' }}>
+          <span style={{ fontSize:11, fontWeight:700, color:'#7A8090', textTransform:'uppercase' }}>Transaction type</span>
+          <select value={transactionType} onChange={ev=>changeTransactionType(ev.target.value)}
+            style={{ border:'1px solid #e8eaed', borderRadius:6, padding:'6px 10px', fontSize:12, flex:'1 1 240px', fontFamily:'inherit' }}>
+            {Object.keys(ATTACHMENT_TEMPLATES).map(k => <option key={k} value={k}>{k}</option>)}
+          </select>
+          <span style={{ fontSize:10.5, color:'#9ca3af' }}>{doneCount}/{allLeaf.length} received</span>
+        </div>
+        <div style={{ fontSize:10.5, color:'#9ca3af' }}>Changing this replaces the checklist below with that transaction type's own requirements.</div>
+      </TabCard>
 
-      {entities.map((e) => {
-        const sections = e.sections || []
-        const allLeaf = sections.flatMap(s => s.items.flatMap(it => it.repeat ? (it.subItems||[]) : [it]))
-        const doneCount = allLeaf.filter(it => it.checked).length
+      {sections.map((sec, si) => (
+        <TabCard key={sec.heading} title={null}>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', background:'#3D4F6B', color:'#fff', padding:'8px 12px', borderRadius:6, marginBottom:2, marginTop:-4 }}>
+            <span style={{ fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.04em' }}>{sec.heading}</span>
+          </div>
 
-        return (
-          <TabCard key={e.id} right={<button onClick={()=>removeEntity(e.id)} style={rmBtnStyle}>✕ Remove</button>}>
-            <div style={{ display:'flex', gap:10, marginBottom:16, flexWrap:'wrap' }}>
-              <input value={e.label} onChange={ev=>updateEntity(e.id,{label:ev.target.value})} placeholder="e.g. Applicant 1 — John Smith"
-                style={{ border:'1px solid #e8eaed', borderRadius:6, padding:'6px 10px', fontSize:12.5, fontWeight:600, flex:'1 1 220px', fontFamily:'inherit' }}/>
-              <select value={e.transactionType} onChange={ev=>changeTransactionType(e.id, ev.target.value)}
-                style={{ border:'1px solid #e8eaed', borderRadius:6, padding:'6px 10px', fontSize:12, flex:'1 1 240px', fontFamily:'inherit' }}>
-                {Object.keys(ATTACHMENT_TEMPLATES).map(k => <option key={k} value={k}>{k}</option>)}
-              </select>
-              <span style={{ fontSize:10.5, color:'#9ca3af', alignSelf:'center' }}>{doneCount}/{allLeaf.length} received</span>
-            </div>
-
-            {sections.map((sec, si) => (
-              <div key={sec.heading} style={{ marginBottom:18 }}>
-                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', background:'#3D4F6B', color:'#fff', padding:'8px 12px', borderRadius:6, marginBottom:2 }}>
-                  <span style={{ fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.04em' }}>{sec.heading}</span>
-                </div>
-
-                {sec.items.map(it => it.repeat ? (
-                  <div key={it.id}>
-                    <div style={{ display:'flex', alignItems:'center', gap:8, padding:'7px 4px', borderBottom:'0.5px solid #f0f0f0' }}>
-                      <input value={it.text} onChange={ev=>updateItemText(e.id,si,it.id,ev.target.value)}
-                        style={{ flex:1, border:'none', background:'transparent', fontSize:12, fontWeight:600, fontFamily:'inherit', padding:'2px 4px', borderRadius:4, color:'#2A3545' }} />
-                      <button onClick={()=>addSubItem(e.id,si,it.id)} style={{...addBtnStyle, flexShrink:0}}>+ {it.repeat}</button>
-                      <button onClick={()=>removeItem(e.id,si,it.id)} style={{...rmBtnStyle, flexShrink:0}}>✕</button>
-                    </div>
-                    <div style={{ marginLeft:20 }}>
-                      {(it.subItems||[]).map(su => (
-                        <div key={su.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'5px 4px', borderBottom:'0.5px solid #f7f7f7' }}>
-                          <input type="checkbox" checked={!!su.checked} onChange={()=>toggleSubItemChecked(e.id,si,it.id,su.id)} style={{ flexShrink:0 }} />
-                          <input value={su.text} onChange={ev=>updateSubItemText(e.id,si,it.id,su.id,ev.target.value)} placeholder={`${it.repeat} name / details…`}
-                            style={itemInputStyle(su.checked)} />
-                          <button onClick={()=>removeSubItem(e.id,si,it.id,su.id)} style={{...rmBtnStyle, flexShrink:0}}>✕</button>
-                        </div>
-                      ))}
-                      {(it.subItems||[]).length === 0 && <div style={{ fontSize:10.5, color:'#9ca3af', padding:'4px 4px 8px' }}>Click "+ {it.repeat}" to add one.</div>}
-                    </div>
-                  </div>
-                ) : (
-                  <div key={it.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'7px 4px', borderBottom:'0.5px solid #f0f0f0' }}>
-                    <input type="checkbox" checked={!!it.checked} onChange={()=>toggleItemChecked(e.id,si,it.id)} style={{ flexShrink:0 }} />
-                    <input value={it.text} onChange={ev=>updateItemText(e.id,si,it.id,ev.target.value)} style={itemInputStyle(it.checked)} />
-                    <button onClick={()=>removeItem(e.id,si,it.id)} style={{...rmBtnStyle, flexShrink:0}}>✕</button>
+          {sec.items.map(it => it.repeat ? (
+            <div key={it.id}>
+              <div style={{ display:'flex', alignItems:'center', gap:8, padding:'7px 4px', borderBottom:'0.5px solid #f0f0f0' }}>
+                <input type="checkbox" checked={isAllSubChecked(it)} disabled={(it.subItems||[]).length===0}
+                  onChange={()=>toggleMasterChecked(si,it.id)} title="Master checkbox — ticks or unticks every item below" style={{ flexShrink:0 }} />
+                <input value={it.text} onChange={ev=>updateItemText(si,it.id,ev.target.value)}
+                  style={{ flex:1, border:'none', background:'transparent', fontSize:12, fontWeight:600, fontFamily:'inherit', padding:'2px 4px', borderRadius:4, color: isAllSubChecked(it) ? '#B0B5BD' : '#2A3545', textDecoration: isAllSubChecked(it) ? 'line-through' : 'none' }} />
+                <button onClick={()=>addSubItem(si,it.id)} style={{...addBtnStyle, flexShrink:0}}>+ {it.repeat}</button>
+                <button onClick={()=>removeItem(si,it.id)} style={{...rmBtnStyle, flexShrink:0}}>✕</button>
+              </div>
+              <div style={{ marginLeft:20 }}>
+                {(it.subItems||[]).map(su => (
+                  <div key={su.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'5px 4px', borderBottom:'0.5px solid #f7f7f7' }}>
+                    <input type="checkbox" checked={!!su.checked} onChange={()=>toggleSubItemChecked(si,it.id,su.id)} style={{ flexShrink:0 }} />
+                    <input value={su.text} onChange={ev=>updateSubItemText(si,it.id,su.id,ev.target.value)} placeholder={`${it.repeat} name / details…`}
+                      style={itemInputStyle(su.checked)} />
+                    <button onClick={()=>removeSubItem(si,it.id,su.id)} style={{...rmBtnStyle, flexShrink:0}}>✕</button>
                   </div>
                 ))}
-
-                <AddSectionItemRow onAdd={text=>addItemToSection(e.id,si,text)} />
+                {(it.subItems||[]).length === 0 && <div style={{ fontSize:10.5, color:'#9ca3af', padding:'4px 4px 8px' }}>Click "+ {it.repeat}" to add one.</div>}
               </div>
-            ))}
-
-            <div>
-              <div style={{ fontSize:10, fontWeight:700, color:'#7A8090', textTransform:'uppercase', marginBottom:6 }}>Uploaded files</div>
-              {(e.files || []).length === 0 && <div style={{ fontSize:11, color:'#9ca3af', marginBottom:6 }}>No files uploaded yet</div>}
-              {(e.files || []).map((f, fi) => (
-                <div key={fi} style={{ display:'flex', alignItems:'center', gap:8, padding:'5px 0' }}>
-                  <span onClick={()=>viewFile(f.path)} style={{ fontSize:11.5, color:'#EB99C2', cursor:'pointer', textDecoration:'underline' }}>{f.name}</span>
-                  <span style={{ fontSize:10, color:'#9ca3af' }}>{f.size ? `${(f.size/1024).toFixed(0)}KB` : ''}</span>
-                  <button onClick={()=>removeFile(e.id,fi)} style={rmBtnStyle}>✕</button>
-                </div>
-              ))}
-              <label style={{ ...addBtnStyle, display:'inline-block', marginTop:8, cursor:'pointer' }}>
-                {uploading === e.id ? 'Uploading…' : '+ Upload file'}
-                <input type="file" style={{ display:'none' }} disabled={uploading === e.id}
-                  onChange={ev => { if (ev.target.files[0]) uploadFile(e.id, ev.target.files[0]); ev.target.value = '' }} />
-              </label>
             </div>
-          </TabCard>
-        )
-      })}
+          ) : (
+            <div key={it.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'7px 4px', borderBottom:'0.5px solid #f0f0f0' }}>
+              <input type="checkbox" checked={!!it.checked} onChange={()=>toggleItemChecked(si,it.id)} style={{ flexShrink:0 }} />
+              <input value={it.text} onChange={ev=>updateItemText(si,it.id,ev.target.value)} style={itemInputStyle(it.checked)} />
+              <button onClick={()=>removeItem(si,it.id)} style={{...rmBtnStyle, flexShrink:0}}>✕</button>
+            </div>
+          ))}
 
-      {entities.length > 0 && <button onClick={addEntity} style={addBtnStyle}>+ Add another entity checklist</button>}
+          <AddSectionItemRow onAdd={text=>addItemToSection(si,text)} />
+        </TabCard>
+      ))}
+
+      <TabCard title="Uploaded files">
+        {files.length === 0 && <div style={{ fontSize:11, color:'#9ca3af', marginBottom:6 }}>No files uploaded yet</div>}
+        {files.map((f, fi) => (
+          <div key={fi} style={{ display:'flex', alignItems:'center', gap:8, padding:'5px 0' }}>
+            <span onClick={()=>viewFile(f.path)} style={{ fontSize:11.5, color:'#EB99C2', cursor:'pointer', textDecoration:'underline' }}>{f.name}</span>
+            <span style={{ fontSize:10, color:'#9ca3af' }}>{f.size ? `${(f.size/1024).toFixed(0)}KB` : ''}</span>
+            <button onClick={()=>removeFile(fi)} style={rmBtnStyle}>✕</button>
+          </div>
+        ))}
+        <label style={{ ...addBtnStyle, display:'inline-block', marginTop:8, cursor:'pointer' }}>
+          {uploading ? 'Uploading…' : '+ Upload file'}
+          <input type="file" style={{ display:'none' }} disabled={uploading}
+            onChange={ev => { if (ev.target.files[0]) uploadFile(ev.target.files[0]); ev.target.value = '' }} />
+        </label>
+      </TabCard>
     </div>
   )
 }
