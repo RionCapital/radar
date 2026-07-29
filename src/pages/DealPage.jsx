@@ -2237,7 +2237,7 @@ function AttachmentsTab({ deal, deals, setDeals, editing, d, set }) {
 
       {sections.map((sec, si) => (
         <TabCard key={sec.heading} title={null}>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 250px', columnGap:0 }}>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 375px', columnGap:0 }}>
             <div style={{ background:'#3D4F6B', color:'#fff', padding:'8px 12px', marginTop:-4, display:'flex', alignItems:'center' }}>
               <span style={{ fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.04em' }}>{sec.heading}</span>
             </div>
@@ -2248,10 +2248,10 @@ function AttachmentsTab({ deal, deals, setDeals, editing, d, set }) {
             {sec.items.map(it => it.repeat ? (
               <React.Fragment key={it.id}>
                 <div style={{ display:'flex', alignItems:'center', gap:8, padding:'7px 4px', borderBottom:'0.5px solid #f0f0f0' }}>
+                  <UploadTrigger uploadKey={it.id} onUpload={file=>uploadToItem(si,it.id,null,file)} />
                   <input type="checkbox" checked={masterChecked(it)}
                     onChange={()=>toggleMasterChecked(si,it.id)} title="Ticks/unticks every item below, once added" style={{ flexShrink:0 }} />
                   <ChecklistItemText value={it.text} onChange={text=>updateItemText(si,it.id,text)} done={masterChecked(it)} bold />
-                  <UploadTrigger uploadKey={it.id} onUpload={file=>uploadToItem(si,it.id,null,file)} />
                   <button onClick={()=>addSubItem(si,it.id)} style={{...addBtnStyle, flexShrink:0}}>+ {it.repeat}</button>
                   <button onClick={()=>removeItem(si,it.id)} style={{...rmBtnStyle, flexShrink:0}}>✕</button>
                 </div>
@@ -2262,9 +2262,9 @@ function AttachmentsTab({ deal, deals, setDeals, editing, d, set }) {
                 {(it.subItems||[]).map(su => (
                   <React.Fragment key={su.id}>
                     <div style={{ display:'flex', alignItems:'center', gap:8, padding:'5px 4px 5px 24px', borderBottom:'0.5px solid #f7f7f7' }}>
+                      <UploadTrigger uploadKey={`${it.id}-${su.id}`} onUpload={file=>uploadToItem(si,it.id,su.id,file)} />
                       <input type="checkbox" checked={!!su.checked} onChange={()=>toggleSubItemChecked(si,it.id,su.id)} style={{ flexShrink:0 }} />
                       <ChecklistItemText value={su.text} onChange={text=>updateSubItemText(si,it.id,su.id,text)} done={su.checked} placeholder={`${it.repeat} name / details…`} />
-                      <UploadTrigger uploadKey={`${it.id}-${su.id}`} onUpload={file=>uploadToItem(si,it.id,su.id,file)} />
                       <button onClick={()=>removeSubItem(si,it.id,su.id)} style={{...rmBtnStyle, flexShrink:0}}>✕</button>
                     </div>
                     <div style={{ borderBottom:'0.5px solid #f7f7f7', borderLeft:'1px solid #f0f0f0' }}>
@@ -2276,9 +2276,9 @@ function AttachmentsTab({ deal, deals, setDeals, editing, d, set }) {
             ) : (
               <React.Fragment key={it.id}>
                 <div style={{ display:'flex', alignItems:'center', gap:8, padding:'7px 4px', borderBottom:'0.5px solid #f0f0f0' }}>
+                  <UploadTrigger uploadKey={it.id} onUpload={file=>uploadToItem(si,it.id,null,file)} />
                   <input type="checkbox" checked={!!it.checked} onChange={()=>toggleItemChecked(si,it.id)} style={{ flexShrink:0 }} />
                   <ChecklistItemText value={it.text} onChange={text=>updateItemText(si,it.id,text)} done={it.checked} />
-                  <UploadTrigger uploadKey={it.id} onUpload={file=>uploadToItem(si,it.id,null,file)} />
                   <button onClick={()=>removeItem(si,it.id)} style={{...rmBtnStyle, flexShrink:0}}>✕</button>
                 </div>
                 <div style={{ borderBottom:'0.5px solid #f0f0f0', borderLeft:'1px solid #f0f0f0' }}>
