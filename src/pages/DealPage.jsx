@@ -351,97 +351,156 @@ const OTHER_INCOME_TYPES = ['Rental Income','Centrelink / Family Tax Benefit','D
 // e.g. an Individual on PAYG income needs payslips, a Company needs tax
 // returns and financials. A given entity can tick more than one condition
 // (e.g. a Trust with a corporate trustee is both 'Trust' and 'Company').
+// Matches Cameron's RIF template exactly: each template is a list of named
+// sections (headings), each with items. An item can optionally have a
+// `repeat` type (Individual / Entity / Property / Statement) — these are
+// the ones that need one instance per person/entity/property/account,
+// shown with their own "+ [Type]" button in the same row, adding an
+// indented sub-line each time it's clicked. Items with no `repeat` are
+// single, flat lines. `seed` pre-populates a repeatable item's first
+// sub-lines (e.g. Property Address 1/2) to match the template as supplied —
+// further ones are added with the button, existing ones can be edited or
+// deleted freely.
 const ATTACHMENT_TEMPLATES = {
   'Home Loan': {
-    base: [
-      'Credit Guide & Privacy Statement (attached)',
-      'Fact Find',
-      "Driver's licence (both front & back) and passport",
-      'Two most recent rental statements for investment properties',
-      'Everyday bank account statements (6 months)',
-      'All existing home loan statements (6 months)',
-      'Credit cards / personal loans / leases (most recent statement)',
-      'Superannuation statement (most recent)',
+    sections: [
+      { heading: 'Personal Information', items: [
+        { text: 'Credit Guide & Privacy Statement (attached)' },
+        { text: 'Fact Find' },
+        { text: "A copy of your driver's licence (both front & back) and passport" },
+      ]},
+      { heading: 'Financial Information', items: [
+        { text: 'A copy of your two most recent rental statements (or Rental Appraisal) for your investment properties:', repeat:'Property', seed:['Property Address 1','Property Address 2'] },
+        { text: 'A copy of your two most recent payslips', repeat:'Individual' },
+        { text: "A copy of your most recent year's ATO Income Statement", repeat:'Individual' },
+        { text: 'A copy of your Individual Tax Returns and Notice of Assessments (2 years)', repeat:'Individual' },
+        { text: 'A copy of your Business Tax Returns and associated Financials for all Trading Entities (2 years)', repeat:'Entity' },
+        { text: '12 month ATO ICA & ITA Portals for all entities', repeat:'Entity' },
+        { text: 'A copy of the following Statements:', repeat:'Statement', seed:[
+          'Everyday bank account (from X to Present) 6 months',
+          'IF PAYG - Transaction account showing your salary credits (if different to your Everyday account above) (from X to Present) 3 months',
+          'All Existing Home Loans (from X to Present) 6 months',
+          'IF PURCHASE – Transaction account showing savings for the purchase (from X to Present)',
+          'Credit Cards/Personal Loans/Lease/s (Most recent only)',
+          'Superannuation (Most recent only)',
+        ]},
+      ]},
+      { heading: 'Additional Documents', items: [
+        { text: 'IF PURCHASE – A copy of the signed Contract of Sale for the purchased property' },
+        { text: 'IF ASSET FINANCE - Specific Information to the transaction (e.g. Quote/Invoice)' },
+        { text: 'IF CONSTRUCTION – Building Contract' },
+        { text: 'IF CONSTRUCTION – Building Plans' },
+        { text: 'IF CONSTRUCTION – Schedule of Payments' },
+        { text: 'IF CONSTRUCTION – DA/CDC Approval (if available)' },
+      ]},
     ],
-    conditions: {
-      'Construction': ['Building Contract', 'Building Plans', 'Schedule of Payments', 'DA/CDC Approval (if available)'],
-      'Purchase': ['Signed Contract of Sale for the property being purchased', 'Transaction account showing savings for the purchase'],
-      'PAYG': ['Two most recent payslips', "Most recent year's ATO Income Statement", 'Salary transaction account statements (3 months, if different from everyday account)'],
-      'Company': ['Individual Tax Returns & Notices of Assessment (2 years)', 'Business Tax Returns & Financials for all trading entities (2 years)'],
-      'Commercial': ['12 months ATO ICA & ITA portals for all entities'],
-      'Trust': ['Executed and dated Trust Deed, certified by a JP'],
-    },
   },
-  'Commercial': {
-    base: [
-      'Credit Guide & Privacy Disclosure Agreement (signed)',
-      'Asset & Liability Statement (signed)',
-      'Individual Tax Returns & Notices of Assessment (2 years)',
-      'Business Tax Returns & Financial Statements for all trading entities (2 years)',
-      'YTD Management Financial Statements (Profit & Loss and Balance Sheet)',
-      '12 months ATO portal statements — ICA & ITA, all commercial entities',
-      'Aged Accounts Receivable & Payable ledgers',
-      'Completed invoice trail — Tax Invoice, Purchase Order, Proof of Delivery, Remittance Advice (4 invoices)',
-      'Transaction-specific documents (e.g. Quote/Invoice for the asset, incl. terms of trade)',
+  'Commercial Applications — Property & Other': {
+    sections: [
+      { heading: 'Director/Shareholder Information', items: [
+        { text: 'Credit Guide & Privacy Statement (attached)', repeat:'Individual' },
+        { text: 'Asset & Liability Statement', repeat:'Individual' },
+        { text: "A copy of your driver's licence (both front & back) and passport", repeat:'Individual' },
+        { text: 'A copy of your Individual Tax Returns and Notice of Assessments (2 years)', repeat:'Individual' },
+        { text: 'A copy of your two most recent rental statements (or Rental Appraisal) for your investment properties:', repeat:'Property', seed:['Property Address 1','Property Address 2'] },
+      ]},
+      { heading: 'Financial Information', items: [
+        { text: 'A copy of the Lease Agreement and/or a Tenancy Schedule for:', repeat:'Property', seed:['Property Address 1','Property Address 2'] },
+        { text: 'A copy of your Business Tax Returns and associated Financials for all Trading Entities (2 years)', repeat:'Entity' },
+        { text: 'Year-to-Date (YTD) Management Financial Statements (including Profit & Loss Statement and Balance Sheet)', repeat:'Entity' },
+        { text: '12 month ATO ICA & ITA Portals for all entities', repeat:'Entity' },
+        { text: 'Summarised and Aged Accounts Receivable & Payable Ledgers (preferably reconciled with the YTD Management Accounts)', repeat:'Entity' },
+        { text: 'If Invoice Finance – Detailed Aged Receivables Ledger', repeat:'Entity' },
+      ]},
+      { heading: 'Additional Documents', items: [
+        { text: 'Specific Information to the transaction (e.g. Quote/Invoice for the Equipment being purchased, including terms of trade)' },
+        { text: 'If Invoice Finance - 4 complete sample paper trail including:', repeat:'Entity', seed:['Customer Purchase Order','Invoice','Signed Delivery/Consignment or Timesheet','Customer Remittance Advice'] },
+      ]},
     ],
-    conditions: {
-      'Trust': ['Trust Deed'],
-    },
-  },
-  'SMSF': {
-    base: [
-      'Credit Guide & Privacy Statement',
-      'RION Asset & Liability Statement (completed)',
-    ],
-    conditions: {
-      'Established Fund': ['12 months SMSF bank statements evidencing regular member contributions', 'SMSF tax returns & financial accounts (2 years)'],
-      'New / Recently Established Fund': ['12 months superannuation statements for all SMSF beneficiaries (current fund)', '2 years bank/fund statements being rolled over, evidencing contributions and balances'],
-      'Company': ['Business Tax Returns & Financials for all trading entities (2 years)', 'Individual Tax Returns & Notices of Assessment (2 years)'],
-      'PAYG': ['2 most recent payslips showing super contributions'],
-      'Trust': ['Certified copy of SMSF Trust Deed (if available)'],
-    },
   },
   'Asset Finance — Commercial Full Doc': {
-    base: [
-      'Credit Guide & Privacy Disclosure Agreement (signed)',
-      'Asset & Liability Statement (signed)',
-      "Driver's licence (both sides) and Medicare card (or passport)",
-      'Individual Tax Returns & Notices of Assessment (2 years)',
-      'Business Tax Returns & Financial Statements for all trading entities (2 years)',
-      'YTD Management Financial Statements (Profit & Loss and Balance Sheet)',
-      '12 months ATO portal statements — ICA & ITA',
-      'Aged Accounts Receivable & Payable ledgers',
-      'Transaction-specific documents (e.g. Quote/Invoice for the asset, incl. terms of trade)',
+    sections: [
+      { heading: 'Required Documents', items: [
+        { text: 'Credit Guide & Privacy Statement (attached)', repeat:'Individual' },
+        { text: 'Asset & Liability Statement', repeat:'Individual' },
+        { text: "A copy of your driver's licence (both front & back) and passport (or Medicare Card)" },
+        { text: 'A copy of your Individual Tax Returns and Notice of Assessments (2 years)', repeat:'Individual' },
+        { text: 'A copy of your Business Tax Returns and associated Financials for all Trading Entities (2 years)', repeat:'Entity' },
+        { text: 'Year-to-Date (YTD) Management Financial Statements (including Profit & Loss Statement and Balance Sheet)', repeat:'Entity' },
+        { text: '12 months of ATO portal statements for all commercial entities (including ICA & ITA)', repeat:'Entity' },
+        { text: 'Summarised and Aged Accounts Receivable & Payable Ledgers (preferably reconciled with the YTD Management Accounts)', repeat:'Entity' },
+        { text: 'Specific Information to the transaction (e.g. Quote/Invoice for the Equipment being purchased, including terms of trade)' },
+      ]},
     ],
-    conditions: {},
   },
   'Asset Finance — Commercial Low Doc': {
-    base: [
-      'Credit Guide & Privacy Disclosure Agreement (signed)',
-      'Asset & Liability Statement (signed)',
-      "Driver's licence (both sides) and Medicare card (or passport)",
-      'Transaction-specific documents (e.g. Quote/Invoice for the asset, incl. terms of trade)',
-      'Statement for a comparable existing facility, if available (e.g. current vehicle/equipment loan)',
+    sections: [
+      { heading: 'Required Documents', items: [
+        { text: 'Credit Guide & Privacy Statement (attached)', repeat:'Individual' },
+        { text: 'Asset & Liability Statement', repeat:'Individual' },
+        { text: "A copy of your driver's licence (both front & back) and passport (or Medicare Card)", repeat:'Individual' },
+        { text: 'Specific Information to the transaction (e.g. Quote/Invoice for the Equipment being purchased, including terms of trade)' },
+        { text: 'If available - a statement for any comparable existing credit facility (e.g. current vehicle or equipment loan) showing a satisfactory repayment history' },
+      ]},
     ],
-    conditions: {},
   },
   'Asset Finance — Personal Use': {
-    base: [
-      'Credit Guide & Privacy Disclosure Agreement (signed)',
-      'Fact Find',
-      "Driver's licence (both sides) and passport",
-      'Two most recent rental statements for investment properties',
-      'Two most recent payslips',
-      "Most recent year's ATO Income Statement",
-      'Transaction-specific documents (e.g. Quote/Invoice for the asset, incl. terms of trade)',
-      'All existing home loan statements (3 months)',
-      'Transaction account showing savings for the purchase (3 months)',
-      'Credit cards / personal loans / leases (most recent statement)',
-      'Superannuation statement (most recent)',
+    sections: [
+      { heading: 'Personal Information', items: [
+        { text: 'Credit Guide & Privacy Statement (attached)' },
+        { text: 'Fact Find' },
+        { text: "A copy of your driver's licence (both front & back) and passport" },
+      ]},
+      { heading: 'Financial Information', items: [
+        { text: 'A copy of your two most recent rental statements (or Rental Appraisal) for your investment properties:', repeat:'Property', seed:['Property Address 1','Property Address 2'] },
+        { text: 'A copy of your two most recent payslips', repeat:'Individual' },
+        { text: "A copy of your most recent year's ATO Income Statement", repeat:'Individual' },
+        { text: 'A copy of your Individual Tax Returns and Notice of Assessments (2 years)', repeat:'Individual' },
+        { text: 'A copy of your Business Tax Returns and associated Financials for all Trading Entities (2 years)', repeat:'Entity' },
+        { text: '12 month ATO ICA & ITA Portals for all entities', repeat:'Entity' },
+        { text: 'A copy of the following Statements:', repeat:'Statement', seed:[
+          'Everyday bank account (from X to Present) 6 months',
+          'IF PAYG - Transaction account showing your salary credits (if different to your Everyday account above) (from X to Present) 3 months',
+          'All Existing Home Loans (from X to Present) 6 months',
+          'IF PURCHASE – Transaction account showing savings for the purchase (from X to Present)',
+          'Credit Cards/Personal Loans/Lease/s (Most recent only)',
+          'Superannuation (Most recent only)',
+        ]},
+        { text: 'IF ASSET FINANCE - Specific Information to the transaction (e.g. Quote/Invoice)' },
+      ]},
     ],
-    conditions: {},
+  },
+  'SMSF': {
+    sections: [
+      { heading: 'Personal Information', items: [
+        { text: 'Credit Guide & Privacy Statement (attached)', repeat:'Individual' },
+        { text: 'Asset & Liability Statement', repeat:'Individual' },
+        { text: "A copy of your driver's licence (both front & back) and passport (or Medicare Card)", repeat:'Individual' },
+        { text: 'IF PAYG – 2 Most Recent Payslips showing Super Contributions', repeat:'Individual' },
+        { text: 'IF SE - A copy of your Individual Tax Returns and Notice of Assessments (2 years)', repeat:'Individual' },
+        { text: 'IF SE - A copy of your Business Tax Returns and associated Financials for all trading entities (2 years)', repeat:'Entity' },
+      ]},
+      { heading: 'The Fund', items: [
+        { text: 'Certified copy SMSF Trust Deed if currently available' },
+        { text: 'Established Funds - 12 months SMSF bank statements evidencing regular member contributions' },
+        { text: 'Established Funds - A copy of your SMSF tax returns and associated Financial Accounts (2 years)' },
+        { text: "New/recently established SMSF – 12 months superannuation statements for all the SMSF beneficiaries from their current industry fund/retail fund" },
+        { text: 'New/recently established SMSF - Last two years bank account statements or current industry/retail fund statements to be rolled over, evidencing member contributions and cash/investments' },
+      ]},
+    ],
   },
 }
+
+// Every item text across every template, deduped — offered as suggestions
+// (via a datalist) when adding an item to any section, alongside the
+// ability to just type something new. This is the "pre-populated list or
+// manually created" Cameron asked for, as one input rather than two.
+const ATTACHMENT_MASTER_ITEMS = Array.from(new Set(
+  Object.values(ATTACHMENT_TEMPLATES).flatMap(t => t.sections.flatMap(s => [
+    ...s.items.map(i => i.text),
+    ...s.items.flatMap(i => i.seed || []),
+  ]))
+))
 
 // Best-guess starting template based on the deal's own Category — Cameron
 // can always change it per entity, this just saves a click in the common
@@ -450,7 +509,7 @@ function defaultAttachmentTemplate(category) {
   if (category === 'Residential') return 'Home Loan'
   if (category === 'SMSF') return 'SMSF'
   if (category === 'Asset Finance') return 'Asset Finance — Commercial Full Doc'
-  if (['Commercial', 'Full Commercial (BANK RM)', 'Business Loan', 'Trade & Invoice Finance', 'Development'].includes(category)) return 'Commercial'
+  if (['Commercial', 'Full Commercial (BANK RM)', 'Business Loan', 'Trade & Invoice Finance', 'Development'].includes(category)) return 'Commercial Applications — Property & Other'
   return 'Home Loan'
 }
 
@@ -1935,6 +1994,38 @@ function StructureTab({ d, editing, set }) {
   )
 }
 
+function mkAttachmentId() { return `${Date.now()}-${Math.random().toString(36).slice(2,7)}` }
+
+function buildSectionsFromTemplate(template) {
+  return template.sections.map(s => ({
+    heading: s.heading,
+    items: s.items.map(i => i.repeat
+      ? { id: mkAttachmentId(), text: i.text, repeat: i.repeat, subItems: (i.seed||[]).map(t => ({ id: mkAttachmentId(), text: t, checked:false })) }
+      : { id: mkAttachmentId(), text: i.text, checked:false }
+    ),
+  }))
+}
+
+// Merges a fresh template's sections into whatever the entity already has —
+// by heading, then by item text within that heading — adding only what's
+// missing. Never touches or resets an item/sub-item that's already there,
+// so switching transaction type (or re-adding a section) never loses
+// anything already edited, ticked, or added by hand.
+function mergeSectionsIn(existingSections, newSections) {
+  const result = existingSections.map(s => ({ ...s, items: [...s.items] }))
+  newSections.forEach(newSec => {
+    const idx = result.findIndex(s => s.heading === newSec.heading)
+    if (idx === -1) {
+      result.push({ heading: newSec.heading, items: newSec.items.map(i => ({ ...i })) })
+    } else {
+      const existingTexts = new Set(result[idx].items.map(it => it.text))
+      const toAdd = newSec.items.filter(it => !existingTexts.has(it.text))
+      result[idx] = { ...result[idx], items: [...result[idx].items, ...toAdd] }
+    }
+  })
+  return result
+}
+
 function AttachmentsTab({ deal, deals, setDeals, editing, d, set }) {
   const att = d._attachments || {}
   const entities = att.entities || []
@@ -1946,64 +2037,56 @@ function AttachmentsTab({ deal, deals, setDeals, editing, d, set }) {
     if (editing) set('_attachments', updatedAtt)
   }
 
-  // Adds any of `texts` not already present (by exact text match) as new
-  // unchecked items — used when a condition gets ticked or the transaction
-  // type changes, so the right template items appear automatically without
-  // ever silently wiping out items Cameron has already edited, removed, or
-  // added by hand. Nothing here is ever auto-removed — removal is always a
-  // deliberate action via the ✕ on that row.
-  function mergeItemsIn(existingItems, texts) {
-    const existingTexts = new Set(existingItems.map(it => it.text))
-    const toAdd = texts.filter(t => !existingTexts.has(t)).map(t => ({ id: `${Date.now()}-${Math.random().toString(36).slice(2,7)}`, text: t, checked: false }))
-    return [...existingItems, ...toAdd]
-  }
-
   function addEntity() {
-    const template = ATTACHMENT_TEMPLATES[defaultAttachmentTemplate(deal.Categories)]
+    const key = defaultAttachmentTemplate(deal.Categories)
+    const template = ATTACHMENT_TEMPLATES[key]
     const next = [...entities, {
       id: Date.now(), label: `Entity ${entities.length + 1}`,
-      transactionType: defaultAttachmentTemplate(deal.Categories),
-      conditions: [], items: mergeItemsIn([], template.base), files: [],
+      transactionType: key,
+      sections: buildSectionsFromTemplate(template),
+      files: [],
     }]
     saveEntities(next)
   }
   function updateEntity(id, patch) { saveEntities(entities.map(e => e.id === id ? { ...e, ...patch } : e)) }
   function removeEntity(id) { saveEntities(entities.filter(e => e.id !== id)) }
 
-  function toggleCondition(id, cond) {
-    const e = entities.find(x => x.id === id)
-    const conds = e.conditions || []
-    const template = ATTACHMENT_TEMPLATES[e.transactionType] || ATTACHMENT_TEMPLATES['Home Loan']
-    const nowSelected = !conds.includes(cond)
-    const patch = { conditions: nowSelected ? [...conds, cond] : conds.filter(c => c !== cond) }
-    // Ticking a condition on brings its items in automatically. Ticking it
-    // off does NOT remove them — they might already be actioned/uploaded,
-    // so removal stays a deliberate ✕ click rather than an automatic side
-    // effect of unticking a box.
-    if (nowSelected) patch.items = mergeItemsIn(e.items || [], template.conditions[cond] || [])
-    updateEntity(id, patch)
-  }
   function changeTransactionType(id, newType) {
     const e = entities.find(x => x.id === id)
     const template = ATTACHMENT_TEMPLATES[newType] || ATTACHMENT_TEMPLATES['Home Loan']
-    updateEntity(id, { transactionType: newType, conditions: [], items: mergeItemsIn(e.items || [], template.base) })
+    updateEntity(id, { transactionType: newType, sections: mergeSectionsIn(e.sections || [], buildSectionsFromTemplate(template)) })
   }
-  function toggleItemChecked(id, itemId) {
-    const e = entities.find(x => x.id === id)
-    updateEntity(id, { items: e.items.map(it => it.id === itemId ? { ...it, checked: !it.checked } : it) })
+
+  function updateSections(entityId, updater) {
+    const e = entities.find(x => x.id === entityId)
+    updateEntity(entityId, { sections: updater(e.sections || []) })
   }
-  function updateItemText(id, itemId, text) {
-    const e = entities.find(x => x.id === id)
-    updateEntity(id, { items: e.items.map(it => it.id === itemId ? { ...it, text } : it) })
+  function toggleItemChecked(entityId, si, itemId) {
+    updateSections(entityId, secs => secs.map((s, i) => i !== si ? s : { ...s, items: s.items.map(it => it.id === itemId ? { ...it, checked: !it.checked } : it) }))
   }
-  function removeItem(id, itemId) {
-    const e = entities.find(x => x.id === id)
-    updateEntity(id, { items: e.items.filter(it => it.id !== itemId) })
+  function updateItemText(entityId, si, itemId, text) {
+    updateSections(entityId, secs => secs.map((s, i) => i !== si ? s : { ...s, items: s.items.map(it => it.id === itemId ? { ...it, text } : it) }))
   }
-  function addCustomItem(id, text) {
+  function removeItem(entityId, si, itemId) {
+    updateSections(entityId, secs => secs.map((s, i) => i !== si ? s : { ...s, items: s.items.filter(it => it.id !== itemId) }))
+  }
+  function addItemToSection(entityId, si, text) {
     if (!text.trim()) return
-    const e = entities.find(x => x.id === id)
-    updateEntity(id, { items: [...(e.items || []), { id: `${Date.now()}-${Math.random().toString(36).slice(2,7)}`, text: text.trim(), checked: false }] })
+    updateSections(entityId, secs => secs.map((s, i) => i !== si ? s : { ...s, items: [...s.items, { id: mkAttachmentId(), text: text.trim(), checked: false }] }))
+  }
+  // Repeatable items (Individual / Entity / Property / Statement) — the
+  // "+ [Type]" button adds one more indented, editable sub-line each click.
+  function addSubItem(entityId, si, itemId) {
+    updateSections(entityId, secs => secs.map((s, i) => i !== si ? s : { ...s, items: s.items.map(it => it.id !== itemId ? it : { ...it, subItems: [...(it.subItems||[]), { id: mkAttachmentId(), text: '', checked: false }] }) }))
+  }
+  function updateSubItemText(entityId, si, itemId, subId, text) {
+    updateSections(entityId, secs => secs.map((s, i) => i !== si ? s : { ...s, items: s.items.map(it => it.id !== itemId ? it : { ...it, subItems: it.subItems.map(su => su.id === subId ? { ...su, text } : su) }) }))
+  }
+  function toggleSubItemChecked(entityId, si, itemId, subId) {
+    updateSections(entityId, secs => secs.map((s, i) => i !== si ? s : { ...s, items: s.items.map(it => it.id !== itemId ? it : { ...it, subItems: it.subItems.map(su => su.id === subId ? { ...su, checked: !su.checked } : su) }) }))
+  }
+  function removeSubItem(entityId, si, itemId, subId) {
+    updateSections(entityId, secs => secs.map((s, i) => i !== si ? s : { ...s, items: s.items.map(it => it.id !== itemId ? it : { ...it, subItems: it.subItems.filter(su => su.id !== subId) }) }))
   }
 
   const [uploading, setUploading] = useState(null)
@@ -2029,66 +2112,73 @@ function AttachmentsTab({ deal, deals, setDeals, editing, d, set }) {
     else notifySaveFailed('attachments', { error: 'Could not generate a link for this file — check the deal-attachments Storage bucket exists.' })
   }
 
+  const itemInputStyle = (done) => ({ flex:1, border:'none', background:'transparent', fontSize:12, fontFamily:'inherit', padding:'2px 4px', borderRadius:4, color: done ? '#B0B5BD' : '#2A3545', textDecoration: done ? 'line-through' : 'none' })
+
   return (
     <div>
+      <datalist id="attachment-master-items">{ATTACHMENT_MASTER_ITEMS.map(t => <option key={t} value={t} />)}</datalist>
+
       {entities.length === 0 && (
         <TabCard>
-          <div style={{ fontSize:12, color:'#7A8090', marginBottom:10 }}>No document checklists yet. Add one for each applicant or entity involved — e.g. one for each individual, one for a company or trust — and pick who's providing each so the right documents show.</div>
+          <div style={{ fontSize:12, color:'#7A8090', marginBottom:10 }}>No document checklists yet. Add one for each applicant, entity, or guarantor involved in this deal.</div>
           <button onClick={addEntity} style={addBtnStyle}>+ Add entity checklist</button>
         </TabCard>
       )}
 
       {entities.map((e) => {
-        const template = ATTACHMENT_TEMPLATES[e.transactionType] || ATTACHMENT_TEMPLATES['Home Loan']
-        const conditionKeys = Object.keys(template.conditions || {})
-        const selectedConditions = e.conditions || []
-        const items = e.items || []
-        const doneCount = items.filter(it => it.checked).length
+        const sections = e.sections || []
+        const allLeaf = sections.flatMap(s => s.items.flatMap(it => it.repeat ? (it.subItems||[]) : [it]))
+        const doneCount = allLeaf.filter(it => it.checked).length
 
         return (
           <TabCard key={e.id} right={<button onClick={()=>removeEntity(e.id)} style={rmBtnStyle}>✕ Remove</button>}>
-            <div style={{ display:'flex', gap:10, marginBottom:12, flexWrap:'wrap' }}>
+            <div style={{ display:'flex', gap:10, marginBottom:16, flexWrap:'wrap' }}>
               <input value={e.label} onChange={ev=>updateEntity(e.id,{label:ev.target.value})} placeholder="e.g. Applicant 1 — John Smith"
                 style={{ border:'1px solid #e8eaed', borderRadius:6, padding:'6px 10px', fontSize:12.5, fontWeight:600, flex:'1 1 220px', fontFamily:'inherit' }}/>
               <select value={e.transactionType} onChange={ev=>changeTransactionType(e.id, ev.target.value)}
-                style={{ border:'1px solid #e8eaed', borderRadius:6, padding:'6px 10px', fontSize:12, flex:'1 1 200px', fontFamily:'inherit' }}>
+                style={{ border:'1px solid #e8eaed', borderRadius:6, padding:'6px 10px', fontSize:12, flex:'1 1 240px', fontFamily:'inherit' }}>
                 {Object.keys(ATTACHMENT_TEMPLATES).map(k => <option key={k} value={k}>{k}</option>)}
               </select>
-              <span style={{ fontSize:10.5, color:'#9ca3af', alignSelf:'center' }}>{doneCount}/{items.length} received</span>
+              <span style={{ fontSize:10.5, color:'#9ca3af', alignSelf:'center' }}>{doneCount}/{allLeaf.length} received</span>
             </div>
 
-            {conditionKeys.length > 0 && (
-              <div style={{ marginBottom:12 }}>
-                <div style={{ fontSize:10, fontWeight:700, color:'#7A8090', textTransform:'uppercase', marginBottom:6 }}>Who's providing / applicable conditions</div>
-                <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
-                  {conditionKeys.map(c => (
-                    <label key={c} style={{ display:'flex', alignItems:'center', gap:5, fontSize:11, padding:'4px 10px', borderRadius:16, border:`1px solid ${selectedConditions.includes(c)?'#EB99C2':'#e8eaed'}`, background:selectedConditions.includes(c)?'#fdf0f6':'#fff', cursor:'pointer' }}>
-                      <input type="checkbox" checked={selectedConditions.includes(c)} onChange={()=>toggleCondition(e.id,c)} style={{ margin:0 }}/>
-                      {c}
-                    </label>
-                  ))}
+            {sections.map((sec, si) => (
+              <div key={sec.heading} style={{ marginBottom:18 }}>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', background:'#3D4F6B', color:'#fff', padding:'8px 12px', borderRadius:6, marginBottom:2 }}>
+                  <span style={{ fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.04em' }}>{sec.heading}</span>
                 </div>
-                <div style={{ fontSize:9.5, color:'#9ca3af', marginTop:4 }}>Ticking adds that condition's items below automatically — unticking won't remove anything already added; remove items you don't need with the ✕ on that row.</div>
+
+                {sec.items.map(it => it.repeat ? (
+                  <div key={it.id}>
+                    <div style={{ display:'flex', alignItems:'center', gap:8, padding:'7px 4px', borderBottom:'0.5px solid #f0f0f0' }}>
+                      <input value={it.text} onChange={ev=>updateItemText(e.id,si,it.id,ev.target.value)}
+                        style={{ flex:1, border:'none', background:'transparent', fontSize:12, fontWeight:600, fontFamily:'inherit', padding:'2px 4px', borderRadius:4, color:'#2A3545' }} />
+                      <button onClick={()=>addSubItem(e.id,si,it.id)} style={{...addBtnStyle, flexShrink:0}}>+ {it.repeat}</button>
+                      <button onClick={()=>removeItem(e.id,si,it.id)} style={{...rmBtnStyle, flexShrink:0}}>✕</button>
+                    </div>
+                    <div style={{ marginLeft:20 }}>
+                      {(it.subItems||[]).map(su => (
+                        <div key={su.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'5px 4px', borderBottom:'0.5px solid #f7f7f7' }}>
+                          <input type="checkbox" checked={!!su.checked} onChange={()=>toggleSubItemChecked(e.id,si,it.id,su.id)} style={{ flexShrink:0 }} />
+                          <input value={su.text} onChange={ev=>updateSubItemText(e.id,si,it.id,su.id,ev.target.value)} placeholder={`${it.repeat} name / details…`}
+                            style={itemInputStyle(su.checked)} />
+                          <button onClick={()=>removeSubItem(e.id,si,it.id,su.id)} style={{...rmBtnStyle, flexShrink:0}}>✕</button>
+                        </div>
+                      ))}
+                      {(it.subItems||[]).length === 0 && <div style={{ fontSize:10.5, color:'#9ca3af', padding:'4px 4px 8px' }}>Click "+ {it.repeat}" to add one.</div>}
+                    </div>
+                  </div>
+                ) : (
+                  <div key={it.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'7px 4px', borderBottom:'0.5px solid #f0f0f0' }}>
+                    <input type="checkbox" checked={!!it.checked} onChange={()=>toggleItemChecked(e.id,si,it.id)} style={{ flexShrink:0 }} />
+                    <input value={it.text} onChange={ev=>updateItemText(e.id,si,it.id,ev.target.value)} style={itemInputStyle(it.checked)} />
+                    <button onClick={()=>removeItem(e.id,si,it.id)} style={{...rmBtnStyle, flexShrink:0}}>✕</button>
+                  </div>
+                ))}
+
+                <AddSectionItemRow onAdd={text=>addItemToSection(e.id,si,text)} />
               </div>
-            )}
-
-            <div style={{ marginBottom:10 }}>
-              {items.length === 0 && <div style={{ fontSize:11.5, color:'#9ca3af', padding:'6px 0' }}>No items yet — add one below.</div>}
-              {items.map((it, i) => (
-                <div key={it.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'6px 4px', borderBottom: i<items.length-1 ? '0.5px solid #f0f0f0' : 'none' }}>
-                  <input type="checkbox" checked={!!it.checked} onChange={()=>toggleItemChecked(e.id,it.id)} style={{ flexShrink:0 }} />
-                  <input
-                    value={it.text}
-                    onChange={ev=>updateItemText(e.id, it.id, ev.target.value)}
-                    style={{ flex:1, border:'none', background:'transparent', fontSize:12, fontFamily:'inherit', padding:'2px 4px', borderRadius:4, color: it.checked ? '#B0B5BD' : '#2A3545', textDecoration: it.checked ? 'line-through' : 'none' }}
-                    onFocus={ev=>{ ev.target.style.background='#f8f9fa' }}
-                    onBlur={ev=>{ ev.target.style.background='transparent' }}
-                  />
-                  <button onClick={()=>removeItem(e.id,it.id)} style={{...rmBtnStyle, flexShrink:0}}>✕</button>
-                </div>
-              ))}
-              <AddChecklistItemRow onAdd={text=>addCustomItem(e.id, text)} />
-            </div>
+            ))}
 
             <div>
               <div style={{ fontSize:10, fontWeight:700, color:'#7A8090', textTransform:'uppercase', marginBottom:6 }}>Uploaded files</div>
@@ -2115,10 +2205,10 @@ function AttachmentsTab({ deal, deals, setDeals, editing, d, set }) {
   )
 }
 
-// Small "type a new item, press Enter or click Add" row — for one-off
-// requirements a template wouldn't know about (special applications,
-// lender-specific requests, etc).
-function AddChecklistItemRow({ onAdd }) {
+// "+ Add Item" row shown at the bottom of every section — type a new item
+// and either pick a suggestion from the datalist (built from every item
+// across every template) or just type something new and press Enter/Add.
+function AddSectionItemRow({ onAdd }) {
   const [val, setVal] = useState('')
   function commit() {
     if (!val.trim()) return
@@ -2126,15 +2216,16 @@ function AddChecklistItemRow({ onAdd }) {
     setVal('')
   }
   return (
-    <div style={{ display:'flex', gap:8, marginTop:8 }}>
+    <div style={{ display:'flex', gap:8, marginTop:6, marginBottom:4 }}>
       <input
         value={val}
         onChange={ev=>setVal(ev.target.value)}
         onKeyDown={ev=>{ if (ev.key==='Enter') { ev.preventDefault(); commit() } }}
-        placeholder="Add a document for this specific application…"
+        placeholder="Add an item — pick a suggestion or type your own…"
+        list="attachment-master-items"
         style={{ flex:1, border:'1px solid #e8eaed', borderRadius:6, padding:'6px 10px', fontSize:12, fontFamily:'inherit' }}
       />
-      <button onClick={commit} style={addBtnStyle}>+ Add item</button>
+      <button onClick={commit} style={addBtnStyle}>+ Add Item</button>
     </div>
   )
 }
