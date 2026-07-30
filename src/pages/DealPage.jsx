@@ -2650,8 +2650,8 @@ export default function DealPage({ onUpdateDeals, clients = [], onUpdateClients 
   const TABS = [
     { id:'details', label:'Loan Details' },
     { id:'strategy', label:'Strategy' },
-    { id:'structure', label:'Financials' },
     { id:'attachments', label:'Attachments' },
+    { id:'structure', label:'Financials' },
     { id:'notes', label:'Notes' },
     { id:'summary', label:'Summary' },
   ]

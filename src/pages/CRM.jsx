@@ -212,7 +212,6 @@ function ForecastPanel({ deals, settings }) {
 
   const colTotals = months.map((_,i) => stageRows.filter(r=>!['7. Settled','8. Withdrawn'].includes(r.stage)).reduce((s,r)=>s+r.totals[i],0))
   const beyondTotal = stageRows.filter(r=>!['7. Settled','8. Withdrawn'].includes(r.stage)).reduce((s,r)=>s+r.beyond,0)
-
   function calcColUpfront(colIdx) {
     return stageRows.filter(r=>!['7. Settled','8. Withdrawn'].includes(r.stage)).reduce((sum, r) => {
       const colDeals = deals.filter(d => d.Status===r.stage && d['Month of Settlement']?.startsWith(months[colIdx]))
@@ -225,6 +224,19 @@ function ForecastPanel({ deals, settings }) {
       return sum + bDeals.reduce((s,d) => s + dealUpfrontCommission(d), 0)
     }, 0)
   }
+  // Actual/Settled Upfront — the real counterpart to Potential upfront
+  // above: same commission calculation (category rate, or a deal's
+  // negotiated override if set), but for deals that have actually settled
+  // in that month rather than ones still moving through the pipeline.
+  function calcColActual(colIdx) {
+    const settled = deals.filter(d => d.Status==='7. Settled' && d['Month of Settlement']?.startsWith(months[colIdx]))
+    return settled.reduce((s,d) => s + dealUpfrontCommission(d), 0)
+  }
+  function calcBeyondActual() {
+    const settled = deals.filter(d => d.Status==='7. Settled' && d['Month of Settlement'] && !months.some(m=>d['Month of Settlement'].startsWith(m)))
+    return settled.reduce((s,d) => s + dealUpfrontCommission(d), 0)
+  }
+  const beyondActual = calcBeyondActual()
 
   const thStyle = (band) => ({ padding:'6px 12px', fontSize:10, fontWeight:600, background:BAND_COLORS[band].header, color:BAND_COLORS[band].text, textAlign:'right', whiteSpace:'nowrap' })
 
@@ -284,6 +296,20 @@ function ForecastPanel({ deals, settings }) {
             ))}
             <td style={{ padding:'4px 12px', textAlign:'right', fontSize:10, color:'#EB99C2', fontWeight:500 }}>
               {beyondTotal>0?'$'+calcBeyondUpfront().toLocaleString():'—'}
+            </td>
+          </tr>
+          <tr style={{ background:'#f8f9fa', borderBottom:'0.5px solid #e8eaed' }}>
+            <td style={{ padding:'4px 12px 6px', fontSize:10, color:'#7A8090' }}>Actual/Settled upfront</td>
+            {months.map((_,i) => {
+              const actual = calcColActual(i)
+              return (
+                <td key={i} style={{ padding:'4px 12px 6px', textAlign:'right', fontSize:10, color:'#22c55e', fontWeight:600, background:BAND_COLORS[bands[i]].row }}>
+                  {actual>0?'$'+actual.toLocaleString():'—'}
+                </td>
+              )
+            })}
+            <td style={{ padding:'4px 12px 6px', textAlign:'right', fontSize:10, color:'#22c55e', fontWeight:600 }}>
+              {beyondActual>0?'$'+beyondActual.toLocaleString():'—'}
             </td>
           </tr>
         </tbody>
