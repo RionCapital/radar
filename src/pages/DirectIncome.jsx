@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { loadDeals, syncDealsFromSupabase } from '../lib/deals'
+import { loadClients } from '../lib/data'
+import { RION_LOGO_PNG } from '../lib/logoBase64'
 import {
   ITEM_TYPES, TAX_RATES, DEFAULT_ACCOUNT, FIRST_INVOICE_NUMBER, taxRateFraction,
   loadDirectIncomeLocal, loadNextInvoiceNumberLocal, saveDirectIncome, syncDirectIncomeFromSupabase,
@@ -10,6 +12,20 @@ import {
 
 const NAVY = '#3D4F6B'
 const PINK = '#EB99C2'
+const NAVY_RGB = [61, 79, 107]
+const PINK_RGB = [235, 153, 194]
+
+// Rion Capital's own fixed issuer details — same on every invoice.
+const ISSUER = {
+  name: 'Rion Capital Investments Pty Ltd',
+  abn: '76 641 258 040',
+  addressLine1: '201/90 Podium Way',
+  addressLine2: 'ORAN PARK NSW 2570',
+  country: 'AUSTRALIA',
+  bankName: 'Rion Capital Investments Pty Ltd',
+  bsb: '062 - 656',
+  account: '1049 3213',
+}
 
 function currentMonthKey() {
   const d = new Date()
@@ -21,6 +37,12 @@ function monthLabel(m) {
 }
 function mkId() { return `${Date.now()}-${Math.random().toString(36).slice(2, 7)}` }
 function fmt2(n) { return (Number(n) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }
+function fmtDateAU(iso) {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (isNaN(d)) return iso
+  return d.toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric' })
+}
 function todayISO() { return new Date().toISOString().slice(0, 10) }
 function plus14Days(dateStr) {
   const d = dateStr ? new Date(dateStr) : new Date()
@@ -41,8 +63,10 @@ export default function DirectIncome() {
   const [entries, setEntries] = useState(() => loadDirectIncomeLocal())
   const [nextInvoiceNumber, setNextInvoiceNumber] = useState(() => loadNextInvoiceNumberLocal())
   const [deals, setDeals] = useState(() => loadDeals())
+  const [clients, setClients] = useState(() => loadClients())
   const [suppliers, setSuppliers] = useState(() => loadLenderList())
   const [month, setMonth] = useState(currentMonthKey())
+  const [view, setView] = useState('current') // 'current' | 'history'
 
   useEffect(() => {
     syncDirectIncomeFromSupabase().then(cloud => {
@@ -111,48 +135,134 @@ export default function DirectIncome() {
     return opts
   }, [])
 
+  // All closed entries, most recent month first — the History view, for
+  // collecting/re-downloading invoices from months that are already locked.
+  const closedByMonth = useMemo(() => {
+    const closed = entries.filter(e => e.closed)
+    const months = Array.from(new Set(closed.map(e => e.month))).sort().reverse()
+    return months.map(m => ({ month: m, items: closed.filter(e => e.month === m) }))
+  }, [entries])
+
   function downloadTaxInvoice(e) {
     const supplier = suppliers.find(s => s.name === e.supplierName)
     const doc = new jsPDF()
-    let y = 20
+    const pageW = doc.internal.pageSize.getWidth()
 
-    doc.setFontSize(18); doc.setTextColor(61, 79, 107)
-    doc.text('TAX INVOICE', 14, y); y += 10
+    function drawInvoiceBlock(startY) {
+      let y = startY
+      // Logo, top-right
+      try { doc.addImage(RION_LOGO_PNG, 'PNG', pageW - 60, 12, 46, 18.7) } catch {}
 
-    doc.setFontSize(10); doc.setTextColor(80)
-    doc.text('RION Capital Investments Pty Ltd', 14, y); y += 5
-    doc.text('SUITE 201, 90 Podium Way, ORAN PARK NSW 2570', 14, y); y += 10
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(20); doc.setTextColor(...NAVY_RGB)
+      doc.text('TAX INVOICE', 14, y); y += 10
 
-    doc.setFontSize(10); doc.setTextColor(40)
-    doc.text('Invoice Number: ' + e.invoiceNumber, 140, 20)
-    doc.text('Issue Date: ' + e.issueDate, 140, 26)
-    doc.text('Due Date: ' + e.dueDate, 140, 32)
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(40)
+      doc.text(e.supplierName || '—', 14, y); y += 5
+      if (supplier?.address) { doc.text(supplier.address, 14, y); y += 5 }
+      if (supplier?.abn) { doc.text(`ABN ${supplier.abn}`, 14, y); y += 5 }
+      doc.text('AUSTRALIA', 14, y)
 
-    doc.setFontSize(11); doc.setTextColor(61, 79, 107)
-    doc.text('Bill To:', 14, y); y += 5
-    doc.setFontSize(10); doc.setTextColor(40)
-    doc.text(e.supplierName || '—', 14, y); y += 5
-    if (supplier && supplier.address) { doc.text(supplier.address, 14, y); y += 5 }
-    if (supplier && supplier.abn) { doc.text('ABN: ' + supplier.abn, 14, y); y += 5 }
-    y += 6
+      // Invoice metadata block (Date / Number / ABN)
+      let my = 40
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(...NAVY_RGB)
+      doc.text('Invoice Date', 95, my)
+      doc.setFont('helvetica', 'normal'); doc.setTextColor(40)
+      doc.text(fmtDateAU(e.issueDate), 95, my + 5); my += 12
+      doc.setFont('helvetica', 'bold'); doc.setTextColor(...NAVY_RGB)
+      doc.text('Invoice Number', 95, my)
+      doc.setFont('helvetica', 'normal'); doc.setTextColor(40)
+      doc.text(e.invoiceNumber, 95, my + 5); my += 12
+      doc.setFont('helvetica', 'bold'); doc.setTextColor(...NAVY_RGB)
+      doc.text('ABN', 95, my)
+      doc.setFont('helvetica', 'normal'); doc.setTextColor(40)
+      doc.text(ISSUER.abn, 95, my + 5)
 
-    autoTable(doc, {
-      startY: y,
-      head: [['Item', 'Description', 'Qty', 'Price', 'Account', 'Tax Rate', 'Tax Amount', 'Amount']],
-      body: [[
-        e.item, e.description || '', e.qty, '$' + fmt2(e.price), e.account, e.taxRate,
-        '$' + fmt2(e.taxAmount), '$' + fmt2(e.amount),
-      ]],
-      styles: { fontSize: 8 },
-      headStyles: { fillColor: [61, 79, 107] },
+      // Issuer identity block, far right
+      let iy = 40
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(40)
+      doc.text(ISSUER.name, 140, iy); iy += 4.5
+      doc.text(`ABN ${ISSUER.abn}`, 140, iy); iy += 4.5
+      doc.text(ISSUER.addressLine1, 140, iy); iy += 4.5
+      doc.text(ISSUER.addressLine2, 140, iy); iy += 4.5
+      doc.text(ISSUER.country, 140, iy)
+
+      y = Math.max(y, my, iy) + 14
+
+      const taxPct = Math.round(taxRateFraction(e.taxRate) * 100)
+      autoTable(doc, {
+        startY: y,
+        head: [['Description', 'Quantity', 'Unit Price', 'GST', 'Amount AUD']],
+        body: [[
+          `${e.item}${e.description ? ' - ' + e.description : ''}`,
+          Number(e.qty || 0).toFixed(2), `${fmt2(e.price)}`, `${taxPct}%`, fmt2(e.amount),
+        ]],
+        styles: { fontSize: 9, cellPadding: 4 },
+        headStyles: { fillColor: NAVY_RGB, textColor: 255, fontStyle: 'bold' },
+        columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' }, 3: { halign: 'right' }, 4: { halign: 'right' } },
+      })
+
+      let ty = doc.lastAutoTable.finalY + 8
+      const total = (Number(e.amount) || 0) + (Number(e.taxAmount) || 0)
+      doc.setFontSize(9.5); doc.setTextColor(60)
+      doc.text('Subtotal', 150, ty); doc.text(fmt2(e.amount), 195, ty, { align: 'right' }); ty += 6
+      doc.text(`TOTAL  GST  ${taxPct}%`, 150, ty); doc.text(fmt2(e.taxAmount), 195, ty, { align: 'right' }); ty += 3
+      doc.setDrawColor(...NAVY_RGB); doc.line(140, ty, 195, ty); ty += 5
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(...NAVY_RGB)
+      doc.text('TOTAL AUD', 150, ty); doc.text(fmt2(total), 195, ty, { align: 'right' })
+      ty += 14
+
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(40)
+      doc.text(`Due Date: ${fmtDateAU(e.dueDate)}`, 14, ty); ty += 6
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(9)
+      doc.text(`NAME: ${ISSUER.bankName}`, 14, ty); ty += 4.5
+      doc.text(`BSB: ${ISSUER.bsb}`, 14, ty); ty += 4.5
+      doc.text(`Account: ${ISSUER.account}`, 14, ty)
+
+      return total
+    }
+
+    const total = drawInvoiceBlock(46)
+
+    // Perforated cut line + Payment Advice tear-off, matching the layout
+    // Cameron's existing template already uses.
+    let cy = 230
+    doc.setDrawColor(...PINK_RGB); doc.setLineDashPattern([2, 2], 0)
+    doc.line(14, cy, 195, cy)
+    doc.setLineDashPattern([], 0)
+    cy += 12
+
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(16); doc.setTextColor(...NAVY_RGB)
+    doc.text('PAYMENT ADVICE', 14, cy)
+    let ay = cy + 10
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(40)
+    doc.text('To:', 14, ay)
+    doc.text(ISSUER.name, 30, ay); ay += 4.5
+    doc.text(`ABN ${ISSUER.abn}`, 30, ay); ay += 4.5
+    doc.text(ISSUER.addressLine1, 30, ay); ay += 4.5
+    doc.text(ISSUER.addressLine2, 30, ay); ay += 4.5
+    doc.text(ISSUER.country, 30, ay)
+
+    let py = cy + 10
+    const rows = [
+      ['Customer', e.supplierName || '—'],
+      ['Invoice Number', e.invoiceNumber],
+      ['Amount Due', fmt2(total)],
+      ['Due Date', fmtDateAU(e.dueDate)],
+    ]
+    rows.forEach(([label, val]) => {
+      doc.setFont('helvetica', 'bold'); doc.setTextColor(...NAVY_RGB)
+      doc.text(label, 120, py)
+      doc.setFont('helvetica', 'normal'); doc.setTextColor(40)
+      doc.text(String(val), 195, py, { align: 'right' })
+      py += 6
     })
+    doc.setFont('helvetica', 'bold'); doc.setTextColor(...NAVY_RGB)
+    doc.text('Amount Enclosed', 120, py); py += 5
+    doc.setDrawColor(180); doc.line(120, py, 195, py); py += 4
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(120)
+    doc.text('Enter the amount you are paying above', 120, py)
 
-    const total = (Number(e.amount) || 0) + (Number(e.taxAmount) || 0)
-    const finalY = doc.lastAutoTable.finalY + 8
-    doc.setFontSize(11); doc.setTextColor(61, 79, 107)
-    doc.text('Total: $' + fmt2(total), 150, finalY)
-
-    doc.save(e.invoiceNumber + '.pdf')
+    doc.save(`${e.invoiceNumber}.pdf`)
   }
 
   const inputStyle = { border: '1px solid #e8eaed', borderRadius: 5, padding: '5px 7px', fontSize: 11, width: '100%', boxSizing: 'border-box', fontFamily: 'inherit' }
@@ -165,104 +275,148 @@ export default function DirectIncome() {
       <datalist id="direct-income-tax-rates">
         {TAX_RATES.map(t => <option key={t} value={t} />)}
       </datalist>
+      <datalist id="direct-income-clients">
+        {clients.map(c => <option key={c.name} value={c.name} />)}
+      </datalist>
 
       <button onClick={() => navigate('/radar/dashboard')} style={{ background: 'none', border: 'none', color: PINK, fontSize: 12, cursor: 'pointer', padding: 0, marginBottom: 10 }}>← Back to dashboard</button>
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 18, flexWrap: 'wrap', gap: 12 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14, flexWrap: 'wrap', gap: 12 }}>
         <div>
           <h1 style={{ fontSize: 21, fontWeight: 700, color: '#2A3545', margin: 0 }}>Direct Income</h1>
           <div style={{ fontSize: 12, color: '#7A8090', marginTop: 4 }}>RCTIs, mandates, and other income that doesn't come through your commission statement. Enter once here, download the tax invoice, and the same figures are what you upload into Xero.</div>
         </div>
-        <select value={month} onChange={e => setMonth(e.target.value)}
-          style={{ border: '1px solid #e8eaed', borderRadius: 8, padding: '8px 14px', fontSize: 13, fontWeight: 600, color: '#2A3545' }}>
-          {monthOptions.map(m => <option key={m} value={m}>{monthLabel(m)}</option>)}
-        </select>
-      </div>
-
-      {monthClosed && (
-        <div style={{ background: '#FEF9E7', border: '1px solid #f5e6a8', borderRadius: 8, padding: '10px 14px', marginBottom: 14, fontSize: 12, color: '#92600A' }}>
-          🔒 This month is closed — its commission statement has already been imported, and these entries were folded into that month's totals. Locked to keep the finalized record intact.
-        </div>
-      )}
-
-      <div style={{ background: '#fff', borderRadius: 10, border: '0.5px solid #e8eaed', overflow: 'hidden' }}>
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11.5, minWidth: 1600 }}>
-            <thead>
-              <tr style={{ background: NAVY }}>
-                {['Invoice #', 'Issue Date', 'Due Date', 'Supplier/Lender', 'Deal', 'Client', 'Item', 'Description', 'Qty', 'Price', 'Account', 'Tax Rate', 'Tax Amount', 'Amount', 'Total', '', ''].map((h, i) => (
-                  <th key={h} style={{ padding: '8px 8px', color: '#fff', fontSize: 9.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.02em', whiteSpace: 'nowrap', textAlign: ['Qty','Price','Tax Amount','Amount','Total'].includes(h) ? 'right' : 'left' }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {monthEntries.length === 0 && (
-                <tr><td colSpan={17} style={{ padding: 24, textAlign: 'center', color: '#9ca3af', fontSize: 12 }}>No direct income entries for {monthLabel(month)} yet.</td></tr>
-              )}
-              {monthEntries.map(e => {
-                const total = (Number(e.amount) || 0) + (Number(e.taxAmount) || 0)
-                return (
-                  <tr key={e.id} style={{ borderBottom: '0.5px solid #f0f0f0' }}>
-                    <td style={{ padding: '6px 6px' }}><input disabled={monthClosed} value={e.invoiceNumber} onChange={ev => updateRow(e.id, { invoiceNumber: ev.target.value })} style={{ ...inputStyle, width: 80 }} /></td>
-                    <td style={{ padding: '6px 6px' }}><input disabled={monthClosed} type="date" value={e.issueDate} onChange={ev => updateRow(e.id, { issueDate: ev.target.value })} style={{ ...inputStyle, width: 130 }} /></td>
-                    <td style={{ padding: '6px 6px' }}><input disabled={monthClosed} type="date" value={e.dueDate} onChange={ev => updateRow(e.id, { dueDate: ev.target.value })} style={{ ...inputStyle, width: 130 }} /></td>
-                    <td style={{ padding: '6px 6px' }}>
-                      <div style={{ display:'flex', gap:4 }}>
-                        <input disabled={monthClosed} value={e.supplierName} onChange={ev => updateRow(e.id, { supplierName: ev.target.value })}
-                          list="direct-income-suppliers" placeholder="Start typing…" style={{ ...inputStyle, width: 130 }} />
-                        <button type="button" onClick={() => window.open('/radar/marketing', '_blank')}
-                          title="Add a new lender in Marketing" style={{ border:'1px solid #e8eaed', borderRadius:5, background:'#fff', color:'#7A8090', fontSize:14, cursor:'pointer', padding:'0 6px', flexShrink:0 }}>+</button>
-                      </div>
-                    </td>
-                    <td style={{ padding: '6px 6px' }}>
-                      <select disabled={monthClosed} value={e.dealName} onChange={ev => selectDeal(e.id, ev.target.value)} style={{ ...inputStyle, width: 130 }}>
-                        <option value="">— No deal —</option>
-                        {settledDealsThisMonth.map(d => <option key={d['Transaction Name']} value={d['Transaction Name']}>{d['Transaction Name']}</option>)}
-                      </select>
-                    </td>
-                    <td style={{ padding: '6px 6px' }}><input disabled={monthClosed} value={e.clientName} onChange={ev => updateRow(e.id, { clientName: ev.target.value })} style={{ ...inputStyle, width: 110 }} /></td>
-                    <td style={{ padding: '6px 6px' }}>
-                      <select disabled={monthClosed} value={e.item} onChange={ev => updateRow(e.id, { item: ev.target.value })} style={{ ...inputStyle, width: 110 }}>
-                        {ITEM_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                      </select>
-                    </td>
-                    <td style={{ padding: '6px 6px' }}><input disabled={monthClosed} value={e.description} onChange={ev => updateRow(e.id, { description: ev.target.value })} style={{ ...inputStyle, width: 160 }} /></td>
-                    <td style={{ padding: '6px 6px' }}><input disabled={monthClosed} type="number" value={e.qty} onChange={ev => recalc(e.id, { qty: ev.target.value })} style={{ ...inputStyle, width: 55, textAlign:'right' }} /></td>
-                    <td style={{ padding: '6px 6px' }}><input disabled={monthClosed} type="number" value={e.price} onChange={ev => recalc(e.id, { price: ev.target.value })} style={{ ...inputStyle, width: 85, textAlign:'right' }} /></td>
-                    <td style={{ padding: '6px 6px' }}><input disabled={monthClosed} value={e.account} onChange={ev => updateRow(e.id, { account: ev.target.value })} style={{ ...inputStyle, width: 170 }} /></td>
-                    <td style={{ padding: '6px 6px' }}>
-                      <input disabled={monthClosed} value={e.taxRate} onChange={ev => recalc(e.id, { taxRate: ev.target.value })}
-                        list="direct-income-tax-rates" style={{ ...inputStyle, width: 120 }} />
-                    </td>
-                    <td style={{ padding: '6px 6px' }}><input disabled={monthClosed} type="number" value={e.taxAmount} onChange={ev => updateRow(e.id, { taxAmount: ev.target.value === '' ? '' : Number(ev.target.value) })} style={{ ...inputStyle, width: 85, textAlign:'right' }} /></td>
-                    <td style={{ padding: '6px 6px', textAlign:'right', fontWeight:600, whiteSpace:'nowrap' }}>${fmt2(e.amount)}</td>
-                    <td style={{ padding: '6px 6px', textAlign: 'right', fontWeight: 700, color: '#22c55e', whiteSpace: 'nowrap' }}>${fmt2(total)}</td>
-                    <td style={{ padding: '6px 6px' }}>
-                      <button onClick={() => downloadTaxInvoice(e)} title="Download Tax Invoice"
-                        style={{ background: '#fff', color: NAVY, border: '1px solid ' + NAVY, borderRadius: 5, padding: '3px 8px', cursor: 'pointer', fontSize: 10.5, whiteSpace:'nowrap' }}>📄 Invoice</button>
-                    </td>
-                    <td style={{ padding: '6px 6px' }}>
-                      {!monthClosed && <button onClick={() => removeRow(e.id)} style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', borderRadius: 5, padding: '3px 8px', cursor: 'pointer', fontSize: 11 }}>✕</button>}
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-            <tfoot>
-              <tr style={{ background: '#f8f9fa', borderTop: '1.5px solid #e8eaed' }}>
-                <td colSpan={14} style={{ padding: '9px 8px', fontWeight: 700, fontSize: 12, color: '#2A3545' }}>Total — {monthLabel(month)}</td>
-                <td style={{ padding: '9px 8px', textAlign: 'right', fontWeight: 700, fontSize: 13, color: '#22c55e', whiteSpace: 'nowrap' }}>${fmt2(monthTotal)}</td>
-                <td></td><td></td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-        {!monthClosed && (
-          <div style={{ padding: '10px 14px' }}>
-            <button onClick={addRow} style={{ padding: '7px 16px', borderRadius: 7, border: '1px solid ' + PINK, background: '#fff', color: PINK, fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>+ Add row</button>
-          </div>
+        {view === 'current' && (
+          <select value={month} onChange={e => setMonth(e.target.value)}
+            style={{ border: '1px solid #e8eaed', borderRadius: 8, padding: '8px 14px', fontSize: 13, fontWeight: 600, color: '#2A3545' }}>
+            {monthOptions.map(m => <option key={m} value={m}>{monthLabel(m)}</option>)}
+          </select>
         )}
       </div>
+
+      <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
+        <button onClick={() => setView('current')} style={{ padding: '7px 16px', borderRadius: 7, border: `1px solid ${view === 'current' ? NAVY : '#e8eaed'}`, background: view === 'current' ? NAVY : '#fff', color: view === 'current' ? '#fff' : '#7A8090', fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>Current</button>
+        <button onClick={() => setView('history')} style={{ padding: '7px 16px', borderRadius: 7, border: `1px solid ${view === 'history' ? NAVY : '#e8eaed'}`, background: view === 'history' ? NAVY : '#fff', color: view === 'history' ? '#fff' : '#7A8090', fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>History</button>
+      </div>
+
+      {view === 'current' && (
+        <>
+          {monthClosed && (
+            <div style={{ background: '#FEF9E7', border: '1px solid #f5e6a8', borderRadius: 8, padding: '10px 14px', marginBottom: 14, fontSize: 12, color: '#92600A' }}>
+              🔒 This month is closed — its commission statement has already been imported, and these entries were folded into that month's totals. Locked to keep the finalized record intact. Find it under the History tab any time.
+            </div>
+          )}
+
+          <div style={{ background: '#fff', borderRadius: 10, border: '0.5px solid #e8eaed', overflow: 'hidden' }}>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11.5, minWidth: 1650 }}>
+                <thead>
+                  <tr style={{ background: NAVY }}>
+                    {['Invoice #', 'Issue Date', 'Due Date', 'Supplier/Lender', 'Deal', 'Client', 'Item', 'Description', 'Qty', 'Price', 'Account', 'Tax Rate', 'Tax Amount', 'Amount', 'Total', '', ''].map((h) => (
+                      <th key={h} style={{ padding: '8px 8px', color: '#fff', fontSize: 9.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.02em', whiteSpace: 'nowrap', textAlign: ['Qty','Price','Tax Amount','Amount','Total'].includes(h) ? 'right' : 'left' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {monthEntries.length === 0 && (
+                    <tr><td colSpan={17} style={{ padding: 24, textAlign: 'center', color: '#9ca3af', fontSize: 12 }}>No direct income entries for {monthLabel(month)} yet.</td></tr>
+                  )}
+                  {monthEntries.map(e => {
+                    const total = (Number(e.amount) || 0) + (Number(e.taxAmount) || 0)
+                    return (
+                      <tr key={e.id} style={{ borderBottom: '0.5px solid #f0f0f0' }}>
+                        <td style={{ padding: '6px 6px' }}><input disabled={monthClosed} value={e.invoiceNumber} onChange={ev => updateRow(e.id, { invoiceNumber: ev.target.value })} style={{ ...inputStyle, width: 80 }} /></td>
+                        <td style={{ padding: '6px 6px' }}><input disabled={monthClosed} type="date" value={e.issueDate} onChange={ev => updateRow(e.id, { issueDate: ev.target.value })} style={{ ...inputStyle, width: 130 }} /></td>
+                        <td style={{ padding: '6px 6px' }}><input disabled={monthClosed} type="date" value={e.dueDate} onChange={ev => updateRow(e.id, { dueDate: ev.target.value })} style={{ ...inputStyle, width: 130 }} /></td>
+                        <td style={{ padding: '6px 6px' }}>
+                          <div style={{ display:'flex', gap:4 }}>
+                            <input disabled={monthClosed} value={e.supplierName} onChange={ev => updateRow(e.id, { supplierName: ev.target.value })}
+                              list="direct-income-suppliers" placeholder="Start typing…" style={{ ...inputStyle, width: 130 }} />
+                            <button type="button" onClick={() => window.open('/radar/marketing', '_blank')}
+                              title="Add a new lender in Marketing" style={{ border:'1px solid #e8eaed', borderRadius:5, background:'#fff', color:'#7A8090', fontSize:14, cursor:'pointer', padding:'0 6px', flexShrink:0 }}>+</button>
+                          </div>
+                        </td>
+                        <td style={{ padding: '6px 6px' }}>
+                          <select disabled={monthClosed} value={e.dealName} onChange={ev => selectDeal(e.id, ev.target.value)} style={{ ...inputStyle, width: 130 }}>
+                            <option value="">— No deal —</option>
+                            {settledDealsThisMonth.map(d => <option key={d['Transaction Name']} value={d['Transaction Name']}>{d['Transaction Name']}</option>)}
+                          </select>
+                        </td>
+                        <td style={{ padding: '6px 6px' }}>
+                          <input disabled={monthClosed} value={e.clientName} onChange={ev => updateRow(e.id, { clientName: ev.target.value })}
+                            list="direct-income-clients" placeholder="Start typing…" style={{ ...inputStyle, width: 110 }} />
+                        </td>
+                        <td style={{ padding: '6px 6px' }}>
+                          <select disabled={monthClosed} value={e.item} onChange={ev => updateRow(e.id, { item: ev.target.value })} style={{ ...inputStyle, width: 110 }}>
+                            {ITEM_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                          </select>
+                        </td>
+                        <td style={{ padding: '6px 6px' }}><input disabled={monthClosed} value={e.description} onChange={ev => updateRow(e.id, { description: ev.target.value })} style={{ ...inputStyle, width: 160 }} /></td>
+                        <td style={{ padding: '6px 6px' }}><input disabled={monthClosed} type="number" value={e.qty} onChange={ev => recalc(e.id, { qty: ev.target.value })} style={{ ...inputStyle, width: 55, textAlign:'right' }} /></td>
+                        <td style={{ padding: '6px 6px' }}><input disabled={monthClosed} type="number" value={e.price} onChange={ev => recalc(e.id, { price: ev.target.value })} style={{ ...inputStyle, width: 85, textAlign:'right' }} /></td>
+                        <td style={{ padding: '6px 6px' }}><input disabled={monthClosed} value={e.account} onChange={ev => updateRow(e.id, { account: ev.target.value })} style={{ ...inputStyle, width: 170 }} /></td>
+                        <td style={{ padding: '6px 6px' }}>
+                          <input disabled={monthClosed} value={e.taxRate} onChange={ev => recalc(e.id, { taxRate: ev.target.value })}
+                            list="direct-income-tax-rates" style={{ ...inputStyle, width: 120 }} />
+                        </td>
+                        <td style={{ padding: '6px 6px' }}><input disabled={monthClosed} type="number" value={e.taxAmount} onChange={ev => updateRow(e.id, { taxAmount: ev.target.value === '' ? '' : Number(ev.target.value) })} style={{ ...inputStyle, width: 85, textAlign:'right' }} /></td>
+                        <td style={{ padding: '6px 6px', textAlign:'right', fontWeight:600, whiteSpace:'nowrap' }}>${fmt2(e.amount)}</td>
+                        <td style={{ padding: '6px 6px', textAlign: 'right', fontWeight: 700, color: '#22c55e', whiteSpace: 'nowrap' }}>${fmt2(total)}</td>
+                        <td style={{ padding: '6px 6px' }}>
+                          <button onClick={() => downloadTaxInvoice(e)} title="Download Tax Invoice"
+                            style={{ background: '#fff', color: NAVY, border: `1px solid ${NAVY}`, borderRadius: 5, padding: '3px 8px', cursor: 'pointer', fontSize: 10.5, whiteSpace:'nowrap' }}>📄 Invoice</button>
+                        </td>
+                        <td style={{ padding: '6px 6px' }}>
+                          {!monthClosed && <button onClick={() => removeRow(e.id)} style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', borderRadius: 5, padding: '3px 8px', cursor: 'pointer', fontSize: 11 }}>✕</button>}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr style={{ background: '#f8f9fa', borderTop: '1.5px solid #e8eaed' }}>
+                    <td colSpan={14} style={{ padding: '9px 8px', fontWeight: 700, fontSize: 12, color: '#2A3545' }}>Total — {monthLabel(month)}</td>
+                    <td style={{ padding: '9px 8px', textAlign: 'right', fontWeight: 700, fontSize: 13, color: '#22c55e', whiteSpace: 'nowrap' }}>${fmt2(monthTotal)}</td>
+                    <td></td><td></td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+            {!monthClosed && (
+              <div style={{ padding: '10px 14px' }}>
+                <button onClick={addRow} style={{ padding: '7px 16px', borderRadius: 7, border: `1px solid ${PINK}`, background: '#fff', color: PINK, fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>+ Add row</button>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      {view === 'history' && (
+        <div style={{ background: '#fff', borderRadius: 10, border: '0.5px solid #e8eaed', overflow: 'hidden' }}>
+          {closedByMonth.length === 0 && (
+            <div style={{ padding: 24, textAlign: 'center', color: '#9ca3af', fontSize: 12 }}>No closed months yet — entries land here once a commission statement has been imported for that month.</div>
+          )}
+          {closedByMonth.map(({ month: m, items }) => {
+            const mTotal = items.reduce((s, e) => s + (Number(e.amount) || 0) + (Number(e.taxAmount) || 0), 0)
+            return (
+              <div key={m} style={{ borderBottom: '0.5px solid #e8eaed' }}>
+                <div style={{ background: '#f8f9fa', padding: '8px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: '#2A3545' }}>🔒 {monthLabel(m)}</span>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: '#22c55e' }}>${fmt2(mTotal)}</span>
+                </div>
+                {items.map(e => (
+                  <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 14px', borderTop: '0.5px solid #f7f7f7', fontSize: 11.5 }}>
+                    <span style={{ width: 80, color: '#7A8090' }}>{e.invoiceNumber}</span>
+                    <span style={{ flex: 1, color: '#2A3545' }}>{e.supplierName || '—'} — {e.item}{e.description ? ' · ' + e.description : ''}</span>
+                    <span style={{ width: 90, textAlign: 'right', fontWeight: 600 }}>${fmt2((Number(e.amount)||0)+(Number(e.taxAmount)||0))}</span>
+                    <button onClick={() => downloadTaxInvoice(e)} style={{ background: '#fff', color: NAVY, border: `1px solid ${NAVY}`, borderRadius: 5, padding: '3px 8px', cursor: 'pointer', fontSize: 10.5, whiteSpace:'nowrap' }}>📄 Invoice</button>
+                  </div>
+                ))}
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
