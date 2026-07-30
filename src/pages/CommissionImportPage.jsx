@@ -252,6 +252,7 @@ function CommissionImportPageInner({ clients, onImport }) {
   const [matchedOpen, setMatchedOpen] = useState(false)
   const [missingOpen, setMissingOpen] = useState(false)
   const [applying, setApplying] = useState(false)
+  const [applyStatusText, setApplyStatusText] = useState('')
   const [reportData, setReportData] = useState(null)
 
   const MO = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
@@ -398,9 +399,10 @@ function CommissionImportPageInner({ clients, onImport }) {
     savePending(updated)
   }
 
-  function applyImport() {
+  async function applyImport() {
     if (!pending) return
     setApplying(true)
+    setApplyStatusText('Applying…')
     const month = pending.statementMonth || statementMonth
 
     // Build list of new loan allocations from unmatched accounts
@@ -433,8 +435,16 @@ function CommissionImportPageInner({ clients, onImport }) {
     const report = computeReconciliationData({ clients, pending, allocations, month })
     setReportData(report)
 
-    // Pass allocations alongside matched updates
-    onImport(pending.matched, pending.stmtMap, month, allocations)
+    // Actually wait for the import — including its own save-and-verify
+    // round trip against Supabase — before showing success. Previously
+    // this fired onImport and moved straight to the "done" screen without
+    // waiting, so a save that failed (or one that reported success but
+    // didn't actually persist) would only ever surface as a delayed alert
+    // after the user had already moved on. Now "done" only shows once the
+    // data is actually confirmed to be sitting in the cloud.
+    setApplyStatusText('Verifying…')
+    await onImport(pending.matched, pending.stmtMap, month, allocations)
+
     // Direct Income entries for this month are now folded into the
     // finalized commission record for the month — lock them so they can't
     // drift out of sync with what's actually been reconciled.
@@ -443,6 +453,7 @@ function CommissionImportPageInner({ clients, onImport }) {
     setPending(null)
     setStatus('done')
     setApplying(false)
+    setApplyStatusText('')
   }
 
   const allResolved = pending && pending.unmatched.every(a => a.status === 'allocated' || a.status === 'deleted')
@@ -474,7 +485,7 @@ function CommissionImportPageInner({ clients, onImport }) {
             )}
             <button onClick={applyImport} disabled={!allResolved || applying}
               style={{ padding: '9px 20px', borderRadius: 8, border: 'none', background: allResolved ? PINK : '#e2e8f0', color: allResolved ? '#fff' : '#94a3b8', fontWeight: 600, fontSize: 13, cursor: allResolved ? 'pointer' : 'not-allowed', transition: 'all 0.2s' }}>
-              {applying ? 'Applying…' : `✓ Apply ${pending.matched.length + allocatedCount} updates`}
+              {applying ? (applyStatusText || 'Applying…') : `✓ Apply ${pending.matched.length + allocatedCount} updates`}
             </button>
           </div>
         )}
@@ -520,7 +531,7 @@ function CommissionImportPageInner({ clients, onImport }) {
       {status === 'done' && (
         <div style={{ background: '#fff', borderRadius: 10, border: '0.5px solid #e2e8f0', padding: 60, textAlign: 'center' }}>
           <div style={{ fontSize: 40, marginBottom: 12 }}>✅</div>
-          <div style={{ fontSize: 16, fontWeight: 600, color: '#22c55e', marginBottom: 8 }}>Import applied successfully</div>
+          <div style={{ fontSize: 16, fontWeight: 600, color: '#22c55e', marginBottom: 8 }}>Import applied and verified</div>
           <div style={{ fontSize: 12, color: '#64748b', marginBottom: reportData ? 12 : 24 }}>All balances and commission records have been updated.</div>
           {reportData && (
             <div style={{ fontSize: 11, color: '#64748b', marginBottom: 24, maxWidth: 420, margin: '0 auto 24px', textAlign: 'left', background: '#f8fafc', borderRadius: 8, padding: '12px 16px' }}>

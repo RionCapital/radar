@@ -17,6 +17,29 @@ export async function sbLoadClients() {
   return data.data
 }
 
+// Re-reads directly from Supabase (not local cache) and confirms the given
+// accounts actually carry a commissionHistory entry for `month`. Used right
+// after a commission import saves, so a failure to persist gets caught and
+// surfaced immediately — rather than looking fine locally for days and then
+// turning out to have never actually landed in the cloud, which is what
+// happened with the June import.
+export async function verifyClientsCommissionSaved(month, accountNumbers) {
+  try {
+    const cloud = await sbLoadClients()
+    const cloudArr = Array.isArray(cloud) ? cloud : cloud?.data
+    if (!cloudArr) return { ok: false, missing: accountNumbers }
+    const savedAccounts = new Set()
+    cloudArr.forEach(c => (c.loans || []).forEach(l => {
+      const acc = String(l.acc || '').trim()
+      if (acc && (l.commissionHistory || []).some(h => h.month === month)) savedAccounts.add(acc)
+    }))
+    const missing = accountNumbers.filter(acc => !savedAccounts.has(String(acc).trim()))
+    return { ok: missing.length === 0, missing }
+  } catch (err) {
+    return { ok: false, missing: accountNumbers, error: String(err) }
+  }
+}
+
 // Serializes writes to a given Supabase table. Without this, two saves
 // triggered close together (e.g. importing April, then May, moments later)
 // each start their own independent read-merge-write round trip — and

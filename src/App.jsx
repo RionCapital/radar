@@ -1,8 +1,8 @@
 import React, { useState, useCallback, useEffect } from 'react'
 import { Routes, Route, useLocation, Navigate } from 'react-router-dom'
-import { loadClients, saveClients, syncFromSupabase } from './lib/data'
+import { loadClients, saveClients, saveClientsAwaitable, syncFromSupabase } from './lib/data'
 import { syncSettingsFromSupabase } from './lib/settings'
-import { sbSaveClients, sbSaveSettings } from './lib/supabase'
+import { sbSaveClients, sbSaveSettings, verifyClientsCommissionSaved } from './lib/supabase'
 import { saveDeals as libSaveDeals } from './lib/deals'
 import { COMMISSION_HISTORY_BY_ACC, COMMISSION_SEED_VERSION } from './lib/commissionSeed'
 import Topbar from './components/Topbar'
@@ -245,7 +245,7 @@ export default function App() {
     })
   }
 
-  function handleImport(updates, stmtMap, statementMonth, allocations = []) {
+  async function handleImport(updates, stmtMap, statementMonth, allocations = []) {
     // Sanitise month — catch bad keys like '2026-30' from the old filename bug
     const month = (() => {
       const raw = statementMonth || ''
@@ -255,6 +255,11 @@ export default function App() {
       const d = new Date(); d.setMonth(d.getMonth()-1)
       return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`
     })()
+
+    // Captured from inside the updater below so we have the exact saved
+    // shape to both persist AND verify against afterward.
+    let savedNext = null
+
     setClients(prev => {
       let next = prev.map(c => ({
         ...c,
@@ -318,11 +323,38 @@ export default function App() {
         })
       })
 
-      saveClients(next)
+      savedNext = next
       return next
     })
+
+    // Wait a tick for the state update above to have actually captured
+    // savedNext (setClients' updater runs synchronously within this call
+    // in React 18, but this guards against that ever changing).
+    if (!savedNext) { showToast('Import failed — please try again.'); return }
+
+    const ok = await saveClientsAwaitable(savedNext)
+    const expectedAccounts = updates.map(u => u.acc).filter(Boolean)
+
+    if (!ok) {
+      window.alert(`The ${month} import did not save to the server. Your changes are only on this device right now — please check your internet connection and try the import again before doing anything else, or the data may be lost.`)
+      return
+    }
+
+    // Read straight back from Supabase (not local cache) and confirm the
+    // accounts we just updated actually carry this month's commission
+    // entry now. This is what would have caught the June import vanishing
+    // — a save that reports success but doesn't actually stick is exactly
+    // the failure mode a plain "did the call throw" check can't see.
+    if (expectedAccounts.length > 0) {
+      const verification = await verifyClientsCommissionSaved(month, expectedAccounts)
+      if (!verification.ok) {
+        window.alert(`The ${month} import reported success, but re-checking the server afterward shows ${verification.missing.length} account(s) didn't actually save (e.g. ${verification.missing.slice(0,3).join(', ')}). Please re-import this statement, and if this keeps happening let Claude know straight away with this exact message.`)
+        return
+      }
+    }
+
     const totalUpdated = updates.length + allocations.length
-    showToast(`Import applied — ${totalUpdated} accounts updated for ${month}`)
+    showToast(`Import applied and verified — ${totalUpdated} accounts updated for ${month}`)
   }
 
   return (

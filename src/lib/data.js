@@ -68,6 +68,26 @@ export function saveClients(data) {
   return true;
 }
 
+// Same as saveClients, but actually returns the Supabase result instead of
+// firing-and-forgetting — for the one or two call sites (commission
+// imports especially) where it matters enough to know for certain the
+// write landed before telling the user it's done, rather than trusting
+// the write succeeded and finding out weeks later that it didn't.
+export async function saveClientsAwaitable(data) {
+  const payload = { data, savedAt: Date.now(), lastSyncedAt: getLastSyncedAt() }
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(payload)) } catch {}
+  try {
+    const ok = await sbSaveClients(payload)
+    if (ok) setLastSyncedAt(Date.now())
+    else notifySaveFailed('clients')
+    return ok
+  } catch (err) {
+    console.warn('Supabase save failed:', err)
+    notifySaveFailed('clients', { error: String(err) })
+    return false
+  }
+}
+
 export function resetClients() {
   localStorage.removeItem(STORAGE_KEY);
   const fresh = JSON.parse(JSON.stringify(BASE_DATA));
