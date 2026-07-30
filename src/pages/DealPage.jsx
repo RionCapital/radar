@@ -2282,7 +2282,7 @@ function AttachmentsTab({ deal, deals, setDeals, editing, d, set }) {
 
                 {(it.subItems||[]).map(su => (
                   <React.Fragment key={su.id}>
-                    <div style={{ display:'flex', alignItems:'center', gap:8, padding:'5px 4px 5px 24px', borderBottom:'0.5px solid #f7f7f7' }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:8, padding:'5px 4px 5px 48px', borderBottom:'0.5px solid #f7f7f7' }}>
                       <UploadTrigger uploadKey={`${it.id}-${su.id}`} onUpload={file=>uploadToItem(si,it.id,su.id,file)} />
                       <input type="checkbox" checked={!!su.checked} onChange={()=>toggleSubItemChecked(si,it.id,su.id)} style={{ flexShrink:0 }} />
                       <ChecklistItemText value={su.text} onChange={text=>updateSubItemText(si,it.id,su.id,text)} done={su.checked} placeholder={`${it.repeat} name / details…`} />
