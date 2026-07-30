@@ -894,6 +894,7 @@ function ContactDetail({ contact, section, onBack, onSave, onDelete, onMove, rra
             { label:'Company',        value:contact.company },
             { label:'Type / Role',    value:contact.type },
             { label:'Address',        value:contact.address },
+            { label:'ABN',            value:contact.abn },
             { label:`DOB${ageVal ? ` (${ageVal}yrs)` : ''}`, value: dobDisplay || contact.dob || '' },
             ...(clientSince ? [{ label:'Client Since', value: (() => { try { return new Date(clientSince).toLocaleDateString('en-AU',{day:'2-digit',month:'short',year:'numeric'}) } catch { return clientSince } })() }] : []),
             ...(section === 'clients' ? [
@@ -1058,6 +1059,7 @@ function EditContactModal({ contact, section, onChange, onSave, onClose }) {
       <Input label="Mobile" value={f.mobile || ''} onChange={e => set('mobile', e.target.value)} />
       <Input label="Company / Firm" value={f.company || ''} onChange={e => set('company', e.target.value)} />
       <Input label="Address" value={f.address || ''} onChange={e => set('address', e.target.value)} />
+      <Input label="ABN" value={f.abn || ''} onChange={e => set('abn', e.target.value)} />
 
       {section === 'clients' && (
         <>

@@ -3,6 +3,7 @@ import { totalBal, fmt } from '../lib/data'
 import { fmtDate, rollingYTD, quarterlyIncome, expiryBadge, daysUntil } from '../lib/dateUtils'
 import { Panel, PanelTitle, DayBadge } from '../components/UI'
 import { sbSaveTicked, sbLoadTicked } from '../lib/supabase'
+import { loadDirectIncomeLocal, syncDirectIncomeFromSupabase } from '../lib/directIncome'
 import { useNavigate } from 'react-router-dom'
 
 const COMMISSION = [
@@ -85,7 +86,7 @@ function computeBalanceByMonth(clients) {
 }
 
 // Merge hardcoded + real imported data — real data wins where available
-function mergeCommission(clients) {
+function mergeCommission(clients, directByMonth = {}) {
   const real = computeImportedCommission(clients)
   const balByMonth = computeBalanceByMonth(clients)
   const MO = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
@@ -99,7 +100,19 @@ function mergeCommission(clients) {
   // Start with hardcoded, then append any real months not already present
   const existing = new Set(COMMISSION.map(c => c.month))
   const extras = realMonths.filter(m => !existing.has(m.month))
-  return [...COMMISSION, ...extras]
+  const merged = [...COMMISSION, ...extras]
+
+  // Direct Income (RCTIs, mandates, one-off fees) is folded straight into
+  // each month's total — shown combined everywhere that already just uses
+  // `total`, per Cameron's ask not to separate it out. It's also kept as
+  // its own `direct` field so the Commission Income graph can still show
+  // it as a distinct series. Hardcoded historical months have no _key and
+  // therefore never match — correct, since there's no direct income to
+  // backfill into old history.
+  return merged.map(m => {
+    const direct = (m._key && directByMonth[m._key]) || 0
+    return direct > 0 ? { ...m, direct, total: (m.total || 0) + direct } : m
+  })
 }
 
 // ─── Panel A: Annual Reviews ──────────────────────────────────────────────────
@@ -228,7 +241,7 @@ function BarChart({ data, keys, colors, title, formatY, onBarHover, onBarLeave, 
         {keys.map((k, i) => (
           <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, color: 'var(--text-secondary)' }}>
             <div style={{ width: 10, height: 10, borderRadius: 2, background: colors[i] }} />
-            {k === 'trail' ? 'Trail' : k === 'upfront' ? 'Upfront' : k === 'private' ? 'Private Wealth' : 'Commercial'}
+            {k === 'trail' ? 'Trail' : k === 'upfront' ? 'Upfront' : k === 'direct' ? 'Direct' : k === 'private' ? 'Private Wealth' : 'Commercial'}
           </div>
         ))}
       </div>
@@ -414,6 +427,8 @@ export default function Dashboard({ clients, onImport, onUpdateClients }) {
     try { return new Set(JSON.parse(localStorage.getItem('rion-radar-ticked') || '[]')) } catch { return new Set() }
   })
 
+  const [directEntries, setDirectEntries] = useState(() => loadDirectIncomeLocal())
+
   // Sync ticked items from Supabase on load
   useEffect(() => {
     sbLoadTicked().then(cloud => {
@@ -425,7 +440,16 @@ export default function Dashboard({ clients, onImport, onUpdateClients }) {
     }).catch(() => {})
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const COMM = mergeCommission(clients)
+  useEffect(() => {
+    syncDirectIncomeFromSupabase().then(cloud => { if (cloud) setDirectEntries(cloud.entries) })
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const directByMonth = directEntries.reduce((acc, e) => {
+    acc[e.month] = (acc[e.month] || 0) + (Number(e.amount) || 0) + (Number(e.taxAmount) || 0)
+    return acc
+  }, {})
+
+  const COMM = mergeCommission(clients, directByMonth)
   const latest = COMM[COMM.length - 1]
   const allLoans = clients.flatMap(c => c.loans)
   const pwTotal = clients.filter(c => c.stream === 'Private Wealth' && !c._demo).flatMap(c => c.loans).filter(l => !l.closed).reduce((s, l) => s + (l.balance || 0), 0)
@@ -535,7 +559,7 @@ export default function Dashboard({ clients, onImport, onUpdateClients }) {
           })()}
         </Panel>
         <Panel style={{ display: 'flex', flexDirection: 'column' }}>
-          <BarChart data={last12} keys={['trail', 'upfront']} colors={['#3D5570', '#EB99C2']} title="Commission Income" formatY={v => `$${Math.round(v / 1000)}k`} onBarHover={setHoveredCommIdx} onBarLeave={() => setHoveredCommIdx(null)} hoveredIdx={hoveredCommIdx} />
+          <BarChart data={last12} keys={['trail', 'upfront', 'direct']} colors={['#3D5570', '#EB99C2', '#7A8090']} title="Commission Income" formatY={v => `$${Math.round(v / 1000)}k`} onBarHover={setHoveredCommIdx} onBarLeave={() => setHoveredCommIdx(null)} hoveredIdx={hoveredCommIdx} />
         </Panel>
         <Panel style={{ padding: '12px 14px' }}>
           {hoveredCommIdx != null ? (() => {
