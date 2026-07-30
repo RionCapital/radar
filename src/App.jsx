@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useEffect } from 'react'
 import { Routes, Route, useLocation, Navigate } from 'react-router-dom'
+import { Analytics } from '@vercel/analytics/react'
 import { loadClients, saveClients, syncFromSupabase } from './lib/data'
 import { syncSettingsFromSupabase } from './lib/settings'
 import { sbSaveClients, sbSaveSettings } from './lib/supabase'
@@ -357,6 +358,7 @@ export default function App() {
           <Route path="/radar/studio" element={<RequireAuth><ProjectStudio /></RequireAuth>} />
         </Routes>
       </AppErrorBoundary>
+      <Analytics />
     </div>
   )
 }
