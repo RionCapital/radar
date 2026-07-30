@@ -8,15 +8,15 @@ import CRMTopbar, { getBusinessDaysLeft, MONTH_NAMES } from '../components/CRMTo
 import NewOpportunityModal from '../components/NewOpportunityModal'
 import { SettleModal, applySettlement } from '../components/SettleModal'
 
-const STAGES = ['1. Lead','2. Strategy','3. Pre-Lodged','4. Lodged','5. Conditional','6. Unconditional','7. Settled','8. Withdrawn']
+const STAGES = ['1. Discovery','2. Strategy','3. Pre-Lodged','4. Lodged','5. Conditional','6. Unconditional','7. Settled','8. Withdrawn']
 const FORECAST_STAGES = STAGES
-const ACTIVE_STAGES = ['1. Lead','2. Strategy','3. Pre-Lodged','4. Lodged','5. Conditional','6. Unconditional']
+const ACTIVE_STAGES = ['1. Discovery','2. Strategy','3. Pre-Lodged','4. Lodged','5. Conditional','6. Unconditional']
 
 // Forecast groupings per spec: 1-3 = Pre-lodged, 4-6 = Lodged, 7 = Settled standalone
 const DIVIDERS_AFTER = ['3. Pre-Lodged', '6. Unconditional']
 
 const STAGE_COLORS = {
-  '1. Lead':          { bg:'#fee2e2', color:'#b91c1c', dot:'#ef4444' },
+  '1. Discovery':          { bg:'#fee2e2', color:'#b91c1c', dot:'#ef4444' },
   '2. Strategy':      { bg:'#fee2e2', color:'#b91c1c', dot:'#ef4444' },
   '3. Pre-Lodged':    { bg:'#fee2e2', color:'#b91c1c', dot:'#ef4444' },
   '4. Lodged':        { bg:'#dbeafe', color:'#1d4ed8', dot:'#3b82f6' },
@@ -76,7 +76,7 @@ function StageDropdown({ deal, onChangeStage }) {
   const [pos, setPos] = useState({ top: 0, left: 0 })
   const ref = useRef(null)
   const portalRef = useRef(null)
-  const sc = STAGE_COLORS[deal.Status] || STAGE_COLORS['1. Lead']
+  const sc = STAGE_COLORS[deal.Status] || STAGE_COLORS['1. Discovery']
 
   useEffect(() => {
     if (!open) return
@@ -333,7 +333,17 @@ export default function CRM({ clients, onUpdateClients }) {
   // This never overwrites a session that already has local data.
   useEffect(() => {
     syncDealsFromSupabase().then(cloud => {
-      if (cloud) setDeals(cloud)
+      const base = cloud || deals
+      // One-time rename: "1. Lead" was renamed to "1. Discovery" — migrate
+      // any already-saved deals so old and new deals aren't split across
+      // two different stage names that no longer match anything in the
+      // current stage lists.
+      if (base.some(d => d.Status === '1. Lead')) {
+        const renamed = base.map(d => d.Status === '1. Lead' ? { ...d, Status: '1. Discovery' } : d)
+        saveDeals(renamed)
+      } else if (cloud) {
+        setDeals(cloud)
+      }
     })
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -565,7 +575,7 @@ export default function CRM({ clients, onUpdateClients }) {
                         </td>
                       </tr>
                       {monthDeals.map((deal,i) => {
-                        const sc = STAGE_COLORS[deal.Status]||STAGE_COLORS['1. Lead']
+                        const sc = STAGE_COLORS[deal.Status]||STAGE_COLORS['1. Discovery']
                         const isSettled = deal.Status==='7. Settled'
                         const isWithdrawn = deal.Status==='8. Withdrawn'
                         const settleDateStr = deal['Date Settled']||deal['Finance Due Date']||null
@@ -655,7 +665,7 @@ export default function CRM({ clients, onUpdateClients }) {
                 </thead>
                 <tbody>
                   {searchResults.map((deal,i) => {
-                    const sc = STAGE_COLORS[deal.Status]||STAGE_COLORS['1. Lead']
+                    const sc = STAGE_COLORS[deal.Status]||STAGE_COLORS['1. Discovery']
                     const isSettled = deal.Status==='7. Settled'
                     const isWithdrawn = deal.Status==='8. Withdrawn'
                     return (

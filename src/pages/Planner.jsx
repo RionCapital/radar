@@ -25,7 +25,7 @@ const MEETING_TYPES = ['Client', 'Refer', 'Lend', 'Other']
 const TYPE_COLOR = { Client: PINK, Refer: NAVY, Lend: '#6A9FCC', Other: SLATE }
 
 // deal stages that haven't settled yet -- used to build the CRM dropdowns
-const ACTIVE_STAGES = ['1. Lead', '2. Strategy', '3. Pre-Lodged', '4. Lodged', '5. Conditional', '6. Unconditional']
+const ACTIVE_STAGES = ['1. Discovery', '2. Strategy', '3. Pre-Lodged', '4. Lodged', '5. Conditional', '6. Unconditional']
 const NEAR_SETTLEMENT_STAGES = ['4. Lodged', '5. Conditional', '6. Unconditional']
 
 const DEFAULT_LODGEMENT_COUNT_TARGET = 4

@@ -502,7 +502,7 @@ function ReferrerClientsPanel({ contact, rradarClients, allClients, onSave }) {
     .slice(0, 8)
 
   const STAGE_COLORS = {
-    '1. Lead':          '#94a3b8',
+    '1. Discovery':          '#94a3b8',
     '2. Strategy':      '#60a5fa',
     '3. Pre-Lodged':    '#a78bfa',
     '4. Lodged':        '#fb923c',
@@ -649,7 +649,7 @@ function ReferrerClientsPanel({ contact, rradarClients, allClients, onSave }) {
           )}
 
           {inflightDeals.map((d, i) => {
-            const SC = {'1. Lead':'#94a3b8','2. Strategy':'#60a5fa','3. Pre-Lodged':'#a78bfa','4. Lodged':'#fb923c','5. Conditional':'#facc15','6. Unconditional':'#4ade80'}
+            const SC = {'1. Discovery':'#94a3b8','2. Strategy':'#60a5fa','3. Pre-Lodged':'#a78bfa','4. Lodged':'#fb923c','5. Conditional':'#facc15','6. Unconditional':'#4ade80'}
             const col = SC[d.Status] || '#94a3b8'
             return (
               <div key={i}

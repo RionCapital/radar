@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import { loadDeals, saveDeals as libSaveDeals } from '../lib/deals'
 import { mapRradarContactToDealContact } from '../lib/data'
 
-const STAGES = ['1. Lead','2. Strategy','3. Pre-Lodged','4. Lodged','5. Conditional','6. Unconditional','7. Settled','8. Withdrawn']
+const STAGES = ['1. Discovery','2. Strategy','3. Pre-Lodged','4. Lodged','5. Conditional','6. Unconditional','7. Settled','8. Withdrawn']
 // Kept in sync with the same taxonomy in src/pages/DealPage.jsx — Category
 // drives which Transaction Types are valid. If this list changes, update it
 // in both places (no shared constants file yet).
@@ -69,7 +69,7 @@ export default function NewOpportunityModal({ onClose, onCreated, prefillClientN
   const [dealNumber, setDealNumber]       = useState('')   // e.g. "3" → auto-names "ClientName (3)"
   const [dealNameOverride, setDealNameOverride] = useState('')  // manual override of transaction name
   const [nameOverrideActive, setNameOverrideActive] = useState(false)
-  const [status, setStatus] = useState('1. Lead')
+  const [status, setStatus] = useState('1. Discovery')
   const [amount, setAmount] = useState('')
   const [category, setCategory] = useState('')
   const [transType, setTransType] = useState('')

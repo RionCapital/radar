@@ -10,7 +10,7 @@ import { SettleModal, applySettlement } from '../components/SettleModal'
 import { calcUpfront, getUpfrontRate, dealUpfrontCommission, dealUpfrontRateEffective, dealCommissionIsOverridden } from '../lib/settings'
 import { mapRradarContactToDealContact } from '../lib/data'
 
-const STAGES = ['1. Lead','2. Strategy','3. Pre-Lodged','4. Lodged','5. Conditional','6. Unconditional','7. Settled','8. Withdrawn']
+const STAGES = ['1. Discovery','2. Strategy','3. Pre-Lodged','4. Lodged','5. Conditional','6. Unconditional','7. Settled','8. Withdrawn']
 // Category list and per-category Transaction Type options, per Cameron's
 // working spreadsheet (Category drives which Transaction Types are valid).
 // NOTE: this replaces the older, shorter category list. Two places still use
@@ -33,7 +33,7 @@ const CATEGORY_TRANSACTION_TYPES = {
 const LEAD_SOURCES = ['1. Accountant','2. Solicitor','3. Client','4. Direct','5. Real Estate','6. Friend','7. Social Media','8. Financial Planner','9. BNI','10. Other']
 
 const STAGE_COLORS = {
-  '1. Lead':          { bg: '#eef4fb', color: '#185fa5' },
+  '1. Discovery':          { bg: '#eef4fb', color: '#185fa5' },
   '2. Strategy':      { bg: '#eef4fb', color: '#185fa5' },
   '3. Pre-Lodged':    { bg: '#fdf0f6', color: '#9b2c6e' },
   '4. Lodged':        { bg: '#fdf0f6', color: '#9b2c6e' },
@@ -294,7 +294,7 @@ function ContactsPanel({ deal, clients, updateDeal }) {
    schema change required.
 ------------------------------------------------------------------------ */
 
-const TRACKER_STAGES = ['1. Lead','2. Strategy','3. Pre-Lodged','4. Lodged','5. Conditional','6. Unconditional','7. Settled']
+const TRACKER_STAGES = ['1. Discovery','2. Strategy','3. Pre-Lodged','4. Lodged','5. Conditional','6. Unconditional','7. Settled']
 
 const SECURITY_TYPES = ['1MTG','2MTG','GSA','PMSI','Gtee']
 const SEC_BANDS = [
@@ -674,7 +674,7 @@ function LiveDate({ value, onCommit }) {
 
 function StageTracker({ status, onChange }) {
   const isWithdrawn = status === '8. Withdrawn'
-  const idx = TRACKER_STAGES.indexOf(isWithdrawn ? '1. Lead' : status)
+  const idx = TRACKER_STAGES.indexOf(isWithdrawn ? '1. Discovery' : status)
   return (
     <div style={{ background:'#fff', borderRadius:10, border:'0.5px solid #e8eaed', padding:'20px 24px 8px', marginBottom:16 }}>
       <div style={{ display:'flex', alignItems:'center' }}>
@@ -2536,7 +2536,17 @@ export default function DealPage({ onUpdateDeals, clients = [], onUpdateClients 
   // real deals down from Supabase rather than working from nothing.
   useEffect(() => {
     syncDealsFromSupabase().then(cloud => {
-      if (cloud) setDeals(cloud)
+      const base = cloud || deals
+      // Same one-time rename as CRM.jsx — "1. Lead" to "1. Discovery" —
+      // applied here too in case a deal gets opened directly (a bookmarked
+      // link, say) without visiting the pipeline list first.
+      if (base.some(d => d.Status === '1. Lead')) {
+        const renamed = base.map(d => d.Status === '1. Lead' ? { ...d, Status: '1. Discovery' } : d)
+        saveDeals(renamed)
+        setDeals(renamed)
+      } else if (cloud) {
+        setDeals(cloud)
+      }
     })
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
   const [editing, setEditing] = useState(false)
@@ -2634,7 +2644,7 @@ export default function DealPage({ onUpdateDeals, clients = [], onUpdateClients 
   }
 
   const d = editing ? draft : deal
-  const sc = STAGE_COLORS[d.Status] || STAGE_COLORS['1. Lead']
+  const sc = STAGE_COLORS[d.Status] || STAGE_COLORS['1. Discovery']
   const fmtAmt = v => v ? `$${Number(v).toLocaleString()}` : '—'
 
   const TABS = [
