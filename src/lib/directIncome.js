@@ -35,8 +35,8 @@ function saveState(state) {
 export function loadDirectIncomeLocal() {
   return loadState().entries
 }
-export function loadNextInvoiceNumberLocal() {
-  return loadState().nextInvoiceNumber || FIRST_INVOICE_NUMBER
+export function loadNextInvoiceNumberLocal(fallback = FIRST_INVOICE_NUMBER) {
+  return loadState().nextInvoiceNumber || fallback
 }
 
 export function saveDirectIncome(entries, nextInvoiceNumber) {

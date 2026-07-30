@@ -36,6 +36,7 @@ export default function AdminSettings() {
     setSettings(s => ({ ...s, commissionRates: { ...s.commissionRates, [category]: { ...s.commissionRates[category], [field]: parseFloat(value)||0 } } }))
   }
   function setField(key, value) { setSettings(s => ({ ...s, [key]: value })) }
+  function setCompanyField(key, value) { setSettings(s => ({ ...s, companyDetails: { ...(s.companyDetails||{}), [key]: value } })) }
 
   function handleSave() {
     saveSettings(settings)
@@ -207,6 +208,63 @@ export default function AdminSettings() {
 
         {/* Business Details */}
         {tab==='business' && (
+          <>
+          <Card style={{ marginBottom:16 }}>
+            <CardTitle>Company details</CardTitle>
+            <div style={{ fontSize:11, color:'#7A8090', marginBottom:12 }}>Feeds generated documents — tax invoices for Direct Income, and anywhere else the company's own identity needs to appear. Write over any of this at any time; it won't change invoices from months that have already been closed off.</div>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+              <div>
+                <div style={{ fontSize:11, fontWeight:500, color:'#7A8090', marginBottom:4 }}>Full company name</div>
+                <input style={inp} value={settings.companyDetails?.fullCompanyName||''} onChange={e => setCompanyField('fullCompanyName', e.target.value)} />
+              </div>
+              <div>
+                <div style={{ fontSize:11, fontWeight:500, color:'#7A8090', marginBottom:4 }}>Trading name</div>
+                <input style={inp} value={settings.companyDetails?.tradingName||''} onChange={e => setCompanyField('tradingName', e.target.value)} />
+              </div>
+              <div>
+                <div style={{ fontSize:11, fontWeight:500, color:'#7A8090', marginBottom:4 }}>ABN</div>
+                <input style={inp} value={settings.companyDetails?.abn||''} onChange={e => setCompanyField('abn', e.target.value)} />
+              </div>
+              <div>
+                <div style={{ fontSize:11, fontWeight:500, color:'#7A8090', marginBottom:4 }}>ACN</div>
+                <input style={inp} value={settings.companyDetails?.acn||''} onChange={e => setCompanyField('acn', e.target.value)} />
+              </div>
+              <div style={{ gridColumn:'1 / -1' }}>
+                <div style={{ fontSize:11, fontWeight:500, color:'#7A8090', marginBottom:4 }}>Address</div>
+                <input style={inp} value={settings.companyDetails?.address||''} onChange={e => setCompanyField('address', e.target.value)} />
+              </div>
+              <div>
+                <div style={{ fontSize:11, fontWeight:500, color:'#7A8090', marginBottom:4 }}>Phone number</div>
+                <input style={inp} value={settings.companyDetails?.phone||''} onChange={e => setCompanyField('phone', e.target.value)} />
+              </div>
+              <div>
+                <div style={{ fontSize:11, fontWeight:500, color:'#7A8090', marginBottom:4 }}>General email</div>
+                <input style={inp} type="email" value={settings.companyDetails?.email||''} onChange={e => setCompanyField('email', e.target.value)} />
+              </div>
+              <div>
+                <div style={{ fontSize:11, fontWeight:500, color:'#7A8090', marginBottom:4 }}>Bank name</div>
+                <input style={inp} value={settings.companyDetails?.bankName||''} onChange={e => setCompanyField('bankName', e.target.value)} />
+              </div>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+                <div>
+                  <div style={{ fontSize:11, fontWeight:500, color:'#7A8090', marginBottom:4 }}>BSB</div>
+                  <input style={inp} value={settings.companyDetails?.bsb||''} onChange={e => setCompanyField('bsb', e.target.value)} />
+                </div>
+                <div>
+                  <div style={{ fontSize:11, fontWeight:500, color:'#7A8090', marginBottom:4 }}>Account number</div>
+                  <input style={inp} value={settings.companyDetails?.accountNumber||''} onChange={e => setCompanyField('accountNumber', e.target.value)} />
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize:11, fontWeight:500, color:'#7A8090', marginBottom:4 }}>Starting invoice number</div>
+                <input style={inp} type="number" value={settings.companyDetails?.startingInvoiceNumber ?? 1150} onChange={e => setCompanyField('startingInvoiceNumber', Number(e.target.value))} />
+              </div>
+            </div>
+            <div style={{ marginTop:12, padding:'10px 12px', background:'#fef9c3', borderRadius:7, fontSize:11, color:'#78350f' }}>
+              💡 Starting invoice number only applies the first time an invoice is generated — changing it afterward won't renumber invoices already created. Once a month is closed off in Direct Income, its invoices are locked and won't change even if these details are edited later.
+            </div>
+          </Card>
+
           <Card style={{ marginBottom:16 }}>
             <CardTitle>Business &amp; broker details</CardTitle>
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
@@ -231,6 +289,7 @@ export default function AdminSettings() {
               💡 These details pre-populate email templates. Individual broker profiles are set in Team Members.
             </div>
           </Card>
+          </>
         )}
 
         {/* Planner Targets */}

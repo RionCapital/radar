@@ -18,6 +18,22 @@ export const DEFAULT_SETTINGS = {
   brokerPhone: '0400 000 000',
   brokerMobile: '0400 000 000',
   businessName: 'Rion Capital Investments Pty Ltd',
+  // Company-wide details used on generated documents (tax invoices, etc.) —
+  // distinct from the individual broker defaults above, which are for
+  // email templates. Editable in Settings > Business Details.
+  companyDetails: {
+    fullCompanyName: 'Rion Capital Investments Pty Ltd',
+    tradingName: 'Rion Capital',
+    abn: '76 641 258 040',
+    acn: '',
+    address: '201/90 Podium Way, ORAN PARK NSW 2570, AUSTRALIA',
+    phone: '0421 498 878',
+    email: 'cameron@rion-capital.com',
+    bankName: 'Rion Capital Investments Pty Ltd',
+    bsb: '062 - 656',
+    accountNumber: '1049 3213',
+    startingInvoiceNumber: 1150,
+  },
   // Default weekly targets for the Planner — editable in Settings > Planner Targets.
   // Applied when a new week is first created; existing weeks keep whatever they already have.
   plannerTargets: {

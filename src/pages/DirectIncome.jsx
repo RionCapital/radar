@@ -4,9 +4,10 @@ import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { loadDeals, syncDealsFromSupabase } from '../lib/deals'
 import { loadClients } from '../lib/data'
+import { loadSettings } from '../lib/settings'
 import { RION_LOGO_PNG } from '../lib/logoBase64'
 import {
-  ITEM_TYPES, TAX_RATES, DEFAULT_ACCOUNT, FIRST_INVOICE_NUMBER, taxRateFraction,
+  ITEM_TYPES, TAX_RATES, DEFAULT_ACCOUNT, taxRateFraction,
   loadDirectIncomeLocal, loadNextInvoiceNumberLocal, saveDirectIncome, syncDirectIncomeFromSupabase,
 } from '../lib/directIncome'
 
@@ -15,16 +16,22 @@ const PINK = '#EB99C2'
 const NAVY_RGB = [61, 79, 107]
 const PINK_RGB = [235, 153, 194]
 
-// Rion Capital's own fixed issuer details — same on every invoice.
-const ISSUER = {
-  name: 'Rion Capital Investments Pty Ltd',
-  abn: '76 641 258 040',
-  addressLine1: '201/90 Podium Way',
-  addressLine2: 'ORAN PARK NSW 2570',
-  country: 'AUSTRALIA',
-  bankName: 'Rion Capital Investments Pty Ltd',
-  bsb: '062 - 656',
-  account: '1049 3213',
+// Built from Settings > Business Details (Company details) so invoices
+// always reflect the current company info without needing a code change —
+// falls back to sensible defaults if Settings hasn't been touched yet.
+function loadIssuer() {
+  const s = loadSettings()
+  const c = s.companyDetails || {}
+  return {
+    name: c.fullCompanyName || 'Rion Capital Investments Pty Ltd',
+    abn: c.abn || '76 641 258 040',
+    addressLine1: c.address || '201/90 Podium Way, ORAN PARK NSW 2570, AUSTRALIA',
+    addressLine2: '',
+    country: '',
+    bankName: c.bankName || 'Rion Capital Investments Pty Ltd',
+    bsb: c.bsb || '062 - 656',
+    account: c.accountNumber || '1049 3213',
+  }
 }
 
 function currentMonthKey() {
@@ -60,8 +67,10 @@ function loadLenderList() {
 
 export default function DirectIncome() {
   const navigate = useNavigate()
+  const [settings] = useState(() => loadSettings())
+  const startingInvoiceNumber = settings.companyDetails?.startingInvoiceNumber ?? 1150
   const [entries, setEntries] = useState(() => loadDirectIncomeLocal())
-  const [nextInvoiceNumber, setNextInvoiceNumber] = useState(() => loadNextInvoiceNumberLocal())
+  const [nextInvoiceNumber, setNextInvoiceNumber] = useState(() => loadNextInvoiceNumberLocal(startingInvoiceNumber))
   const [deals, setDeals] = useState(() => loadDeals())
   const [clients, setClients] = useState(() => loadClients())
   const [suppliers, setSuppliers] = useState(() => loadLenderList())
@@ -72,7 +81,7 @@ export default function DirectIncome() {
     syncDirectIncomeFromSupabase().then(cloud => {
       if (cloud) {
         setEntries(cloud.entries)
-        setNextInvoiceNumber(cloud.nextInvoiceNumber || FIRST_INVOICE_NUMBER)
+        setNextInvoiceNumber(cloud.nextInvoiceNumber || startingInvoiceNumber)
       }
     })
     syncDealsFromSupabase().then(cloud => { if (cloud) setDeals(cloud) })
@@ -144,6 +153,7 @@ export default function DirectIncome() {
   }, [entries])
 
   function downloadTaxInvoice(e) {
+    const issuer = loadIssuer()
     const supplier = suppliers.find(s => s.name === e.supplierName)
     const doc = new jsPDF()
     const pageW = doc.internal.pageSize.getWidth()
@@ -175,16 +185,14 @@ export default function DirectIncome() {
       doc.setFont('helvetica', 'bold'); doc.setTextColor(...NAVY_RGB)
       doc.text('ABN', 95, my)
       doc.setFont('helvetica', 'normal'); doc.setTextColor(40)
-      doc.text(ISSUER.abn, 95, my + 5)
+      doc.text(issuer.abn, 95, my + 5)
 
       // Issuer identity block, far right
       let iy = 40
       doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(40)
-      doc.text(ISSUER.name, 140, iy); iy += 4.5
-      doc.text(`ABN ${ISSUER.abn}`, 140, iy); iy += 4.5
-      doc.text(ISSUER.addressLine1, 140, iy); iy += 4.5
-      doc.text(ISSUER.addressLine2, 140, iy); iy += 4.5
-      doc.text(ISSUER.country, 140, iy)
+      doc.text(issuer.name, 140, iy); iy += 4.5
+      doc.text(`ABN ${issuer.abn}`, 140, iy); iy += 4.5
+      doc.text(issuer.addressLine1, 140, iy)
 
       y = Math.max(y, my, iy) + 14
 
@@ -214,9 +222,9 @@ export default function DirectIncome() {
       doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(40)
       doc.text(`Due Date: ${fmtDateAU(e.dueDate)}`, 14, ty); ty += 6
       doc.setFont('helvetica', 'normal'); doc.setFontSize(9)
-      doc.text(`NAME: ${ISSUER.bankName}`, 14, ty); ty += 4.5
-      doc.text(`BSB: ${ISSUER.bsb}`, 14, ty); ty += 4.5
-      doc.text(`Account: ${ISSUER.account}`, 14, ty)
+      doc.text(`NAME: ${issuer.bankName}`, 14, ty); ty += 4.5
+      doc.text(`BSB: ${issuer.bsb}`, 14, ty); ty += 4.5
+      doc.text(`Account: ${issuer.account}`, 14, ty)
 
       return total
     }
@@ -236,11 +244,9 @@ export default function DirectIncome() {
     let ay = cy + 10
     doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(40)
     doc.text('To:', 14, ay)
-    doc.text(ISSUER.name, 30, ay); ay += 4.5
-    doc.text(`ABN ${ISSUER.abn}`, 30, ay); ay += 4.5
-    doc.text(ISSUER.addressLine1, 30, ay); ay += 4.5
-    doc.text(ISSUER.addressLine2, 30, ay); ay += 4.5
-    doc.text(ISSUER.country, 30, ay)
+    doc.text(issuer.name, 30, ay); ay += 4.5
+    doc.text(`ABN ${issuer.abn}`, 30, ay); ay += 4.5
+    doc.text(issuer.addressLine1, 30, ay)
 
     let py = cy + 10
     const rows = [
