@@ -31,6 +31,7 @@ import SecurityReviewEmail from './pages/SecurityReviewEmail'
 import EmailBuilder from './pages/EmailBuilder'
 import Marketing from './pages/Marketing'
 import Planner from './pages/Planner'
+import DirectIncome from './pages/DirectIncome'
 
 // Top-level error boundary — prevents one broken page crashing the whole app
 class AppErrorBoundary extends React.Component {
@@ -346,6 +347,7 @@ export default function App() {
           <Route path="/crm" element={<RequireAuth><CRM clients={clients} onUpdateClients={updateAllClients} /></RequireAuth>} />
           <Route path="/radar/clients/:name/opportunity" element={<RequireAuth><OpportunityScore clients={clients} updateClient={updateClient} /></RequireAuth>} />
           <Route path="/radar/import" element={<RequireAuth><CommissionImportPage clients={clients} onImport={handleImport} /></RequireAuth>} />
+          <Route path="/radar/direct-income" element={<RequireAuth><DirectIncome /></RequireAuth>} />
           <Route path="/radar/clients/:name/contacts" element={<RequireAuth><ContactPage clients={clients} updateClient={updateClient} /></RequireAuth>} />
           <Route path="/radar/clients/:name/commission" element={<RequireAuth><ClientCommission clients={clients} updateClient={updateClient} /></RequireAuth>} />
           <Route path="/radar/clients/:name/security-review/:secIdx" element={<RequireAuth><SecurityReviewEmail clients={clients} updateClient={updateClient} /></RequireAuth>} />

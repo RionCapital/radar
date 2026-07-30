@@ -583,6 +583,11 @@ export default function Dashboard({ clients, onImport, onUpdateClients }) {
             onMouseOut={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--pk)' }}>
             {hasPendingImport ? '⚠ Resume import' : '↑ Import statement'}
           </button>
+          <button onClick={() => navigate('/radar/direct-income')} style={{ width: '100%', marginTop: 8, padding: '7px', borderRadius: 7, border: '1.5px solid #3D4F6B', background: 'transparent', color: '#3D4F6B', fontWeight: 500, fontSize: 11, cursor: 'pointer' }}
+            onMouseOver={e => { e.currentTarget.style.background = '#3D4F6B'; e.currentTarget.style.color = '#fff' }}
+            onMouseOut={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#3D4F6B' }}>
+            + Direct Income
+          </button>
         </Panel>
       </div>
 

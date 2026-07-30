@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { computeReconciliationData, downloadReconciliationReport } from '../lib/reconciliationReport'
+import { closeDirectIncomeMonth } from '../lib/directIncome'
 
 const STORAGE_KEY = 'rion-pending-import'
 const NAVY = '#3D4F6B'
@@ -434,6 +435,10 @@ function CommissionImportPageInner({ clients, onImport }) {
 
     // Pass allocations alongside matched updates
     onImport(pending.matched, pending.stmtMap, month, allocations)
+    // Direct Income entries for this month are now folded into the
+    // finalized commission record for the month — lock them so they can't
+    // drift out of sync with what's actually been reconciled.
+    closeDirectIncomeMonth(month)
     clearPending()
     setPending(null)
     setStatus('done')
