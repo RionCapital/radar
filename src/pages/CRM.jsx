@@ -244,7 +244,7 @@ function ForecastPanel({ deals, settings }) {
     <div style={{ background:'#fff', borderRadius:8, border:'0.5px solid #e8eaed', overflow:'hidden', marginBottom:10 }}>
       <div style={{ padding:'7px 14px', borderBottom:'0.5px solid #e8eaed', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
         <div style={{ fontSize:10, fontWeight:600, color:'#5a6370', textTransform:'uppercase', letterSpacing:'0.06em' }}>Forecast — pipeline by stage</div>
-        <div style={{ fontSize:10, color:'#7A8090' }}>Upfront est. by category rate</div>
+        <div style={{ fontSize:10, color:'#7A8090' }}>Upfront est. incl. negotiated rates</div>
       </div>
       <table style={{ width:'100%', borderCollapse:'collapse', fontSize:11, tableLayout:'fixed' }}>
         <colgroup>
@@ -441,7 +441,7 @@ export default function CRM({ clients, onUpdateClients }) {
     })
   }, [deals, searchTerm, showWithdrawn])
   const thisMonthSettled = deals.filter(d=>d.Status==='7. Settled'&&d['Month of Settlement']?.startsWith(curMonth)).reduce((s,d)=>s+(d.Amount||0),0)
-  const thisMonthUpfront = deals.filter(d=>d.Status==='7. Settled'&&d['Month of Settlement']?.startsWith(curMonth)).reduce((s,d)=>s+calcUpfront(d.Amount,d.Categories),0)
+  const thisMonthUpfront = deals.filter(d=>d.Status==='7. Settled'&&d['Month of Settlement']?.startsWith(curMonth)).reduce((s,d)=>s+dealUpfrontCommission(d),0)
 
   function changeStage(deal, newStage) {
     // Settling must always go through the Settle modal (client link / loan
@@ -526,7 +526,7 @@ export default function CRM({ clients, onUpdateClients }) {
               {[
                 { label:'Active pipeline', val:fmt(totalPipeline), sub:`${activeDeals.length} deals` },
                 { label:'Settled this month', val:fmt(thisMonthSettled), sub:fmtMonth(curMonth), color:'#22c55e' },
-                { label:'Est. upfront this month', val:`$${thisMonthUpfront.toLocaleString()}`, sub:'by category rate', color:'#EB99C2' },
+                { label:'Est. upfront this month', val:`$${thisMonthUpfront.toLocaleString()}`, sub:'incl. any negotiated rates', color:'#EB99C2' },
                 { label:'Cond. + Uncond.', val:fmt(deals.filter(d=>['5. Conditional','6. Unconditional'].includes(d.Status)).reduce((s,d)=>s+(d.Amount||0),0)), sub:'Near settlement' },
               ].map((s,i) => (
                 <div key={i} style={{ background:'#fff', borderRadius:8, border:'0.5px solid #e8eaed', padding:'10px 12px' }}>
