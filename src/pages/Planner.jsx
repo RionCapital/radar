@@ -648,6 +648,7 @@ function WeekTab({
             actualLabel={fmtMoney(completed.settledTotal)}
             pct={settlePct}
             caption={`${settlePct}% of target`}
+            money
             last
           />
         </div>
@@ -810,14 +811,18 @@ function WeightField({ label, value, onChange, accent }) {
   )
 }
 
-function TargetBar({ color, label, value, onChange, actualLabel, pct, caption, last }) {
+function TargetBar({ color, label, value, onChange, actualLabel, pct, caption, last, money }) {
   return (
     <div style={{ marginBottom: last ? 0 : 16, paddingBottom: last ? 0 : 16, borderBottom: last ? 'none' : '1px solid #f0f2f5' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <span style={{ width: 8, height: 8, borderRadius: '50%', background: color, flexShrink: 0 }} />
         <span style={{ fontSize: 12, fontWeight: 600, color: NAVY, whiteSpace: 'nowrap' }}>{label}</span>
         <span style={{ fontSize: 10, color: SLATE, marginLeft: 6 }}>target</span>
-        <input type="number" value={value} onChange={e => onChange(e.target.value)} style={{ ...inp(), width: 64, padding: '4px 7px' }} />
+        {money ? (
+          <MoneyTargetInput value={value} onChange={onChange} />
+        ) : (
+          <input type="number" value={value} onChange={e => onChange(e.target.value)} style={{ ...inp(), width: 64, padding: '4px 7px' }} />
+        )}
         <span style={{ fontSize: 11, color: SLATE, marginLeft: 'auto', whiteSpace: 'nowrap', flexShrink: 0 }}>{actualLabel}</span>
       </div>
       <div style={{ height: 7, background: '#f0f2f5', borderRadius: 4, overflow: 'hidden', marginTop: 8 }}>
@@ -825,6 +830,33 @@ function TargetBar({ color, label, value, onChange, actualLabel, pct, caption, l
       </div>
       <div style={{ fontSize: 10, color: SLATE, marginTop: 4 }}>{caption}</div>
     </div>
+  )
+}
+
+// Wider than the plain count-target input, and shows comma thousand-
+// separators once you click away — e.g. typing 100000 shows 100,000 after
+// tabbing out. Native type="number" inputs can't display commas at all,
+// which is why this switches to a text input with its own formatting,
+// same approach used for other large dollar figures elsewhere in the app.
+// Capped at $100,000,000, per the actual settlement target this is for.
+function MoneyTargetInput({ value, onChange }) {
+  const [focused, setFocused] = useState(false)
+  const [val, setVal] = useState(value ?? '')
+  useEffect(() => { if (!focused) setVal(value ?? '') }, [value, focused])
+  const display = focused ? val : (value !== '' && value != null ? Number(value).toLocaleString() : '')
+  return (
+    <input
+      type="text" inputMode="numeric"
+      value={display}
+      onFocus={() => { setFocused(true); setVal(value ?? '') }}
+      onChange={e => {
+        const digits = e.target.value.replace(/[^0-9]/g, '')
+        const num = digits === '' ? '' : Math.min(100000000, Number(digits))
+        setVal(num)
+      }}
+      onBlur={() => { setFocused(false); onChange(val) }}
+      style={{ ...inp(), width: 110, padding: '4px 7px', textAlign: 'right' }}
+    />
   )
 }
 
