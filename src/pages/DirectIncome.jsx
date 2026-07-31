@@ -57,6 +57,29 @@ function plus14Days(dateStr) {
   return d.toISOString().slice(0, 10)
 }
 
+// Splits a single address string into "Number Street" / "Suburb State
+// Postcode", and separates out the country if there is one — dropping it
+// entirely when it's Australia, since that's the default and doesn't need
+// stating. Assumes the common "Street, Suburb State Postcode[, Country]"
+// pattern; addresses that don't follow it just fall back to one line
+// rather than guessing wrong.
+function formatAddressLines(raw) {
+  if (!raw) return { line1: '', line2: '', country: '' }
+  let parts = raw.split(',').map(s => s.trim()).filter(Boolean)
+  let country = ''
+  if (parts.length > 1 && /^australia$/i.test(parts[parts.length - 1])) {
+    parts = parts.slice(0, -1)
+  } else if (parts.length > 2 && !/^australia$/i.test(parts[parts.length - 1])) {
+    // Genuinely a different country — keep it, shown separately
+    country = parts[parts.length - 1]
+    parts = parts.slice(0, -1)
+  }
+  if (parts.length <= 1) return { line1: parts[0] || '', line2: '', country }
+  const line2 = parts[parts.length - 1]
+  const line1 = parts.slice(0, -1).join(', ')
+  return { line1, line2, country }
+}
+
 function loadLenderList() {
   try {
     const lenders = JSON.parse(localStorage.getItem('rion-marketing-lenders') || '[]')
@@ -155,25 +178,36 @@ export default function DirectIncome() {
   function downloadTaxInvoice(e) {
     const issuer = loadIssuer()
     const supplier = suppliers.find(s => s.name === e.supplierName)
+    // Full Legal Name (Marketing's "company" field) is the correct name for
+    // a tax invoice — falls back to whatever was typed if there's no
+    // matching supplier record or it has no legal name set.
+    const billToName = supplier?.company || e.supplierName || '—'
+    const supplierAddr = formatAddressLines(supplier?.address)
+    const issuerAddr = formatAddressLines(issuer.addressLine1)
     const doc = new jsPDF()
     const pageW = doc.internal.pageSize.getWidth()
+    const rightMargin = 195
 
     function drawInvoiceBlock(startY) {
       let y = startY
-      // Logo, top-right
-      try { doc.addImage(RION_LOGO_PNG, 'PNG', pageW - 60, 12, 46, 18.7) } catch {}
+      // Logo, top-right — sized and positioned so it never runs off the
+      // page regardless of how large it gets.
+      const logoW = 92, logoH = 37.4
+      try { doc.addImage(RION_LOGO_PNG, 'PNG', rightMargin - logoW, 12, logoW, logoH) } catch {}
 
       doc.setFont('helvetica', 'bold'); doc.setFontSize(20); doc.setTextColor(...NAVY_RGB)
       doc.text('TAX INVOICE', 14, y); y += 10
 
       doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(40)
-      doc.text(e.supplierName || '—', 14, y); y += 5
-      if (supplier?.address) { doc.text(supplier.address, 14, y); y += 5 }
+      doc.text(billToName, 14, y); y += 5
+      if (supplierAddr.line1) { doc.text(supplierAddr.line1, 14, y); y += 5 }
+      if (supplierAddr.line2) { doc.text(supplierAddr.line2, 14, y); y += 5 }
+      if (supplierAddr.country) { doc.text(supplierAddr.country, 14, y); y += 5 }
       if (supplier?.abn) { doc.text(`ABN ${supplier.abn}`, 14, y); y += 5 }
-      doc.text('AUSTRALIA', 14, y)
 
-      // Invoice metadata block (Date / Number / ABN)
-      let my = 40
+      // Invoice metadata block (Date / Number / ABN) — starts below the
+      // (now taller) logo rather than beside it, so there's no overlap.
+      let my = 58
       doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(...NAVY_RGB)
       doc.text('Invoice Date', 95, my)
       doc.setFont('helvetica', 'normal'); doc.setTextColor(40)
@@ -187,12 +221,14 @@ export default function DirectIncome() {
       doc.setFont('helvetica', 'normal'); doc.setTextColor(40)
       doc.text(issuer.abn, 95, my + 5)
 
-      // Issuer identity block, far right
-      let iy = 40
+      // Issuer identity block, far right — same 2-line address format
+      let iy = 58
       doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(40)
       doc.text(issuer.name, 140, iy); iy += 4.5
       doc.text(`ABN ${issuer.abn}`, 140, iy); iy += 4.5
-      doc.text(issuer.addressLine1, 140, iy)
+      if (issuerAddr.line1) { doc.text(issuerAddr.line1, 140, iy); iy += 4.5 }
+      if (issuerAddr.line2) { doc.text(issuerAddr.line2, 140, iy); iy += 4.5 }
+      if (issuerAddr.country) { doc.text(issuerAddr.country, 140, iy) }
 
       y = Math.max(y, my, iy) + 14
 
@@ -212,11 +248,11 @@ export default function DirectIncome() {
       let ty = doc.lastAutoTable.finalY + 8
       const total = (Number(e.amount) || 0) + (Number(e.taxAmount) || 0)
       doc.setFontSize(9.5); doc.setTextColor(60)
-      doc.text('Subtotal', 150, ty); doc.text(fmt2(e.amount), 195, ty, { align: 'right' }); ty += 6
-      doc.text(`TOTAL  GST  ${taxPct}%`, 150, ty); doc.text(fmt2(e.taxAmount), 195, ty, { align: 'right' }); ty += 3
-      doc.setDrawColor(...NAVY_RGB); doc.line(140, ty, 195, ty); ty += 5
+      doc.text('Subtotal', 150, ty); doc.text(fmt2(e.amount), rightMargin, ty, { align: 'right' }); ty += 6
+      doc.text(`TOTAL  GST  ${taxPct}%`, 150, ty); doc.text(fmt2(e.taxAmount), rightMargin, ty, { align: 'right' }); ty += 3
+      doc.setDrawColor(...NAVY_RGB); doc.line(140, ty, rightMargin, ty); ty += 5
       doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(...NAVY_RGB)
-      doc.text('TOTAL AUD', 150, ty); doc.text(fmt2(total), 195, ty, { align: 'right' })
+      doc.text('TOTAL AUD', 150, ty); doc.text(fmt2(total), rightMargin, ty, { align: 'right' })
       ty += 14
 
       doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(40)
@@ -229,13 +265,13 @@ export default function DirectIncome() {
       return total
     }
 
-    const total = drawInvoiceBlock(46)
+    const total = drawInvoiceBlock(64)
 
     // Perforated cut line + Payment Advice tear-off, matching the layout
     // Cameron's existing template already uses.
     let cy = 230
     doc.setDrawColor(...PINK_RGB); doc.setLineDashPattern([2, 2], 0)
-    doc.line(14, cy, 195, cy)
+    doc.line(14, cy, rightMargin, cy)
     doc.setLineDashPattern([], 0)
     cy += 12
 
@@ -246,11 +282,13 @@ export default function DirectIncome() {
     doc.text('To:', 14, ay)
     doc.text(issuer.name, 30, ay); ay += 4.5
     doc.text(`ABN ${issuer.abn}`, 30, ay); ay += 4.5
-    doc.text(issuer.addressLine1, 30, ay)
+    if (issuerAddr.line1) { doc.text(issuerAddr.line1, 30, ay); ay += 4.5 }
+    if (issuerAddr.line2) { doc.text(issuerAddr.line2, 30, ay); ay += 4.5 }
+    if (issuerAddr.country) { doc.text(issuerAddr.country, 30, ay) }
 
     let py = cy + 10
     const rows = [
-      ['Customer', e.supplierName || '—'],
+      ['Customer', billToName],
       ['Invoice Number', e.invoiceNumber],
       ['Amount Due', fmt2(total)],
       ['Due Date', fmtDateAU(e.dueDate)],

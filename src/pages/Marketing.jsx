@@ -891,7 +891,7 @@ function ContactDetail({ contact, section, onBack, onSave, onDelete, onMove, rra
             { label:'Email',          value:contact.email,          icon:'✉' },
             { label:'Mobile',         value:contact.mobile,         icon:'📱' },
             { label:'Bus. Phone',     value:contact.busPhone,       icon:'📞' },
-            { label:'Company',        value:contact.company },
+            { label:'Full Legal Name', value:contact.company },
             { label:'Type / Role',    value:contact.type },
             { label:'Address',        value:contact.address },
             { label:'ABN',            value:contact.abn },
@@ -1057,7 +1057,7 @@ function EditContactModal({ contact, section, onChange, onSave, onClose }) {
       <Input label="Full Name *" value={f.name || ''} onChange={e => set('name', e.target.value)} />
       <Input label="Email" value={f.email || ''} onChange={e => set('email', e.target.value)} />
       <Input label="Mobile" value={f.mobile || ''} onChange={e => set('mobile', e.target.value)} />
-      <Input label="Company / Firm" value={f.company || ''} onChange={e => set('company', e.target.value)} />
+      <Input label="Full Legal Name" value={f.company || ''} onChange={e => set('company', e.target.value)} />
       <Input label="Address" value={f.address || ''} onChange={e => set('address', e.target.value)} />
       <Input label="ABN" value={f.abn || ''} onChange={e => set('abn', e.target.value)} />
 
