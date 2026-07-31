@@ -189,8 +189,8 @@ function ContactsPanel({ deal, clients, updateDeal }) {
               : <span style={{ fontSize:11, color:'#7A8090' }}>—</span>}
             {c.mobile
               ? <span style={{ display:'flex', alignItems:'center', gap:6, flexShrink:0 }}>
-                  <a href={`tel:${c.mobile}`} style={{ fontSize:11, color:'#EB99C2', textDecoration:'none', fontWeight:500 }}>{c.mobile}</a>
-                  <a href={`sms:${c.mobile}`} title="Send text" style={{ background:'#f0f0f0', borderRadius:10, padding:'1px 6px', fontSize:9, color:'#7A8090', textDecoration:'none' }}>💬</a>
+                  <a href={`tel:${c.mobile.replace(/\s/g,'')}`} style={{ fontSize:11, color:'#EB99C2', textDecoration:'none', fontWeight:500 }}>{c.mobile}</a>
+                  <a href={`sms:${c.mobile.replace(/\s/g,'')}`} title="Send text" style={{ background:'#f0f0f0', borderRadius:10, padding:'1px 6px', fontSize:9, color:'#7A8090', textDecoration:'none' }}>💬</a>
                 </span>
               : <span style={{ fontSize:11, color:'#7A8090', flexShrink:0 }}>—</span>}
             {!c.fromRradar && <button onClick={()=>removeContact(i)} style={{...rmBtnStyle, flexShrink:0}}>✕</button>}

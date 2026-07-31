@@ -624,8 +624,8 @@ export default function CRM({ clients, onUpdateClients }) {
                             <td style={{ padding:'6px 10px', fontSize:10, whiteSpace:'nowrap' }}>
                               {deal.Contacts?.[0]?.mobile ? (
                                 <span style={{ display:'flex', alignItems:'center', gap:5 }}>
-                                  <a href={`tel:${deal.Contacts[0].mobile}`} onClick={e=>e.stopPropagation()} style={{ color:'#3D4F6B', textDecoration:'none', fontWeight:500 }}>{deal.Contacts[0].mobile}</a>
-                                  <a href={`sms:${deal.Contacts[0].mobile}`} onClick={e=>e.stopPropagation()} title="Send text" style={{ background:'#f0f0f0', borderRadius:10, padding:'1px 6px', fontSize:9, color:'#7A8090', textDecoration:'none' }}>💬</a>
+                                  <a href={`tel:${deal.Contacts[0].mobile.replace(/\s/g,'')}`} onClick={e=>e.stopPropagation()} style={{ color:'#3D4F6B', textDecoration:'none', fontWeight:500 }}>{deal.Contacts[0].mobile}</a>
+                                  <a href={`sms:${deal.Contacts[0].mobile.replace(/\s/g,'')}`} onClick={e=>e.stopPropagation()} title="Send text" style={{ background:'#f0f0f0', borderRadius:10, padding:'1px 6px', fontSize:9, color:'#7A8090', textDecoration:'none' }}>💬</a>
                                 </span>
                               ) : <span style={{ color:'#9ca3af' }}>—</span>}
                             </td>
