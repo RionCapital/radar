@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { sbSaveMarketing, sbLoadMarketing } from '../lib/supabase'
 import { notifySaveFailed } from '../lib/saveStatus'
 import { loadDeals } from '../lib/deals'
+import { loadClients } from '../lib/data'
 import { loadSettings } from '../lib/settings'
 import { logo_rion_notag } from '../lib/icons'
 
@@ -23,6 +24,15 @@ const PLANNER_ROW_ID = 4
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 const MEETING_TYPES = ['Client', 'Refer', 'Lend', 'Other']
 const TYPE_COLOR = { Client: PINK, Refer: NAVY, Lend: '#6A9FCC', Other: SLATE }
+
+// Rradar Activities — Annual Reviews, Fixed/IO term expiries and facility
+// maturities that need to be worked through the week, tracked against the
+// same Initial email -> Follow-up -> Outcome email cadence as the rest of
+// the weekly rhythm. "Completed" is the terminal stage rather than a
+// separate checkbox, so the row lines through the moment it's set.
+const ACTIVITY_TYPES = ['Annual Review', 'Fixed Term Expiry', 'IO Term Expiry', 'Facility Maturity', 'Other']
+const ACTIVITY_TYPE_COLOR = { 'Annual Review': BLUE, 'Fixed Term Expiry': BRAND_PINK, 'IO Term Expiry': '#6A9FCC', 'Facility Maturity': NAVY, 'Other': SLATE }
+const ACTIVITY_STAGES = ['Initial Email', 'Follow-up', 'Outcome Email', 'Completed']
 
 // deal stages that haven't settled yet -- used to build the CRM dropdowns
 const ACTIVE_STAGES = ['1. Discovery', '2. Strategy', '3. Pre-Lodged', '4. Lodged', '5. Conditional', '6. Unconditional']
@@ -84,6 +94,7 @@ function mergeWeeks(a, b) {
     meetings: [...(a.meetings || []), ...(b.meetings || [])],
     lodgements: [...(a.lodgements || []), ...(b.lodgements || [])],
     settlements: [...(a.settlements || []), ...(b.settlements || [])],
+    activities: [...(a.activities || []), ...(b.activities || [])],
     notes: [a.notes, b.notes].filter(Boolean).join('\n'),
   }
 }
@@ -176,6 +187,7 @@ function emptyWeek(weekStart) {
     meetings: [],
     lodgements: [],
     settlements: [],
+    activities: [],
     training: {
       startWeight: '',
       endWeight: '',
@@ -356,6 +368,7 @@ export default function Planner() {
     return { weeks: { [monday]: emptyWeek(monday) }, viewWeek: monday, targetWeight: '', monthNotes: {} }
   })
   const [deals, setDeals] = useState(() => loadDeals())
+  const [clients, setClients] = useState(() => loadClients())
 
   // ─── cloud sync ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -493,6 +506,23 @@ export default function Planner() {
     updateWeek({ settlements: [...week.settlements, ...additions] })
   }
 
+  // ─── rradar activities ──────────────────────────────────────────────────
+  function addActivity() {
+    const a = { id: uid(), client: '', activityType: 'Annual Review', stage: 'Initial Email', notes: '' }
+    updateWeek({ activities: [...(week.activities || []), a] })
+  }
+  function addActivityForClient(name) {
+    if (!name) return
+    const a = { id: uid(), client: name, activityType: 'Annual Review', stage: 'Initial Email', notes: '' }
+    updateWeek({ activities: [...(week.activities || []), a] })
+  }
+  function updateActivity(id, patch) {
+    updateWeek({ activities: (week.activities || []).map(a => a.id === id ? { ...a, ...patch } : a) })
+  }
+  function removeActivity(id) {
+    updateWeek({ activities: (week.activities || []).filter(a => a.id !== id) })
+  }
+
   // ─── training ───────────────────────────────────────────────────────────
   function updateTrainingField(patch) {
     updateWeek({ training: { ...week.training, ...patch } })
@@ -520,6 +550,14 @@ export default function Planner() {
     const existing = new Set(week.settlements.map(s => s.name))
     return (deals || []).filter(d => NEAR_SETTLEMENT_STAGES.includes(d.Status) && !existing.has(d['Transaction Name']))
   }, [deals, week.settlements])
+
+  // Every client, A-Z -- a client can carry more than one Rradar activity
+  // (e.g. an Annual Review and a Fixed Term Expiry in the same week), so
+  // unlike the deal pickers above this list is never filtered down as rows
+  // get added.
+  const clientOptions = useMemo(() => {
+    return [...(clients || [])].sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+  }, [clients])
 
   return (
     <div style={{ minHeight: '100vh', background: '#f7f8fa', fontFamily: "'Montserrat',system-ui,sans-serif" }}>
@@ -563,6 +601,8 @@ export default function Planner() {
             addLodgementFromDeal={addLodgementFromDeal} addSettlementFromDeal={addSettlementFromDeal}
             lodgementDealOptions={lodgementDealOptions} settlementDealOptions={settlementDealOptions}
             pullSettledFromCRM={pullSettledFromCRM}
+            addActivity={addActivity} addActivityForClient={addActivityForClient}
+            updateActivity={updateActivity} removeActivity={removeActivity} clientOptions={clientOptions}
             updateTrainingField={updateTrainingField} updateTrainingSlot={updateTrainingSlot} updateTrainingDone={updateTrainingDone}
           />
         )}
@@ -582,7 +622,9 @@ function WeekTab({
   addLodgement, updateLodgement, removeLodgement,
   addSettlement, updateSettlement, removeSettlement,
   addLodgementFromDeal, addSettlementFromDeal, lodgementDealOptions, settlementDealOptions,
-  pullSettledFromCRM, updateTrainingField, updateTrainingSlot, updateTrainingDone,
+  pullSettledFromCRM,
+  addActivity, addActivityForClient, updateActivity, removeActivity, clientOptions,
+  updateTrainingField, updateTrainingSlot, updateTrainingDone,
 }) {
   const completed = completedStats(week)
   const settlePct = week.settlementTarget ? Math.min(100, Math.round(completed.settledTotal / week.settlementTarget * 100)) : 0
@@ -654,37 +696,82 @@ function WeekTab({
         </div>
       </SectionCard>
 
-      {/* meetings */}
-      <SectionCard title={`Meetings (${stats.meetings})`} style={{ marginTop: 16 }}
-        action={<button onClick={addMeeting} style={addBtnStyle}>+ Add meeting</button>}>
-        <div style={{ display: 'flex', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
-          {MEETING_TYPES.map(t => (
-            <div key={t} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: SLATE }}>
-              <span style={{ width: 8, height: 8, borderRadius: '50%', background: TYPE_COLOR[t], display: 'inline-block' }} />
-              {t}: <b style={{ color: NAVY }}>{stats.byType[t] || 0}</b>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 16, alignItems: 'start' }}>
+        {/* rradar activities: annual reviews, fixed/IO term expiries, maturities */}
+        <SectionCard title={`Rradar Activities (${(week.activities || []).length})`}
+          action={<div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            <select value="" onChange={e => addActivityForClient(e.target.value)} style={{ ...inp(), fontSize: 10, maxWidth: 150 }}>
+              <option value="">+ Add from clients...</option>
+              {clientOptions.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
+            </select>
+            <button onClick={addActivity} style={addBtnStyle}>+ Add manually</button>
+          </div>}>
+          {ACTIVITY_TYPES.some(t => (week.activities || []).some(a => a.activityType === t)) && (
+            <div style={{ display: 'flex', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
+              {ACTIVITY_TYPES.map(t => {
+                const n = (week.activities || []).filter(a => a.activityType === t).length
+                if (!n) return null
+                return (
+                  <div key={t} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: SLATE }}>
+                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: ACTIVITY_TYPE_COLOR[t], display: 'inline-block' }} />
+                    {t}: <b style={{ color: NAVY }}>{n}</b>
+                  </div>
+                )
+              })}
             </div>
-          ))}
-        </div>
-        {week.meetings.length === 0 && <EmptyRow text="No meetings booked yet this week." />}
-        {week.meetings.map(m => {
-          const isAdminDay = m.day === 'Mon' || m.day === 'Fri'
-          return (
-            <div key={m.id} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '6px 0', borderBottom: '1px solid #f0f2f5' }}>
-              <input type="checkbox" checked={m.done} onChange={e => updateMeeting(m.id, { done: e.target.checked })} />
-              <select value={m.day} onChange={e => updateMeeting(m.id, { day: e.target.value })} style={{ ...inp(), width: 62, background: isAdminDay ? '#fef3e2' : '#fff' }}>
-                {DAYS.map(d => <option key={d} value={d}>{d}</option>)}
-              </select>
-              <input type="time" value={m.time} onChange={e => updateMeeting(m.id, { time: e.target.value })} style={{ ...inp(), width: 92 }} />
-              <select value={m.type} onChange={e => updateMeeting(m.id, { type: e.target.value })} style={{ ...inp(), width: 84 }}>
-                {MEETING_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-              </select>
-              <input value={m.notes} onChange={e => updateMeeting(m.id, { notes: e.target.value })} placeholder="Who / what" style={{ ...inp(), flex: 1, textDecoration: m.done ? 'line-through' : 'none', color: m.done ? SLATE : '#1a1a1a' }} />
-              {isAdminDay && <span title="Mon & Fri are meeting-free admin/follow-up days" style={{ fontSize: 14 }}>⚠️</span>}
-              <IconBtn danger title="Remove" onClick={() => removeMeeting(m.id)}>✕</IconBtn>
-            </div>
-          )
-        })}
-      </SectionCard>
+          )}
+          {(week.activities || []).length === 0 && <EmptyRow text="No Rradar activities listed yet — annual reviews, fixed/IO expiries and maturities go here." />}
+          {(week.activities || []).map(a => {
+            const done = a.stage === 'Completed'
+            return (
+              <div key={a.id} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '6px 0', borderBottom: '1px solid #f0f2f5', flexWrap: 'wrap' }}>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: ACTIVITY_TYPE_COLOR[a.activityType] || SLATE, flexShrink: 0 }} />
+                <input value={a.client} onChange={e => updateActivity(a.id, { client: e.target.value })} placeholder="Client" style={{ ...inp(), width: 118, textDecoration: done ? 'line-through' : 'none', color: done ? SLATE : '#1a1a1a' }} />
+                <select value={a.activityType} onChange={e => updateActivity(a.id, { activityType: e.target.value })} style={{ ...inp(), width: 118, fontSize: 10.5 }}>
+                  {ACTIVITY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+                <select value={a.stage} onChange={e => updateActivity(a.id, { stage: e.target.value })} style={{ ...inp(), width: 100, fontSize: 10.5, fontWeight: done ? 700 : 500, color: done ? '#2E8B57' : NAVY, background: done ? '#eafaf1' : '#fff' }}>
+                  {ACTIVITY_STAGES.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+                <input value={a.notes} onChange={e => updateActivity(a.id, { notes: e.target.value })} placeholder="Notes" style={{ ...inp(), flex: 1, minWidth: 80, textDecoration: done ? 'line-through' : 'none', color: done ? SLATE : '#1a1a1a' }} />
+                <IconBtn danger title="Remove" onClick={() => removeActivity(a.id)}>✕</IconBtn>
+              </div>
+            )
+          })}
+        </SectionCard>
+
+        {/* meetings */}
+        <SectionCard title={`Meetings (${stats.meetings})`}
+          action={<button onClick={addMeeting} style={addBtnStyle}>+ Add meeting</button>}>
+          <div style={{ display: 'flex', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
+            {MEETING_TYPES.map(t => (
+              <div key={t} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: SLATE }}>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: TYPE_COLOR[t], display: 'inline-block' }} />
+                {t}: <b style={{ color: NAVY }}>{stats.byType[t] || 0}</b>
+              </div>
+            ))}
+          </div>
+          {week.meetings.length === 0 && <EmptyRow text="No meetings booked yet this week." />}
+          {week.meetings.map(m => {
+            const isAdminDay = m.day === 'Mon' || m.day === 'Fri'
+            return (
+              <div key={m.id} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '6px 0', borderBottom: '1px solid #f0f2f5', flexWrap: 'wrap' }}>
+                <input type="checkbox" checked={m.done} onChange={e => updateMeeting(m.id, { done: e.target.checked })} />
+                <select value={m.day} onChange={e => updateMeeting(m.id, { day: e.target.value })} style={{ ...inp(), width: 62, background: isAdminDay ? '#fef3e2' : '#fff' }}>
+                  {DAYS.map(d => <option key={d} value={d}>{d}</option>)}
+                </select>
+                <input type="time" value={m.time} onChange={e => updateMeeting(m.id, { time: e.target.value })} style={{ ...inp(), width: 92 }} />
+                <select value={m.type} onChange={e => updateMeeting(m.id, { type: e.target.value })} style={{ ...inp(), width: 84 }}>
+                  {MEETING_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+                <input value={m.notes} onChange={e => updateMeeting(m.id, { notes: e.target.value })} placeholder="Who / what" style={{ ...inp(), flex: 1, minWidth: 80, textDecoration: m.done ? 'line-through' : 'none', color: m.done ? SLATE : '#1a1a1a' }} />
+                {isAdminDay && <span title="Mon & Fri are meeting-free admin/follow-up days" style={{ fontSize: 14 }}>⚠️</span>}
+                <IconBtn danger title="Remove" onClick={() => removeMeeting(m.id)}>✕</IconBtn>
+              </div>
+            )
+          })}
+        </SectionCard>
+      </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 16 }}>
         {/* lodgements */}
