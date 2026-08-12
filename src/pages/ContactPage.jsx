@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { fmtDate } from '../lib/dateUtils'
+import { getClientBroker } from '../lib/settings'
 import { Panel, PanelTitle } from '../components/UI'
 
 const TYPE_LABELS = { Ind: 'Individual', Co: 'Company', Tru: 'Trust', SMSF: 'SMSF', Part: 'Partnership' }
@@ -133,49 +134,53 @@ const TEMPLATES = [
     id: 'annual_review',
     label: 'Annual Review',
     subject: (name) => `Annual Review — ${name}`,
-    body: (name, contacts) => {
+    body: (name, contacts, broker) => {
       const first = contacts.filter(c => c.type === 'Ind' && c.first).map(c => c.first)[0] || name
-      return `Hi ${first},\n\nI hope this message finds you well.\n\nAs part of our commitment to keeping your financial strategy on track, I'd like to schedule your annual review. This is a great opportunity for us to revisit your current lending arrangements, discuss any changes in your circumstances, and ensure your portfolio continues to work as hard as possible for you.\n\nWould you be available for a catch-up in the coming weeks? Please feel free to suggest a time that works for you, or I'm happy to arrange a time that suits.\n\nLooking forward to connecting.\n\nWarm regards,\nCameron Finlayson\nRion Capital`
+      return `Hi ${first},\n\nI hope this message finds you well.\n\nAs part of our commitment to keeping your financial strategy on track, I'd like to schedule your annual review. This is a great opportunity for us to revisit your current lending arrangements, discuss any changes in your circumstances, and ensure your portfolio continues to work as hard as possible for you.\n\nWould you be available for a catch-up in the coming weeks? Please feel free to suggest a time that works for you, or I'm happy to arrange a time that suits.\n\nLooking forward to connecting.\n\nWarm regards,\n${broker.name || '[Broker Name]'}\nRion Capital`
     }
   },
   {
     id: 'fixed_expiry',
     label: 'Fixed Rate Expiry',
     subject: (name) => `Your Fixed Rate Expiry — Action Required — ${name}`,
-    body: (name, contacts) => {
+    body: (name, contacts, broker) => {
       const first = contacts.filter(c => c.type === 'Ind' && c.first).map(c => c.first)[0] || name
-      return `Hi ${first},\n\nI'm reaching out as your fixed interest rate period is approaching its expiry date.\n\nAt the end of your fixed term, your loan will automatically revert to the standard variable rate, which may result in a change to your repayments. I'd like to connect with you to review your options before this happens — whether that's re-fixing, moving to variable, or splitting your loan.\n\nI'll be in touch shortly to arrange a time, but please don't hesitate to reach out if you'd like to discuss sooner.\n\nKind regards,\nCameron Finlayson\nRion Capital`
+      return `Hi ${first},\n\nI'm reaching out as your fixed interest rate period is approaching its expiry date.\n\nAt the end of your fixed term, your loan will automatically revert to the standard variable rate, which may result in a change to your repayments. I'd like to connect with you to review your options before this happens — whether that's re-fixing, moving to variable, or splitting your loan.\n\nI'll be in touch shortly to arrange a time, but please don't hesitate to reach out if you'd like to discuss sooner.\n\nKind regards,\n${broker.name || '[Broker Name]'}\nRion Capital`
     }
   },
   {
     id: 'io_expiry',
     label: 'Interest Only Expiry',
     subject: (name) => `Interest Only Period Expiry — ${name}`,
-    body: (name, contacts) => {
+    body: (name, contacts, broker) => {
       const first = contacts.filter(c => c.type === 'Ind' && c.first).map(c => c.first)[0] || name
-      return `Hi ${first},\n\nI wanted to flag that your interest only (IO) period is coming to an end.\n\nOnce your IO term expires, your loan will automatically switch to principal and interest repayments, which will increase your monthly repayments. I'd like to talk through your options with you — including the possibility of extending your IO term or restructuring your facility.\n\nPlease reach out at your earliest convenience so we can plan ahead and avoid any surprises.\n\nWarm regards,\nCameron Finlayson\nRion Capital`
+      return `Hi ${first},\n\nI wanted to flag that your interest only (IO) period is coming to an end.\n\nOnce your IO term expires, your loan will automatically switch to principal and interest repayments, which will increase your monthly repayments. I'd like to talk through your options with you — including the possibility of extending your IO term or restructuring your facility.\n\nPlease reach out at your earliest convenience so we can plan ahead and avoid any surprises.\n\nWarm regards,\n${broker.name || '[Broker Name]'}\nRion Capital`
     }
   },
   {
     id: 'general',
     label: 'General Enquiry',
     subject: (name) => `Following Up — ${name}`,
-    body: (name, contacts) => {
+    body: (name, contacts, broker) => {
       const first = contacts.filter(c => c.type === 'Ind' && c.first).map(c => c.first)[0] || name
-      return `Hi ${first},\n\nI hope you're doing well. I wanted to follow up and see if there's anything I can help you with at this stage.\n\nPlease don't hesitate to reach out if you have any questions or would like to discuss your current arrangements.\n\nKind regards,\nCameron Finlayson\nRion Capital`
+      return `Hi ${first},\n\nI hope you're doing well. I wanted to follow up and see if there's anything I can help you with at this stage.\n\nPlease don't hesitate to reach out if you have any questions or would like to discuss your current arrangements.\n\nKind regards,\n${broker.name || '[Broker Name]'}\nRion Capital`
     }
   }
 ]
 
 function EmailModal({ client, onClose }) {
+  // Same source every other email touchpoint reads from — the broker
+  // assigned to this client (Client Dashboard > Assigned broker), falling
+  // back to the settings-wide default until one's assigned.
+  const broker = getClientBroker(client)
   const [template, setTemplate] = useState(TEMPLATES[0])
   const [subject, setSubject] = useState(TEMPLATES[0].subject(client.name))
-  const [body, setBody] = useState(TEMPLATES[0].body(client.name, client.contacts || []))
+  const [body, setBody] = useState(TEMPLATES[0].body(client.name, client.contacts || [], broker))
 
   function selectTemplate(t) {
     setTemplate(t)
     setSubject(t.subject(client.name))
-    setBody(t.body(client.name, client.contacts || []))
+    setBody(t.body(client.name, client.contacts || [], broker))
   }
 
   const emails = (client.contacts || []).filter(c => c.email).map(c => c.email)

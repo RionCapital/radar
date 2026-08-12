@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { calcRepayment } from '../lib/dateUtils'
-import { getCurrentUser } from '../lib/settings'
+import { getClientBroker } from '../lib/settings'
 import { LOGO_DATA_URI, sendEmail, downloadEml, emailHeader, emailFooter } from '../lib/emailUtils'
 
 const NAVY = '#3D4F6B'
@@ -91,13 +91,13 @@ function AnnualReview({ client, onBack, logNote }) {
   const contacts = client.contacts || []
   const loans = client.loans || []
   const securities = client.securities || []
-  const currentUser = getCurrentUser()
+  const assignedBroker = getClientBroker(client)
 
   const defaultGreeting = contactGreeting(contacts) || client.name || ''
 
-  const [brokerName, setBrokerName] = useState(currentUser?.name || '')
-  const [brokerPhone, setBrokerPhone] = useState(currentUser?.phone || '')
-  const [brokerEmail, setBrokerEmail] = useState(currentUser?.email || '')
+  const [brokerName, setBrokerName] = useState(assignedBroker.name)
+  const [brokerPhone, setBrokerPhone] = useState(assignedBroker.phone)
+  const [brokerEmail, setBrokerEmail] = useState(assignedBroker.email)
   const [reviewDate, setReviewDate] = useState(new Date().toISOString().slice(0, 10))
   const [notes, setNotes] = useState('')
   const [sending, setSending] = useState(null)
@@ -543,10 +543,11 @@ function ExpiryEmail({ client, onBack, expiryType: initialExpiryType, logNote })
   const contacts = client.contacts || []
   const loans = client.loans || []
   const greeting = contactGreeting(contacts) || client.name || ''
+  const assignedBroker = getClientBroker(client)
 
   const [expiryType, setExpiryType] = useState(initialExpiryType)
-  const [brokerName, setBrokerName] = useState('')
-  const [brokerPhone, setBrokerPhone] = useState('')
+  const [brokerName, setBrokerName] = useState(assignedBroker.name)
+  const [brokerPhone, setBrokerPhone] = useState(assignedBroker.phone)
   const [selectedLoan, setSelectedLoan] = useState(0)
   const [notes, setNotes] = useState('')
 
@@ -696,8 +697,9 @@ function MaturityEmail({ client, onBack, logNote }) {
   const contacts = client.contacts || []
   const loans = client.loans || []
   const greeting = contactGreeting(contacts) || client.name || ''
-  const [brokerName, setBrokerName] = useState('')
-  const [brokerPhone, setBrokerPhone] = useState('')
+  const assignedBroker = getClientBroker(client)
+  const [brokerName, setBrokerName] = useState(assignedBroker.name)
+  const [brokerPhone, setBrokerPhone] = useState(assignedBroker.phone)
   const [selectedLoan, setSelectedLoan] = useState(0)
   const [notes, setNotes] = useState('')
   const loan = loans[selectedLoan] || {}
@@ -802,8 +804,9 @@ function MaturityEmail({ client, onBack, logNote }) {
 function GeneralEmail({ client, onBack, logNote }) {
   const contacts = client.contacts || []
   const greeting = contactGreeting(contacts) || client.name || ''
-  const [brokerName, setBrokerName] = useState('')
-  const [brokerPhone, setBrokerPhone] = useState('')
+  const assignedBroker = getClientBroker(client)
+  const [brokerName, setBrokerName] = useState(assignedBroker.name)
+  const [brokerPhone, setBrokerPhone] = useState(assignedBroker.phone)
   const [subject, setSubject] = useState('')
   const [para1, setPara1] = useState('')
   const [para2, setPara2] = useState('')

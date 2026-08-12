@@ -125,3 +125,36 @@ export function getCurrentUser() {
     return s ? JSON.parse(s) : null
   } catch { return null }
 }
+
+// Every active team member is a candidate to be assigned as a client's
+// broker — Settings > Team Members is the single place these are managed.
+export function getBrokerOptions(settingsArg) {
+  const settings = settingsArg || loadSettings()
+  return (settings.users || []).filter(u => u.active !== false)
+}
+
+// The single source of truth for "whose contact details should appear on
+// this client's emails". Every email touchpoint (Annual Review, Fixed/IO
+// Expiry, Maturity, General, Property Review, and the quick templates on
+// the Contacts page) should resolve broker name/phone/email through this
+// function rather than reading getCurrentUser() (whoever happens to be
+// logged in when the email is sent, which is wrong the moment more than
+// one person can send from an account) or hardcoding a name. Reads the
+// broker assigned to this specific client (client.brokerId, set from the
+// Client Dashboard or bulk-assigned in Settings > Team Members) and falls
+// back to the settings-wide default broker for any client that hasn't
+// been assigned one yet, so nothing breaks before every client is triaged.
+export function getClientBroker(client, settingsArg) {
+  const settings = settingsArg || loadSettings()
+  const users = settings.users || []
+  const assigned = client?.brokerId ? users.find(u => u.id === client.brokerId && u.active !== false) : null
+  if (assigned) {
+    return { id: assigned.id, name: assigned.name || '', email: assigned.email || '', phone: assigned.phone || '' }
+  }
+  return {
+    id: null,
+    name: settings.brokerName || '',
+    email: settings.brokerEmail || '',
+    phone: settings.brokerPhone || settings.brokerMobile || '',
+  }
+}

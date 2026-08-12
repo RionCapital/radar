@@ -8,11 +8,13 @@ const CardTitle = ({ children }) => <div style={{ fontSize:11, fontWeight:600, c
 
 const BLANK_USER = { id:'', name:'', email:'', password:'', phone:'', role:'broker', active:true }
 
-export default function AdminSettings() {
+export default function AdminSettings({ clients, onUpdateClients }) {
   const navigate = useNavigate()
   const currentUser = getCurrentUser()
   const isAdmin = currentUser?.role === 'admin'
   const [settings, setSettings] = useState(() => loadSettings())
+  const [bulkBrokerId, setBulkBrokerId] = useState('')
+  const [bulkDone, setBulkDone] = useState('')
 
   // syncSettingsFromSupabase() already existed in lib/settings.js but was
   // never actually called anywhere — meaning a cleared cache would silently
@@ -68,6 +70,25 @@ export default function AdminSettings() {
     if (window.confirm('Remove this user?')) {
       setSettings(s => ({ ...s, users: (s.users||[]).filter(u => u.id!==id) }))
     }
+  }
+
+  // Bulk broker assignment — lets an admin appoint a broker to the whole
+  // back book at once (e.g. when a new broker joins), or just to clients
+  // nobody's claimed yet, rather than having to open every client
+  // individually. Client Dashboard still has the per-client picker for
+  // one-off reassignments later.
+  const unassignedClients = (clients || []).filter(c => !c.brokerId)
+  function bulkAssignBroker(onlyUnassigned) {
+    if (!bulkBrokerId) { alert('Select a broker first.'); return }
+    if (!onUpdateClients || !clients) return
+    const broker = (settings.users || []).find(u => u.id === bulkBrokerId)
+    if (!broker) return
+    const targetCount = onlyUnassigned ? unassignedClients.length : clients.length
+    if (targetCount === 0) { alert(onlyUnassigned ? 'Every client already has a broker assigned.' : 'No clients to assign.'); return }
+    if (!onlyUnassigned && !window.confirm(`Assign ${broker.name} to ALL ${clients.length} clients? This overwrites any existing broker assignments.`)) return
+    onUpdateClients(prev => prev.map(c => (onlyUnassigned ? !c.brokerId : true) ? { ...c, brokerId: bulkBrokerId } : c))
+    setBulkDone(`${broker.name} assigned to ${targetCount} client${targetCount!==1?'s':''}.`)
+    setTimeout(() => setBulkDone(''), 4000)
   }
 
   const TABS = [
@@ -321,6 +342,7 @@ export default function AdminSettings() {
 
         {/* Team Members — admin only */}
         {tab==='team' && isAdmin && (
+          <>
           <Card>
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
               <CardTitle style={{ margin:0 }}>Team Members</CardTitle>
@@ -412,6 +434,31 @@ export default function AdminSettings() {
               </div>
             )}
           </Card>
+
+          <Card style={{ marginTop:16 }}>
+            <CardTitle>Client broker assignments</CardTitle>
+            <div style={{ fontSize:11, color:'#7A8090', marginBottom:12, lineHeight:1.5 }}>
+              Every email sent from a client's page (Annual Review, fixed/IO expiry alerts, maturity notices, property review outcomes) uses the broker assigned to that client — falling back to the default broker above until one's assigned. Assign here in bulk, or per-client from that client's dashboard.
+            </div>
+            <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
+              <select style={{ ...inp, width:220 }} value={bulkBrokerId} onChange={e => setBulkBrokerId(e.target.value)}>
+                <option value="">Select a broker...</option>
+                {(settings.users||[]).filter(u => u.active!==false).map(u => (
+                  <option key={u.id} value={u.id}>{u.name}{u.role==='admin' ? ' (Admin)' : ''}</option>
+                ))}
+              </select>
+              <button onClick={() => bulkAssignBroker(true)}
+                style={{ fontSize:12, padding:'7px 14px', borderRadius:7, border:`1px solid #3D4F6B`, background:'#fff', color:'#3D4F6B', fontWeight:600, cursor:'pointer' }}>
+                Assign to unassigned clients ({unassignedClients.length})
+              </button>
+              <button onClick={() => bulkAssignBroker(false)}
+                style={{ fontSize:12, padding:'7px 14px', borderRadius:7, border:'none', background:'#3D4F6B', color:'#fff', fontWeight:600, cursor:'pointer' }}>
+                Assign to ALL clients ({(clients||[]).length})
+              </button>
+              {bulkDone && <span style={{ fontSize:11, color:'#22c55e', fontWeight:600 }}>✓ {bulkDone}</span>}
+            </div>
+          </Card>
+          </>
         )}
 
         {/* ── Data Management ── */}

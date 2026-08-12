@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { getCurrentUser } from '../lib/settings'
+import { getClientBroker } from '../lib/settings'
 import { calcRepayment } from '../lib/dateUtils'
 import { LOGO_DATA_URI, sendEmail, downloadEml, emailHeader, emailFooter } from '../lib/emailUtils'
 
@@ -46,10 +46,10 @@ export default function SecurityReviewEmail({ clients, updateClient }) {
     return direct || crossed
   })
 
-  const user = getCurrentUser()
-  const brokerName = user?.name || ''
-  const brokerPhone = user?.phone || ''
-  const brokerEmail = user?.email || ''
+  const assignedBroker = getClientBroker(client)
+  const [brokerName, setBrokerName] = useState(assignedBroker.name)
+  const [brokerPhone, setBrokerPhone] = useState(assignedBroker.phone)
+  const [brokerEmail, setBrokerEmail] = useState(assignedBroker.email)
 
   const contactGreeting = () => {
     const contacts = (client?.contacts || []).filter(c => c.type === 'Ind' || (!c.type && c.name))
@@ -315,6 +315,21 @@ export default function SecurityReviewEmail({ clients, updateClient }) {
             <input style={{ ...inp, flex: 2 }} placeholder="email@example.com" value={addEmail} onChange={e => setAddEmail(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && addRecipient()} />
             <button onClick={addRecipient} style={{ padding: '5px 10px', borderRadius: 6, border: 'none', background: NAVY, color: '#fff', fontSize: 11, cursor: 'pointer' }}>+</button>
+          </div>
+        </Section>
+
+        <Section title="Broker details">
+          <div style={{ marginBottom: 8 }}>
+            {label('Broker name')}
+            <input style={inp} value={brokerName} onChange={e => setBrokerName(e.target.value)} placeholder="Cameron Finlayson" />
+          </div>
+          <div style={{ marginBottom: 8 }}>
+            {label('Broker phone')}
+            <input style={inp} value={brokerPhone} onChange={e => setBrokerPhone(e.target.value)} placeholder="0400 000 000" />
+          </div>
+          <div>
+            {label('Broker email')}
+            <input style={inp} type="email" value={brokerEmail} onChange={e => setBrokerEmail(e.target.value)} placeholder="broker@rion-capital.com.au" />
           </div>
         </Section>
 

@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { totalBal, totalAmt, pwBal, commBal, fmt, calcOpp, ini, LOAN_TYPES, BANKS } from '../lib/data'
+import { loadSettings, getBrokerOptions } from '../lib/settings'
 import { sbLoadMarketing, sbSaveMarketing } from '../lib/supabase'
 import { fmtDate, dateCellStyle, loanFlag, effectiveRpmt, calcRepayment } from '../lib/dateUtils'
 import { Panel, PanelTitle, EditBtn, SaveBtn, CancelBtn, ActionBtn, FieldGroup, Pill, DateInput } from '../components/UI'
@@ -352,6 +353,9 @@ export default function ClientDashboard({ clients, updateClient }) {
 
   if (!client) return <div style={{padding:24}}>Client not found.</div>
 
+  const settings = loadSettings()
+  const brokerOptions = getBrokerOptions(settings)
+
   const bal = totalBal(client), amt = totalAmt(client)
   const pw = pwBal(client), comm = commBal(client)
   const { criteria } = calcOpp(client)
@@ -449,6 +453,23 @@ export default function ClientDashboard({ clients, updateClient }) {
                     style={{fontSize:10,padding:'2px 8px',borderRadius:6,border:'0.5px solid rgba(218,64,141,0.5)',background:'transparent',color:'var(--spk)',cursor:'pointer'}}>Update</button>
                 </div>
               )}
+            </div>
+            {/* Assigned broker — drives whose name/phone/email appear on every
+                email sent to this client (Annual Review, expiry/maturity
+                alerts, property review outcomes). Changing it here takes
+                effect on the next email sent; existing sent emails aren't
+                retroactively changed. */}
+            <div style={{background:'rgba(255,255,255,0.08)',borderRadius:8,padding:'8px 12px',marginTop:8}}>
+              <div style={{fontSize:10,color:'var(--sbl)',marginBottom:4}}>Assigned broker</div>
+              <select
+                value={client.brokerId || ''}
+                onChange={e=>updateClient(client.name, c=>({...c, brokerId: e.target.value || null}))}
+                style={{fontSize:11,padding:'4px 6px',borderRadius:6,border:'0.5px solid rgba(255,255,255,0.2)',background:'rgba(255,255,255,0.1)',color:'#fff',width:'100%',cursor:'pointer'}}>
+                <option value="">Default{settings.brokerName ? ` (${settings.brokerName})` : ''}</option>
+                {brokerOptions.map(u => (
+                  <option key={u.id} value={u.id}>{u.name}{u.role==='admin' ? ' (Admin)' : ''}</option>
+                ))}
+              </select>
             </div>
           </div>
           {/* Balances */}
