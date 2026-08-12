@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { totalBal, fmt } from '../lib/data'
+import { totalBal, fmt, liveOppTotal } from '../lib/data'
 import { fmtDate, rollingYTD, quarterlyIncome, expiryBadge, daysUntil } from '../lib/dateUtils'
 import { Panel, PanelTitle, DayBadge } from '../components/UI'
 import { sbSaveTicked, sbLoadTicked } from '../lib/supabase'
@@ -131,7 +131,7 @@ function buildAnnualRows(clients) {
         acc: loan.acc || '—',
         balance: loan.balance || 0,
         days: c.days,
-        score: c.score || 0,
+        score: liveOppTotal(c),
       }
     })
 }
@@ -148,7 +148,7 @@ function buildFixedRows(clients) {
         acc: l.acc || '—',
         balance: l.balance || 0,
         days: c.days || 0,
-        score: c.score || 0,
+        score: liveOppTotal(c),
         expiryDate: l.fixed,
       })
     })
@@ -168,7 +168,7 @@ function buildIORows(clients) {
         acc: l.acc || '—',
         balance: l.balance || 0,
         days: c.days || 0,
-        score: c.score || 0,
+        score: liveOppTotal(c),
         expiryDate: l.io,
       })
     })
@@ -200,7 +200,7 @@ function buildMaturingRows(clients) {
         loanType: l.type || '',
         balance: l.balance || 0,
         days: c.days || 0,
-        score: c.score || 0,
+        score: liveOppTotal(c),
         expiryDate: l.maturity,
       })
     })

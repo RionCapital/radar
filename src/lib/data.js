@@ -205,3 +205,20 @@ export function calcOpp(c) {
   ];
   return { criteria, total: criteria.filter(o => o.met).reduce((s, o) => s + o.score, 0) || c.score || 0 };
 }
+
+// The one true "current opportunity score" for a client — calcOpp()'s
+// auto-detected criteria, with any manual per-criterion override
+// (client.manualOpp, set on the Opportunity Score page) taking precedence.
+// This is exactly what Client Dashboard and the Opportunity Score page
+// already compute inline to show their score — centralised here so other
+// screens (the Dashboard's Opportunity Radar panels) can show the same
+// number instead of reading the stale client.score field, which is only
+// ever written when someone opens that specific client's Opportunity
+// Score page and clicks "Save score" — meaning it stays 0 for any client
+// nobody has manually visited, even though the real, live score is
+// already correct and visible everywhere else.
+export function liveOppTotal(c) {
+  const { criteria } = calcOpp(c);
+  const manualOpp = c.manualOpp || {};
+  return criteria.reduce((s, o) => s + (manualOpp[o.label] !== undefined ? manualOpp[o.label] : (o.met ? o.score : 0)), 0);
+}
