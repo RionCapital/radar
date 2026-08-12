@@ -196,7 +196,7 @@ export function calcOpp(c) {
   const criteria = [
     { label: 'Business owner', score: 5, met: c.stream === 'Commercial' },
     { label: 'Investor', score: 5, met: c.loans.some(l => l.type && l.type.includes('Inv')) },
-    { label: 'Loans older than 2 years', score: 0, met: c.days > 730 },
+    { label: 'Loans older than 2 years', score: 5, met: c.days > 730 },
     { label: 'Upcoming maturity', score: 5, met: c.loans.some(l => l.fixed && l.fixed.length > 0) },
     { label: 'Upcoming IO term expiry', score: 5, met: c.loans.some(l => l.io && l.io.length > 0) },
     { label: 'Upcoming balloons', score: 5, met: c.loans.some(l => l.balloon && l.balloon.length > 0) },

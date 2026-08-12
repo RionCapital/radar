@@ -7,7 +7,7 @@ import { SaveBtn, CancelBtn } from '../components/UI'
 const CRITERIA_INFO = {
   'Business owner':           { desc: 'Client operates a business or is self-employed', max: 5 },
   'Investor':                 { desc: 'Client holds investment property or assets', max: 5 },
-  'Loans older than 2 years': { desc: 'Existing loans due for review or refinance consideration', max: 0 },
+  'Loans older than 2 years': { desc: 'Existing loans due for review or refinance consideration', max: 5 },
   'Upcoming maturity':        { desc: 'Fixed rate term expiring within 12 months', max: 5 },
   'Upcoming IO term expiry':  { desc: 'Interest only period expiring — potential P&I conversion', max: 5 },
   'Upcoming balloons':        { desc: 'Asset finance balloon payment approaching', max: 5 },

@@ -38,6 +38,22 @@ export default function SecurityReviewEmail({ clients, updateClient }) {
   const security = client?.securities?.[secIndex]
   const secNum = String(security?.num || secIndex + 1)
 
+  // Log a note to the client's contact history after the review email goes
+  // out — same convention EmailBuilder.jsx uses for the other templates.
+  // This page received `updateClient` as a prop already but never actually
+  // called it, so a sent Property Review email left no record on the
+  // client's Contact Notes & History at all.
+  function logEmailNote(templateLabel, recipientList, method) {
+    if (!updateClient || !client?.name) return
+    const recipNames = recipientList || 'client'
+    const note = {
+      id: Date.now(),
+      date: new Date().toISOString().slice(0, 10),
+      text: `📧 Email sent — ${templateLabel}. To: ${recipNames}. Method: ${method}.`
+    }
+    updateClient(client.name, c => ({ ...c, notes: [note, ...(c.notes || [])] }))
+  }
+
   // All active loans tied to this security (direct or cross-col)
   const linkedLoans = (client?.loans || []).filter(l => {
     if (l.closed) return false
@@ -254,13 +270,15 @@ export default function SecurityReviewEmail({ clients, updateClient }) {
   async function handleSend() {
     const to = recipients.map(r => r.email).join(', ')
     if (!to) { alert('Please add at least one recipient'); return }
-    const subject = `Property Review — ${security?.address || client?.name} — Rion Capital`
+    const templateLabel = `Property Review — ${security?.address || client?.name}`
+    const subject = `${templateLabel} — Rion Capital`
     const html = buildHtml()
     const payloadSize = new Blob([JSON.stringify({ to, subject, html, attachments })]).size
     const LIMIT = 3.5 * 1024 * 1024
     if (payloadSize > LIMIT) {
       if (window.confirm(`Email size (${(payloadSize/1024/1024).toFixed(1)}MB) is too large. Download as .eml for Outlook instead?`)) {
         downloadEml(to, subject, html, attachments)
+        logEmailNote(templateLabel, to, '.eml download')
       }
       return
     }
@@ -268,6 +286,7 @@ export default function SecurityReviewEmail({ clients, updateClient }) {
     try {
       await sendEmail(to, subject, html, brokerName, brokerEmail, attachments)
       setSending('sent')
+      logEmailNote(templateLabel, to, 'Direct send')
       setTimeout(() => setSending(null), 4000)
     } catch (err) {
       setSendError(err.message); setSending('error')
@@ -276,8 +295,10 @@ export default function SecurityReviewEmail({ clients, updateClient }) {
 
   function openOutlook() {
     const to = recipients.map(r => r.email).join(', ')
-    const subject = `Property Review — ${security?.address || client?.name} — Rion Capital`
+    const templateLabel = `Property Review — ${security?.address || client?.name}`
+    const subject = `${templateLabel} — Rion Capital`
     downloadEml(to, subject, buildHtml(), attachments)
+    logEmailNote(templateLabel, to, '.eml download')
   }
 
   if (!client) return <div style={{ padding: 32, color: '#c0392b' }}>Client not found.</div>
