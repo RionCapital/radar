@@ -787,13 +787,21 @@ function StampDutyAmountInput({ value, onCommit }) {
   )
 }
 
-function LiveRowCurrency({ label, value, onCommit, pink }) {
+function LiveRowCurrency({ label, value, onCommit, pink, highlight }) {
   const [editVal, setEditVal] = useState('')
   const [focused, setFocused] = useState(false)
   const display = focused ? editVal : (value ? `$${Number(value).toLocaleString()}` : '')
+  // `highlight` renders the whole row on a tinted background (currently only
+  // 'green', for cross-collateral security) so it visually stands out from
+  // the plain rows around it — distinct from `pink`, which only colours the
+  // input text (used for Purchase Price).
+  const highlightStyles = {
+    green: { bg:'#F0FDF4', fg:'#16a34a' },
+  }
+  const h = highlight ? highlightStyles[highlight] : null
   return (
-    <div style={rowWrap}>
-      <span style={rowLabel}>{label}</span>
+    <div style={h ? { ...rowWrap, background:h.bg, borderRadius:6, padding:'7px 10px', margin:'4px 0', borderBottom:'none' } : rowWrap}>
+      <span style={h ? { ...rowLabel, color:h.fg, fontWeight:700 } : rowLabel}>{label}</span>
       <input
         value={display}
         placeholder="—"
@@ -804,7 +812,7 @@ function LiveRowCurrency({ label, value, onCommit, pink }) {
           const num = editVal === '' ? '' : Number(editVal)
           if (num !== (value ?? '')) onCommit(num===''?null:num)
         }}
-        style={{ ...rowValueStyle(focused, pink), width:AMOUNT_COL_WIDTH, flexShrink:0 }}
+        style={{ ...rowValueStyle(focused, pink), ...(h ? { color:h.fg, fontWeight:700 } : {}), width:AMOUNT_COL_WIDTH, flexShrink:0 }}
       />
     </div>
   )
@@ -1162,10 +1170,19 @@ function calcFunding(strat, dealType) {
   // and only shown — when LMI is actually being capitalised.
   const capitaliseLMI = lmiIncluded && strat.lmiCapitalised !== false
   const loanFromLender = lvrBase * lvrPct + (capitaliseLMI ? lmi : 0)
-  const totalLVR = lvrBase ? (loanFromLender / lvrBase) : 0
   const showBaseLoan = capitaliseLMI && lmi > 0
   const baseLoan = loanFromLender - (capitaliseLMI ? lmi : 0)
   const baseLoanLVR = (showBaseLoan && lvrBase) ? (baseLoan / lvrBase) : 0
+
+  // Cross-collateral: an additional property/security pledged toward this
+  // same facility. It's security, not spend, so it deliberately does NOT
+  // fold into Total Costs / Surplus-Deficit — those stay "actual cash
+  // needed vs. available". It only widens the value the loan is measured
+  // against, so Total LVR comes out lower than Loan ÷ Purchase Price alone.
+  const crossCollateralIncluded = !!strat.includeCrossCollateral
+  const crossCollateralValue = crossCollateralIncluded ? n(strat.crossCollateralValue) : 0
+  const totalLVRBase = lvrBase + crossCollateralValue
+  const totalLVR = totalLVRBase ? (loanFromLender / totalLVRBase) : 0
 
   // Sale fees are entered as a percentage of the sale price (Cameron's
   // request) rather than a flat dollar figure.
@@ -1189,7 +1206,7 @@ function calcFunding(strat, dealType) {
     constructionCalc = { additionalPurchaseCosts, less20PercentLand, constructionFundsAvailable, constructionSurplusDeficit }
   }
 
-  return { fields, legals, settlementAdj, hasStampDuty, stampDuty, stampDutyEstimate, lmiIncluded, lmi, estimatedValue, lvrBase, totalCosts, loanFromLender, totalLVR, capitaliseLMI, showBaseLoan, baseLoan, baseLoanLVR, saleFeesAmount, netSaleProceeds, totalFundsAvailable, surplusDeficit, constructionCalc }
+  return { fields, legals, settlementAdj, hasStampDuty, stampDuty, stampDutyEstimate, lmiIncluded, lmi, estimatedValue, lvrBase, totalCosts, loanFromLender, totalLVR, crossCollateralIncluded, crossCollateralValue, capitaliseLMI, showBaseLoan, baseLoan, baseLoanLVR, saleFeesAmount, netSaleProceeds, totalFundsAvailable, surplusDeficit, constructionCalc }
 }
 
 function fmtM(v) { return v==='' || v===undefined || v===null || isNaN(v) ? '—' : `$${Math.round(Number(v)).toLocaleString()}` }
@@ -1463,6 +1480,10 @@ function StrategyTab({ deal, updateDeal }) {
 
                 {strat.lmiIncluded && <LiveRowCurrency label="LMI Est." value={strat.lmi} onCommit={v=>s('lmi', v)} />}
 
+                {strat.includeCrossCollateral && (
+                  <LiveRowCurrency label="Additional Security (Cross Collateral Equity)" value={strat.crossCollateralValue} onCommit={v=>s('crossCollateralValue', v)} highlight="green" />
+                )}
+
                 <ComputedRow label="Total Costs" value={fmtM(calc.totalCosts)} tone="navy" />
                 <LoanAmountRow
                   label="Loan From Lender"
@@ -1472,6 +1493,9 @@ function StrategyTab({ deal, updateDeal }) {
                   lmiAddOn={calc.capitaliseLMI ? calc.lmi : 0}
                 />
                 {calc.showBaseLoan && <ComputedRow label="Base Loan (excl. capitalised LMI)" value={fmtM(calc.baseLoan)} tone="yellow" side={calc.lvrBase ? `${(calc.baseLoanLVR*100).toFixed(1)}% LVR` : null} />}
+                {calc.crossCollateralIncluded && (
+                  <ComputedRow label="Total LVR (incl. cross-collateral)" value={`${(calc.totalLVR*100).toFixed(1)}%`} tone="green" />
+                )}
 
                 <div style={{ marginTop:10, paddingTop:10, borderTop:'1px solid #e8eaed' }}>
                   <LiveRowCurrency label="Equity" value={strat.equity} onCommit={v=>s('equity', v)} />
@@ -1562,6 +1586,10 @@ function StrategyTab({ deal, updateDeal }) {
                   <LiveRowCheckbox label="Also selling an existing property as part of this deal?" checked={strat.includeSaleProceeds} onChange={v=>s('includeSaleProceeds', v)} />
                   {dealType === 'Construction' && (
                     <LiveRowCheckbox label="Include construction funding portion (drawdown vs. fixed price contract)" checked={strat.includeConstructionFunding} onChange={v=>s('includeConstructionFunding', v)} />
+                  )}
+                  <LiveRowCheckbox label="Include Cross Collateralised Security?" checked={strat.includeCrossCollateral} onChange={v=>s('includeCrossCollateral', v)} />
+                  {strat.includeCrossCollateral && (
+                    <div style={{ fontSize:11, color:'#9ca3af', marginTop:2 }}>Adds an "Additional Security" value into the Total LVR calculation only — it doesn't change Total Costs or Surplus/(Deficit).</div>
                   )}
                 </div>
               </TabCard>
@@ -2497,6 +2525,9 @@ function SummaryTab({ deal }) {
         <TabCard title="Funding Summary">
           <ComputedRow label="Total Costs" value={fmtM(calc.totalCosts)} tone="navy" />
           <ComputedRow label="Loan From Lender" value={fmtM(calc.loanFromLender)} tone="navy" side={calc.lvrBase ? `${(calc.totalLVR*100).toFixed(1)}% LVR` : null} />
+          {calc.crossCollateralIncluded && (
+            <ComputedRow label="Total LVR (incl. cross-collateral)" value={`${(calc.totalLVR*100).toFixed(1)}%`} tone="green" />
+          )}
           <ComputedRow label="Total Funds Available" value={fmtM(calc.totalFundsAvailable)} tone="navy" />
           <ComputedRow label="Surplus / (Deficit)" value={fmtM(calc.surplusDeficit)} tone={calc.surplusDeficit < 0 ? 'red' : 'green'} big />
         </TabCard>
