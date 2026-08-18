@@ -4,7 +4,7 @@ import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { loadDeals, syncDealsFromSupabase } from '../lib/deals'
 import { loadClients } from '../lib/data'
-import { loadSettings } from '../lib/settings'
+import { loadSettings, getDealStages } from '../lib/settings'
 import { RION_LOGO_PNG } from '../lib/logoBase64'
 import {
   ITEM_TYPES, TAX_RATES, DEFAULT_ACCOUNT, taxRateFraction,
@@ -119,9 +119,13 @@ export default function DirectIncome() {
   const monthEntries = entries.filter(e => e.month === month)
   const monthClosed = monthEntries.some(e => e.closed)
 
+  // Stage names/order come from Settings > CRM > Stages — "Settled" is
+  // resolved by its permanent id so this keeps recognising settled deals
+  // even if that stage gets renamed or reordered.
+  const settledDisplay = useMemo(() => getDealStages(loadSettings()).find(s => s.id === 'settled')?.display, [])
   const settledDealsThisMonth = useMemo(() =>
-    deals.filter(d => d.Status === '7. Settled' && d['Month of Settlement'] === month),
-  [deals, month])
+    deals.filter(d => d.Status === settledDisplay && d['Month of Settlement'] === month),
+  [deals, month, settledDisplay])
 
   function addRow() {
     if (monthClosed) return

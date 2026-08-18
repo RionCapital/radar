@@ -2,7 +2,18 @@ import { useState, useEffect, useMemo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { loadClients } from '../lib/data'
 import { sbLoadMarketing, sbSaveMarketing } from '../lib/supabase'
-import { loadSettings, dealUpfrontCommission } from '../lib/settings'
+import { loadSettings, getDealStages, dealUpfrontCommission } from '../lib/settings'
+
+// Dot colour per CRM stage, keyed by permanent stage id (Settings > CRM >
+// Stages) rather than the editable label, so a rename doesn't lose its
+// colour. Anything not in this map (a brand-new custom stage) falls back
+// to the same neutral grey Discovery used to have.
+const STAGE_DOT_COLOR = {
+  discovery: '#94a3b8', strategy: '#60a5fa', 'pre-lodged': '#a78bfa',
+  lodged: '#fb923c', conditional: '#facc15', unconditional: '#4ade80',
+  settled: '#22c55e', withdrawn: '#f87171',
+}
+function stageDotColor(id) { return STAGE_DOT_COLOR[id] || '#94a3b8' }
 
 const C = {
   navy:    '#3D4F6B',
@@ -437,6 +448,12 @@ function ReferrerClientsPanel({ contact, rradarClients, allClients, onSave }) {
   const fmt  = v => `$${Math.round(v).toLocaleString()}`
   const fmtD = v => `$${Number(v).toFixed(2)}`
 
+  // Stage names/order come from Settings > CRM > Stages.
+  const dealStagesFull = useMemo(() => getDealStages(loadSettings()), [])
+  const settledDisplay = dealStagesFull.find(s => s.id === 'settled')?.display
+  const withdrawnDisplay = dealStagesFull.find(s => s.id === 'withdrawn')?.display
+  const stageIdByDisplay = useMemo(() => Object.fromEntries(dealStagesFull.map(s => [s.display, s.id])), [dealStagesFull])
+
   // ── Match clients 3 ways ──────────────────────────────────────────────────
   // 1. Rradar client has referrers[] array containing this referrer (from ClientDashboard picker)
   // 2. Marketing client override has referredBy matching referrer name
@@ -469,8 +486,8 @@ function ReferrerClientsPanel({ contact, rradarClients, allClients, onSave }) {
     } catch { return [] }
   }, [referrerName])
 
-  const settledDeals  = allCrmDeals.filter(d => d.Status === '7. Settled')
-  const inflightDeals = allCrmDeals.filter(d => d.Status !== '7. Settled' && d.Status !== '8. Withdrawn')
+  const settledDeals  = allCrmDeals.filter(d => d.Status === settledDisplay)
+  const inflightDeals = allCrmDeals.filter(d => d.Status !== settledDisplay && d.Status !== withdrawnDisplay)
 
   // ── Commission per Rradar client ──────────────────────────────────────────
   function clientComm(rc) {
@@ -501,16 +518,6 @@ function ReferrerClientsPanel({ contact, rradarClients, allClients, onSave }) {
     .filter(rc => !clientSearch || rc.name.toLowerCase().includes(clientSearch.toLowerCase()))
     .slice(0, 8)
 
-  const STAGE_COLORS = {
-    '1. Discovery':          '#94a3b8',
-    '2. Strategy':      '#60a5fa',
-    '3. Pre-Lodged':    '#a78bfa',
-    '4. Lodged':        '#fb923c',
-    '5. Conditional':   '#facc15',
-    '6. Unconditional': '#4ade80',
-    '7. Settled':       '#22c55e',
-    '8. Withdrawn':     '#f87171',
-  }
 
   const sHead = { fontSize: 13, fontWeight: 700, color: C.text, fontFamily: 'Montserrat,sans-serif',
     marginBottom: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -649,8 +656,7 @@ function ReferrerClientsPanel({ contact, rradarClients, allClients, onSave }) {
           )}
 
           {inflightDeals.map((d, i) => {
-            const SC = {'1. Discovery':'#94a3b8','2. Strategy':'#60a5fa','3. Pre-Lodged':'#a78bfa','4. Lodged':'#fb923c','5. Conditional':'#facc15','6. Unconditional':'#4ade80'}
-            const col = SC[d.Status] || '#94a3b8'
+            const col = stageDotColor(stageIdByDisplay[d.Status])
             return (
               <div key={i}
                 onClick={() => { sessionStorage.setItem('rion-from-marketing','1'); window.location.href=`/crm/deal/${encodeURIComponent(d['Transaction Name'])}` }}

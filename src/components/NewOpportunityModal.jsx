@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { loadDeals, saveDeals as libSaveDeals } from '../lib/deals'
 import { mapRradarContactToDealContact } from '../lib/data'
-
-const STAGES = ['1. Discovery','2. Strategy','3. Pre-Lodged','4. Lodged','5. Conditional','6. Unconditional','7. Settled','8. Withdrawn']
+import { loadSettings, getDealStages } from '../lib/settings'
 // Kept in sync with the same taxonomy in src/pages/DealPage.jsx — Category
 // drives which Transaction Types are valid. If this list changes, update it
 // in both places (no shared constants file yet).
@@ -55,6 +54,10 @@ function saveDeals(deals) {
 
 export default function NewOpportunityModal({ onClose, onCreated, prefillClientName = '' }) {
   const [clients] = useState(() => loadClients())
+  // Stage names/order come from Settings > CRM > Stages — read fresh each
+  // time the modal opens rather than hardcoded, so a new deal always
+  // starts on whatever the first stage currently is.
+  const [STAGES] = useState(() => getDealStages(loadSettings()).map(s => s.display))
 
   // Client selection
   const [clientMode, setClientMode] = useState(prefillClientName ? 'existing' : 'existing') // 'existing' | 'new'
@@ -69,7 +72,7 @@ export default function NewOpportunityModal({ onClose, onCreated, prefillClientN
   const [dealNumber, setDealNumber]       = useState('')   // e.g. "3" → auto-names "ClientName (3)"
   const [dealNameOverride, setDealNameOverride] = useState('')  // manual override of transaction name
   const [nameOverrideActive, setNameOverrideActive] = useState(false)
-  const [status, setStatus] = useState('1. Discovery')
+  const [status, setStatus] = useState(() => getDealStages(loadSettings()).map(s => s.display)[0])
   const [amount, setAmount] = useState('')
   const [category, setCategory] = useState('')
   const [transType, setTransType] = useState('')

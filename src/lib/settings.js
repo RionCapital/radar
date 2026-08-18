@@ -41,6 +41,26 @@ export const DEFAULT_SETTINGS = {
     settlementCount: 3,
     settlementDollar: 1000000,
   },
+  // CRM pipeline stages — editable in Settings > CRM > Stages. `id` is
+  // permanent and never shown; it's what every page uses internally to
+  // recognise a stage (e.g. "this deal is Settled") so a deal's Status
+  // keeps resolving correctly even after the stage is renamed or moved.
+  // `label` is the editable display text; the "N. " number prefix stored
+  // on deals is always derived from a stage's position in this list, never
+  // hand-typed, so renumbering after an add/reorder happens automatically.
+  dealStages: [
+    { id: 'discovery',     label: 'Discovery' },
+    { id: 'strategy',      label: 'Strategy' },
+    { id: 'pre-lodged',    label: 'Pre-Lodged' },
+    { id: 'lodged',        label: 'Lodged' },
+    { id: 'conditional',   label: 'Conditional' },
+    { id: 'unconditional', label: 'Unconditional' },
+    { id: 'settled',       label: 'Settled' },
+    { id: 'withdrawn',     label: 'Withdrawn' },
+  ],
+  // Email templates authored in Settings > CRM > Communication. Just
+  // storage for now — wiring these into actual send flows comes later.
+  emailTemplates: [],
   // User accounts — admins can manage these in Settings > Team
   users: [
     { id: '1', name: 'Cameron Finlayson', email: 'cameron@rion-capital.com', password: 'RionDash2', phone: '0400 000 000', role: 'admin', active: true },
@@ -157,4 +177,27 @@ export function getClientBroker(client, settingsArg) {
     email: settings.brokerEmail || '',
     phone: settings.brokerPhone || settings.brokerMobile || '',
   }
+}
+
+// The single source of truth for "what CRM pipeline stages exist, in what
+// order, and what are they currently called" — every page that shows or
+// filters deals by stage should read through this (or stageDisplay below)
+// rather than keeping its own hardcoded stage list, so a rename/add/
+// reorder made in Settings > CRM > Stages takes effect everywhere at once
+// instead of silently drifting out of sync. Adds a computed `display`
+// string ("N. Label") to each stage — this is exactly what gets stored in
+// a deal's Status field, so a stage's position in this list IS its number.
+export function getDealStages(settingsArg) {
+  const settings = settingsArg || loadSettings()
+  const stages = (settings.dealStages && settings.dealStages.length) ? settings.dealStages : DEFAULT_SETTINGS.dealStages
+  return stages.map((s, i) => ({ ...s, display: `${i + 1}. ${s.label}` }))
+}
+
+// Resolve a single stage's current display string ("7. Settled") by its
+// permanent id — for anywhere that needs to set or compare a deal's
+// Status against a *specific* stage (e.g. "mark this deal Settled")
+// regardless of what that stage is currently labelled or numbered.
+export function stageDisplay(id, settingsArg) {
+  const found = getDealStages(settingsArg).find(s => s.id === id)
+  return found ? found.display : ''
 }

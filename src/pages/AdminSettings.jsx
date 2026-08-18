@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { loadSettings, saveSettings, syncSettingsFromSupabase, DEFAULT_SETTINGS, getCurrentUser } from '../lib/settings'
+import { loadSettings, saveSettings, syncSettingsFromSupabase, DEFAULT_SETTINGS, getCurrentUser, getDealStages } from '../lib/settings'
+import { loadDeals, saveDeals as libSaveDeals } from '../lib/deals'
 import { icon_crm, icon_radar, icon_marketing, icon_planner, icon_studio } from '../lib/icons'
 
 const inp = { border:'1px solid #e8eaed', borderRadius:6, padding:'6px 10px', fontSize:12, width:'100%', boxSizing:'border-box', fontFamily:'inherit' }
@@ -31,7 +32,17 @@ const MENU_SYSTEM = [
 // A section with no settings yet still gets its own row in the menu (so the
 // structure is visible ahead of time) but shows a simple placeholder instead
 // of an empty tab bar.
-const PLACEHOLDER_SECTIONS = new Set(['crm', 'radar', 'marketing', 'studio', 'other'])
+const PLACEHOLDER_SECTIONS = new Set(['radar', 'marketing', 'studio', 'other'])
+
+// Stage ids that other pages depend on for real logic (Direct Income
+// commission recognition, the CRM Dashboard's settled totals, Marketing's
+// settled/inflight split, Planner's lodgement tracking) can still be
+// freely renamed here — every one of those pages resolves the current
+// display string by id (Settings > CRM > Stages is the source of truth),
+// so a rename here cascades to all of them automatically.
+function slugify(label) {
+  return (label || 'stage').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'stage'
+}
 
 export default function AdminSettings({ clients, onUpdateClients }) {
   const navigate = useNavigate()
@@ -117,11 +128,102 @@ export default function AdminSettings({ clients, onUpdateClients }) {
     setTimeout(() => setBulkDone(''), 4000)
   }
 
+  // ── CRM > Stages ────────────────────────────────────────────────────────
+  // Deals live in their own store (lib/deals.js), not in `settings` — a
+  // stage rename has to update both settings.dealStages (what a stage is
+  // called) and every deal currently sitting on that stage (so it doesn't
+  // silently fall off the pipeline). This is deliberately a separate save
+  // action from the page's main "Save changes" button, since it touches
+  // deal records, not just settings.
+  const [deals, setDealsLocal] = useState(() => loadDeals())
+  const savedStages = getDealStages(settings) // [{id,label,display}] from whatever's actually saved right now
+  const [stagesDraft, setStagesDraft] = useState(() => (settings.dealStages && settings.dealStages.length) ? settings.dealStages : DEFAULT_SETTINGS.dealStages)
+  const [newStageLabel, setNewStageLabel] = useState('')
+  const [stagesSaved, setStagesSaved] = useState(false)
+
+  function dealCountForStageId(id) {
+    const display = savedStages.find(s => s.id === id)?.display
+    return display ? deals.filter(d => d.Status === display).length : 0
+  }
+  function updateStageLabel(idx, label) {
+    setStagesDraft(list => list.map((s, i) => i === idx ? { ...s, label } : s))
+  }
+  function moveStage(idx, dir) {
+    setStagesDraft(list => {
+      const j = idx + dir
+      if (j < 0 || j >= list.length) return list
+      const copy = [...list]
+      ;[copy[idx], copy[j]] = [copy[j], copy[idx]]
+      return copy
+    })
+  }
+  function addStage() {
+    const label = newStageLabel.trim()
+    if (!label) return
+    const id = `${slugify(label)}-${Date.now().toString(36)}`
+    setStagesDraft(list => [...list, { id, label }])
+    setNewStageLabel('')
+  }
+  function removeStage(idx) {
+    const stage = stagesDraft[idx]
+    const count = dealCountForStageId(stage.id)
+    if (count > 0) {
+      alert(`Can't remove "${stage.label}" — ${count} deal${count!==1?'s':''} currently on this stage. Move ${count!==1?'them':'it'} to another stage first.`)
+      return
+    }
+    if (!window.confirm(`Remove the "${stage.label}" stage?`)) return
+    setStagesDraft(list => list.filter((_, i) => i !== idx))
+  }
+  // Saves the new stage list AND cascades any resulting rename/renumber to
+  // every deal currently on the old display string — so "Discovery" → "Lead"
+  // (or just reordering, which changes every later stage's number) shows up
+  // on existing deals immediately rather than only affecting new ones.
+  function saveStages() {
+    if (stagesDraft.length === 0) { alert('You need at least one stage.'); return }
+    const oldStages = getDealStages(settings)
+    const newDisplayById = {}
+    stagesDraft.forEach((s, i) => { newDisplayById[s.id] = `${i + 1}. ${s.label}` })
+
+    const renameMap = {}
+    oldStages.forEach(s => {
+      const newDisplay = newDisplayById[s.id]
+      if (newDisplay && newDisplay !== s.display) renameMap[s.display] = newDisplay
+    })
+
+    const newSettings = { ...settings, dealStages: stagesDraft.map(({ id, label }) => ({ id, label })) }
+    setSettings(newSettings)
+    saveSettings(newSettings)
+
+    if (Object.keys(renameMap).length) {
+      const freshDeals = loadDeals()
+      const migrated = freshDeals.map(d => renameMap[d.Status] ? { ...d, Status: renameMap[d.Status] } : d)
+      libSaveDeals(migrated)
+      setDealsLocal(migrated)
+    }
+    setStagesSaved(true)
+    setTimeout(() => setStagesSaved(false), 3000)
+  }
+
+  // ── CRM > Communication ────────────────────────────────────────────────
+  const [expandedTemplateId, setExpandedTemplateId] = useState(null)
+  function addTemplate() {
+    const id = Date.now().toString()
+    setSettings(s => ({ ...s, emailTemplates: [...(s.emailTemplates||[]), { id, name:'New template', subject:'', body:'' }] }))
+    setExpandedTemplateId(id)
+  }
+  function updateTemplate(id, patch) {
+    setSettings(s => ({ ...s, emailTemplates: (s.emailTemplates||[]).map(t => t.id===id ? {...t,...patch} : t) }))
+  }
+  function removeTemplate(id) {
+    if (!window.confirm('Delete this template?')) return
+    setSettings(s => ({ ...s, emailTemplates: (s.emailTemplates||[]).filter(t=>t.id!==id) }))
+  }
+
   // Which top tabs show depends on which menu section is selected. General
   // carries everything that used to be the whole page (Commission Rates,
   // Business Details, Team Members, Data Management); Planner keeps just
-  // its Targets tab; every other section is a placeholder until it has its
-  // own settings to show.
+  // its Targets tab; CRM has Stages + Communication; every other section is
+  // a placeholder until it has its own settings to show.
   const TABS_BY_SECTION = {
     general: [
       { id:'commissions', label:'Commission Rates' },
@@ -131,6 +233,10 @@ export default function AdminSettings({ clients, onUpdateClients }) {
     ],
     planner: [
       { id:'plannerTargets', label:'Planner Targets' },
+    ],
+    crm: [
+      { id:'stages', label:'Stages' },
+      { id:'communication', label:'Communication' },
     ],
   }
   const TABS = TABS_BY_SECTION[section] || []
@@ -253,6 +359,104 @@ export default function AdminSettings({ clients, onUpdateClients }) {
 
           {PLACEHOLDER_SECTIONS.has(section) && (
             <SectionPlaceholder label={sectionLabel} />
+          )}
+
+          {/* CRM > Stages */}
+          {section==='crm' && tab==='stages' && (
+            <Card style={{ marginBottom:16 }}>
+              <CardTitle>Pipeline stages</CardTitle>
+              <div style={{ fontSize:11, color:'#7A8090', marginBottom:14, lineHeight:1.5 }}>
+                Every deal moves through these stages in order — the numbering always matches the order below. Renaming a stage (e.g. "Discovery" → "Lead") updates every deal currently on it automatically; nothing needs to be re-entered. Use the arrows to reorder.
+              </div>
+              {stagesDraft.map((s, i) => {
+                const count = dealCountForStageId(s.id)
+                return (
+                  <div key={s.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'7px 0', borderBottom:'0.5px solid #f0f0f0' }}>
+                    <div style={{ display:'flex', flexDirection:'column', gap:1 }}>
+                      <button onClick={() => moveStage(i,-1)} disabled={i===0}
+                        style={{ width:20, height:16, fontSize:9, lineHeight:1, border:'1px solid #e8eaed', background:'#fff', borderRadius:'4px 4px 0 0', cursor: i===0?'default':'pointer', color: i===0?'#d1d5db':'#7A8090', padding:0 }}>▲</button>
+                      <button onClick={() => moveStage(i,1)} disabled={i===stagesDraft.length-1}
+                        style={{ width:20, height:16, fontSize:9, lineHeight:1, border:'1px solid #e8eaed', borderTop:'none', background:'#fff', borderRadius:'0 0 4px 4px', cursor: i===stagesDraft.length-1?'default':'pointer', color: i===stagesDraft.length-1?'#d1d5db':'#7A8090', padding:0 }}>▼</button>
+                    </div>
+                    <div style={{ width:22, textAlign:'right', fontSize:12, color:'#7A8090', fontWeight:600, flexShrink:0 }}>{i+1}.</div>
+                    <input style={{ ...inp, flex:1 }} value={s.label} onChange={e => updateStageLabel(i, e.target.value)} />
+                    <span style={{ fontSize:10, color:'#9ca3af', minWidth:74, textAlign:'right', flexShrink:0 }}>{count} deal{count!==1?'s':''}</span>
+                    <button onClick={() => removeStage(i)}
+                      style={{ fontSize:10, padding:'4px 10px', borderRadius:5, border:'1px solid #fecaca', background:'#fff', color:'#dc2626', cursor:'pointer', flexShrink:0 }}>
+                      Remove
+                    </button>
+                  </div>
+                )
+              })}
+              <div style={{ display:'flex', gap:8, marginTop:14 }}>
+                <input style={inp} placeholder="New stage name…" value={newStageLabel}
+                  onChange={e => setNewStageLabel(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addStage() } }} />
+                <button onClick={addStage} style={{ fontSize:12, padding:'7px 16px', borderRadius:7, border:'none', background:'#3D4F6B', color:'#fff', fontWeight:600, cursor:'pointer', whiteSpace:'nowrap' }}>
+                  + Add stage
+                </button>
+              </div>
+              <div style={{ marginTop:16, display:'flex', alignItems:'center', gap:10 }}>
+                <button onClick={saveStages} style={{ padding:'8px 20px', borderRadius:8, border:'none', background:'#EB99C2', color:'#fff', fontSize:12, fontWeight:600, cursor:'pointer' }}>
+                  Save stage changes
+                </button>
+                {stagesSaved && <span style={{ fontSize:11, color:'#22c55e', fontWeight:600 }}>✓ Saved — existing deals updated</span>}
+              </div>
+              <div style={{ marginTop:14, padding:'10px 12px', background:'#fef9c3', borderRadius:7, fontSize:11, color:'#78350f' }}>
+                💡 This button saves and migrates deals immediately — separate from the page's main "Save changes" button, since a rename here needs to update deal records at the same moment, not just settings.
+              </div>
+            </Card>
+          )}
+
+          {/* CRM > Communication */}
+          {section==='crm' && tab==='communication' && (
+            <Card>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
+                <CardTitle style={{ margin:0 }}>Email templates</CardTitle>
+                <button onClick={addTemplate}
+                  style={{ fontSize:11, padding:'5px 14px', borderRadius:7, border:'none', background:'#3D4F6B', color:'#fff', cursor:'pointer', fontWeight:600 }}>
+                  + Add template
+                </button>
+              </div>
+              <div style={{ fontSize:11, color:'#7A8090', marginBottom:14, lineHeight:1.5 }}>
+                Draft reusable email templates here. These aren't wired into a send flow yet — for now this is just where they live, ready to be plugged in.
+              </div>
+              {(settings.emailTemplates||[]).length === 0 && (
+                <div style={{ fontSize:11.5, color:'#9ca3af' }}>No templates yet — add one above to get started.</div>
+              )}
+              {(settings.emailTemplates||[]).map(t => {
+                const open = expandedTemplateId === t.id
+                return (
+                  <div key={t.id} style={{ border:'0.5px solid #e8eaed', borderRadius:8, marginBottom:10, overflow:'hidden' }}>
+                    <div onClick={() => setExpandedTemplateId(open ? null : t.id)}
+                      style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'10px 14px', cursor:'pointer', background:'#f8f9fa' }}>
+                      <div style={{ fontSize:12, fontWeight:600, color:'#2A3545' }}>{t.name || 'Untitled template'}</div>
+                      <span style={{ fontSize:10, color:'#7A8090' }}>{open ? '▲' : '▼'}</span>
+                    </div>
+                    {open && (
+                      <div style={{ padding:14 }}>
+                        <div style={{ marginBottom:10 }}>
+                          <div style={{ fontSize:10, color:'#64748b', marginBottom:3, fontWeight:600 }}>Template name</div>
+                          <input style={inp} value={t.name||''} onChange={e => updateTemplate(t.id, { name:e.target.value })} />
+                        </div>
+                        <div style={{ marginBottom:10 }}>
+                          <div style={{ fontSize:10, color:'#64748b', marginBottom:3, fontWeight:600 }}>Subject line</div>
+                          <input style={inp} value={t.subject||''} onChange={e => updateTemplate(t.id, { subject:e.target.value })} />
+                        </div>
+                        <div style={{ marginBottom:10 }}>
+                          <div style={{ fontSize:10, color:'#64748b', marginBottom:3, fontWeight:600 }}>Body</div>
+                          <textarea style={{ ...inp, minHeight:140, resize:'vertical', fontFamily:'inherit' }} value={t.body||''} onChange={e => updateTemplate(t.id, { body:e.target.value })} />
+                        </div>
+                        <button onClick={() => removeTemplate(t.id)}
+                          style={{ fontSize:11, padding:'5px 12px', borderRadius:6, border:'1px solid #fecaca', background:'#fff', color:'#dc2626', cursor:'pointer' }}>
+                          Delete template
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </Card>
           )}
 
           {/* Commission Rates */}

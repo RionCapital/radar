@@ -2,32 +2,35 @@ import React, { useState, useMemo, useRef, useEffect } from 'react'
 import ReactDOM from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { loadDeals, saveDeals as libSaveDeals, syncDealsFromSupabase } from '../lib/deals'
-import { loadSettings, calcUpfront, dealUpfrontCommission } from '../lib/settings'
+import { loadSettings, getDealStages, stageDisplay, calcUpfront, dealUpfrontCommission } from '../lib/settings'
 import { fmt } from '../lib/data'
 import CRMTopbar, { getBusinessDaysLeft, MONTH_NAMES } from '../components/CRMTopbar'
 import NewOpportunityModal from '../components/NewOpportunityModal'
 import { SettleModal, applySettlement } from '../components/SettleModal'
 
-const STAGES = ['1. Discovery','2. Strategy','3. Pre-Lodged','4. Lodged','5. Conditional','6. Unconditional','7. Settled','8. Withdrawn']
-const FORECAST_STAGES = STAGES
-const ACTIVE_STAGES = ['1. Discovery','2. Strategy','3. Pre-Lodged','4. Lodged','5. Conditional','6. Unconditional']
-
-// Forecast groupings per spec: 1-3 = Pre-lodged, 4-6 = Lodged, 7 = Settled standalone
-const DIVIDERS_AFTER = ['3. Pre-Lodged', '6. Unconditional']
-
-const STAGE_COLORS = {
-  '1. Discovery':          { bg:'#fee2e2', color:'#b91c1c', dot:'#ef4444' },
-  '2. Strategy':      { bg:'#fee2e2', color:'#b91c1c', dot:'#ef4444' },
-  '3. Pre-Lodged':    { bg:'#fee2e2', color:'#b91c1c', dot:'#ef4444' },
-  '4. Lodged':        { bg:'#dbeafe', color:'#1d4ed8', dot:'#3b82f6' },
-  '5. Conditional':   { bg:'#dbeafe', color:'#1d4ed8', dot:'#3b82f6' },
-  '6. Unconditional': { bg:'#dbeafe', color:'#1d4ed8', dot:'#3b82f6' },
-  '7. Settled':       { bg:'#dcfce7', color:'#15803d', dot:'#22c55e' },
-  '8. Withdrawn':     { bg:'#f3f4f6', color:'#4b5563', dot:'#9ca3af' },
+// Stage names/order now live in Settings > CRM > Stages (settings.dealStages)
+// rather than being hardcoded here — this palette just gives each stage a
+// colour, keyed by its permanent id so a rename doesn't lose its colour.
+// Any custom stage added in Settings that isn't one of these falls back to
+// a rotating default so it still gets *a* colour rather than none.
+const STAGE_COLOR_MAP = {
+  'discovery':     { bg:'#fee2e2', color:'#b91c1c', dot:'#ef4444' },
+  'strategy':      { bg:'#fee2e2', color:'#b91c1c', dot:'#ef4444' },
+  'pre-lodged':    { bg:'#fee2e2', color:'#b91c1c', dot:'#ef4444' },
+  'lodged':        { bg:'#dbeafe', color:'#1d4ed8', dot:'#3b82f6' },
+  'conditional':   { bg:'#dbeafe', color:'#1d4ed8', dot:'#3b82f6' },
+  'unconditional': { bg:'#dbeafe', color:'#1d4ed8', dot:'#3b82f6' },
+  'settled':       { bg:'#dcfce7', color:'#15803d', dot:'#22c55e' },
+  'withdrawn':     { bg:'#f3f4f6', color:'#4b5563', dot:'#9ca3af' },
 }
-
-// Forecast uses the same colour scheme
-const FORECAST_STAGE_COLORS = STAGE_COLORS
+const STAGE_COLOR_FALLBACKS = [
+  { bg:'#ede9fe', color:'#6d28d9', dot:'#8b5cf6' },
+  { bg:'#fce7f3', color:'#be185d', dot:'#ec4899' },
+  { bg:'#e0f2fe', color:'#0369a1', dot:'#0ea5e9' },
+]
+function stageColorFor(id, index) {
+  return STAGE_COLOR_MAP[id] || STAGE_COLOR_FALLBACKS[index % STAGE_COLOR_FALLBACKS.length]
+}
 
 const BAND_COLORS = {
   past:    { row:'#fafafa',  header:'#e8e8e8', text:'#5a6370',  label:'Past' },
@@ -71,12 +74,12 @@ function daysToDate(str) {
   return Math.round((target - today) / 86400000)
 }
 // Inline stage dropdown
-function StageDropdown({ deal, onChangeStage }) {
+function StageDropdown({ deal, onChangeStage, stages, stageColors }) {
   const [open, setOpen] = useState(false)
   const [pos, setPos] = useState({ top: 0, left: 0 })
   const ref = useRef(null)
   const portalRef = useRef(null)
-  const sc = STAGE_COLORS[deal.Status] || STAGE_COLORS['1. Discovery']
+  const sc = stageColors[deal.Status] || stageColors[stages[0]]
 
   useEffect(() => {
     if (!open) return
@@ -97,7 +100,7 @@ function StageDropdown({ deal, onChangeStage }) {
       const rect = ref.current.getBoundingClientRect()
       // flip upward if not enough space below
       const spaceBelow = window.innerHeight - rect.bottom
-      const dropH = STAGES.length * 33
+      const dropH = stages.length * 33
       const top = spaceBelow < dropH ? rect.top - dropH - 4 : rect.bottom + 4
       setPos({ top, left: rect.left })
     }
@@ -112,8 +115,8 @@ function StageDropdown({ deal, onChangeStage }) {
       </span>
       {open && ReactDOM.createPortal(
         <div ref={portalRef} style={{ position:'fixed', top:pos.top, left:pos.left, background:'#fff', borderRadius:8, border:'1px solid #e8eaed', boxShadow:'0 4px 24px rgba(0,0,0,0.15)', zIndex:9999, minWidth:170, overflow:'hidden' }}>
-          {STAGES.map(s => {
-            const ssc = STAGE_COLORS[s]
+          {stages.map(s => {
+            const ssc = stageColors[s]
             return (
               <div key={s} onClick={e => { e.stopPropagation(); onChangeStage(deal, s); setOpen(false) }}
                 style={{ padding:'7px 12px', fontSize:11, cursor:'pointer', background: s === deal.Status ? '#fdf0f6' : '#fff', color:'#2A3545', display:'flex', alignItems:'center', gap:6 }}
@@ -196,6 +199,21 @@ function MonthFilterDropdown({ allMonths, visibleMonths, onChange }) {
 }
 
 function ForecastPanel({ deals, settings }) {
+  // Stage names/order come from Settings > CRM > Stages — this panel gets
+  // its own copy of the same derivation the main CRM component uses, since
+  // it's a separate component (only `settings` is passed down as a prop,
+  // not the derived stage lists themselves).
+  const dealStagesFull = useMemo(() => getDealStages(settings), [settings])
+  const FORECAST_STAGES = useMemo(() => dealStagesFull.map(s => s.display), [dealStagesFull])
+  const FORECAST_STAGE_COLORS = useMemo(() => {
+    const map = {}
+    dealStagesFull.forEach((s, i) => { map[s.display] = stageColorFor(s.id, i) })
+    return map
+  }, [dealStagesFull])
+  const DIVIDERS_AFTER = useMemo(() => dealStagesFull.filter(s => s.id === 'pre-lodged' || s.id === 'unconditional').map(s => s.display), [dealStagesFull])
+  const settledDisplay = dealStagesFull.find(s => s.id === 'settled')?.display
+  const withdrawnDisplay = dealStagesFull.find(s => s.id === 'withdrawn')?.display
+
   const today = new Date()
   const cur = new Date(today.getFullYear(), today.getMonth(), 1)
   const months = [0,1,2,3].map(i => {
@@ -210,16 +228,16 @@ function ForecastPanel({ deals, settings }) {
     return { stage, totals, beyond }
   })
 
-  const colTotals = months.map((_,i) => stageRows.filter(r=>!['7. Settled','8. Withdrawn'].includes(r.stage)).reduce((s,r)=>s+r.totals[i],0))
-  const beyondTotal = stageRows.filter(r=>!['7. Settled','8. Withdrawn'].includes(r.stage)).reduce((s,r)=>s+r.beyond,0)
+  const colTotals = months.map((_,i) => stageRows.filter(r=>![settledDisplay,withdrawnDisplay].includes(r.stage)).reduce((s,r)=>s+r.totals[i],0))
+  const beyondTotal = stageRows.filter(r=>![settledDisplay,withdrawnDisplay].includes(r.stage)).reduce((s,r)=>s+r.beyond,0)
   function calcColUpfront(colIdx) {
-    return stageRows.filter(r=>!['7. Settled','8. Withdrawn'].includes(r.stage)).reduce((sum, r) => {
+    return stageRows.filter(r=>![settledDisplay,withdrawnDisplay].includes(r.stage)).reduce((sum, r) => {
       const colDeals = deals.filter(d => d.Status===r.stage && d['Month of Settlement']?.startsWith(months[colIdx]))
       return sum + colDeals.reduce((s,d) => s + dealUpfrontCommission(d), 0)
     }, 0)
   }
   function calcBeyondUpfront() {
-    return stageRows.filter(r=>!['7. Settled','8. Withdrawn'].includes(r.stage)).reduce((sum, r) => {
+    return stageRows.filter(r=>![settledDisplay,withdrawnDisplay].includes(r.stage)).reduce((sum, r) => {
       const bDeals = deals.filter(d => d.Status===r.stage && d['Month of Settlement'] && !months.some(m=>d['Month of Settlement'].startsWith(m)))
       return sum + bDeals.reduce((s,d) => s + dealUpfrontCommission(d), 0)
     }, 0)
@@ -229,11 +247,11 @@ function ForecastPanel({ deals, settings }) {
   // negotiated override if set), but for deals that have actually settled
   // in that month rather than ones still moving through the pipeline.
   function calcColActual(colIdx) {
-    const settled = deals.filter(d => d.Status==='7. Settled' && d['Month of Settlement']?.startsWith(months[colIdx]))
+    const settled = deals.filter(d => d.Status===settledDisplay && d['Month of Settlement']?.startsWith(months[colIdx]))
     return settled.reduce((s,d) => s + dealUpfrontCommission(d), 0)
   }
   function calcBeyondActual() {
-    const settled = deals.filter(d => d.Status==='7. Settled' && d['Month of Settlement'] && !months.some(m=>d['Month of Settlement'].startsWith(m)))
+    const settled = deals.filter(d => d.Status===settledDisplay && d['Month of Settlement'] && !months.some(m=>d['Month of Settlement'].startsWith(m)))
     return settled.reduce((s,d) => s + dealUpfrontCommission(d), 0)
   }
   const beyondActual = calcBeyondActual()
@@ -259,7 +277,7 @@ function ForecastPanel({ deals, settings }) {
         </thead>
         <tbody>
           {stageRows.map(({ stage, totals, beyond }) => {
-            const sc = FORECAST_STAGE_COLORS[stage] || FORECAST_STAGE_COLORS['8. Withdrawn']
+            const sc = FORECAST_STAGE_COLORS[stage] || FORECAST_STAGE_COLORS[withdrawnDisplay]
             const addDivider = DIVIDERS_AFTER.includes(stage)
             return (
               <React.Fragment key={stage}>
@@ -354,6 +372,33 @@ export default function CRM({ clients, onUpdateClients }) {
   const settings = useMemo(() => loadSettings(), [])
   const [deals, setDeals] = useState(() => loadDeals())
 
+  // Stage names/order are configurable in Settings > CRM > Stages
+  // (settings.dealStages) — everything below derives from that instead of
+  // a hardcoded list, so a rename/add/reorder made there takes effect here
+  // automatically. STAGES/ACTIVE_STAGES/etc keep their original names so
+  // the rest of this file (below) needs no further changes.
+  const dealStagesFull = useMemo(() => getDealStages(settings), [settings])
+  const STAGES = useMemo(() => dealStagesFull.map(s => s.display), [dealStagesFull])
+  const FORECAST_STAGES = STAGES
+  // "Active" = still in-progress, i.e. everything except Settled/Withdrawn.
+  const ACTIVE_STAGES = useMemo(() => dealStagesFull.filter(s => s.id !== 'settled' && s.id !== 'withdrawn').map(s => s.display), [dealStagesFull])
+  // Forecast groupings per spec: pre-lodged stages, then lodged-through-unconditional, then Settled standalone.
+  const DIVIDERS_AFTER = useMemo(() => dealStagesFull.filter(s => s.id === 'pre-lodged' || s.id === 'unconditional').map(s => s.display), [dealStagesFull])
+  const STAGE_COLORS = useMemo(() => {
+    const map = {}
+    dealStagesFull.forEach((s, i) => { map[s.display] = stageColorFor(s.id, i) })
+    return map
+  }, [dealStagesFull])
+  // Forecast uses the same colour scheme
+  const FORECAST_STAGE_COLORS = STAGE_COLORS
+  // A few specific stages are referenced by identity below (e.g. "is this
+  // deal Settled") rather than by position — resolved by id so they keep
+  // working regardless of what that stage is currently labelled/numbered.
+  const settledDisplay = dealStagesFull.find(s => s.id === 'settled')?.display
+  const withdrawnDisplay = dealStagesFull.find(s => s.id === 'withdrawn')?.display
+  const conditionalDisplay = dealStagesFull.find(s => s.id === 'conditional')?.display
+  const unconditionalDisplay = dealStagesFull.find(s => s.id === 'unconditional')?.display
+
   // If the local cache was empty on load (e.g. cache just cleared), pull the
   // real deals down from Supabase instead of silently working from nothing.
   // This never overwrites a session that already has local data.
@@ -364,8 +409,9 @@ export default function CRM({ clients, onUpdateClients }) {
       // any already-saved deals so old and new deals aren't split across
       // two different stage names that no longer match anything in the
       // current stage lists.
+      const discoveryDisplay = stageDisplay('discovery', settings)
       if (base.some(d => d.Status === '1. Lead')) {
-        const renamed = base.map(d => d.Status === '1. Lead' ? { ...d, Status: '1. Discovery' } : d)
+        const renamed = base.map(d => d.Status === '1. Lead' ? { ...d, Status: discoveryDisplay } : d)
         saveDeals(renamed)
       } else if (cloud) {
         setDeals(cloud)
@@ -415,7 +461,7 @@ export default function CRM({ clients, onUpdateClients }) {
     const sortedMonths = [...visibleMonths].sort()
     sortedMonths.forEach(m => { groups[m] = [] })
     deals.forEach(d => {
-      if (!showWithdrawn && d.Status === '8. Withdrawn') return
+      if (!showWithdrawn && d.Status === withdrawnDisplay) return
       const m = d['Month of Settlement']?.slice(0,7)
       if (m && groups[m] !== undefined) groups[m].push(d)
     })
@@ -433,28 +479,28 @@ export default function CRM({ clients, onUpdateClients }) {
     const q = searchTerm.trim().toLowerCase()
     if (!q) return []
     return deals.filter(d => {
-      if (!showWithdrawn && d.Status === '8. Withdrawn') return false
+      if (!showWithdrawn && d.Status === withdrawnDisplay) return false
       return [
         d['Transaction Name'], d.Lender, d.Categories, d['Transaction Type'], d['Lead Source'],
         ...(d['_referrers']||[]).map(r=>r.name),
       ].some(v => v && String(v).toLowerCase().includes(q))
     })
   }, [deals, searchTerm, showWithdrawn])
-  const thisMonthSettled = deals.filter(d=>d.Status==='7. Settled'&&d['Month of Settlement']?.startsWith(curMonth)).reduce((s,d)=>s+(d.Amount||0),0)
-  const thisMonthUpfront = deals.filter(d=>d.Status==='7. Settled'&&d['Month of Settlement']?.startsWith(curMonth)).reduce((s,d)=>s+dealUpfrontCommission(d),0)
+  const thisMonthSettled = deals.filter(d=>d.Status===settledDisplay&&d['Month of Settlement']?.startsWith(curMonth)).reduce((s,d)=>s+(d.Amount||0),0)
+  const thisMonthUpfront = deals.filter(d=>d.Status===settledDisplay&&d['Month of Settlement']?.startsWith(curMonth)).reduce((s,d)=>s+dealUpfrontCommission(d),0)
 
   function changeStage(deal, newStage) {
     // Settling must always go through the Settle modal (client link / loan
     // discharge) — never just flip the status directly, regardless of which
     // control triggered the change.
-    if (newStage === '7. Settled') { handleSettle(deal); return }
+    if (newStage === settledDisplay) { handleSettle(deal); return }
     saveDeals(deals.map(d => d['Transaction Name']===deal['Transaction Name'] ? {...d, Status:newStage} : d))
   }
 
   function handleSettle(deal) { setSettleModal(deal) }
 
   function handleSettleConfirm({ deal, settlementDate, existingClient, createNew, dischargeLoans }) {
-    const updatedDeals = deals.map(d => d['Transaction Name']===deal['Transaction Name'] ? {...d, Status:'7. Settled','Date Settled':settlementDate} : d)
+    const updatedDeals = deals.map(d => d['Transaction Name']===deal['Transaction Name'] ? {...d, Status:settledDisplay,'Date Settled':settlementDate} : d)
     saveDeals(updatedDeals)
     if (onUpdateClients) {
       // Passing a function here (not a precomputed array) is deliberate —
@@ -527,7 +573,7 @@ export default function CRM({ clients, onUpdateClients }) {
                 { label:'Active pipeline', val:fmt(totalPipeline), sub:`${activeDeals.length} deals` },
                 { label:'Settled this month', val:fmt(thisMonthSettled), sub:fmtMonth(curMonth), color:'#22c55e' },
                 { label:'Est. upfront this month', val:`$${thisMonthUpfront.toLocaleString()}`, sub:'incl. any negotiated rates', color:'#EB99C2' },
-                { label:'Cond. + Uncond.', val:fmt(deals.filter(d=>['5. Conditional','6. Unconditional'].includes(d.Status)).reduce((s,d)=>s+(d.Amount||0),0)), sub:'Near settlement' },
+                { label:'Cond. + Uncond.', val:fmt(deals.filter(d=>[conditionalDisplay,unconditionalDisplay].includes(d.Status)).reduce((s,d)=>s+(d.Amount||0),0)), sub:'Near settlement' },
               ].map((s,i) => (
                 <div key={i} style={{ background:'#fff', borderRadius:8, border:'0.5px solid #e8eaed', padding:'10px 12px' }}>
                   <div style={{ fontSize:10, color:'#7A8090', marginBottom:2 }}>{s.label}</div>
@@ -601,9 +647,9 @@ export default function CRM({ clients, onUpdateClients }) {
                         </td>
                       </tr>
                       {monthDeals.map((deal,i) => {
-                        const sc = STAGE_COLORS[deal.Status]||STAGE_COLORS['1. Discovery']
-                        const isSettled = deal.Status==='7. Settled'
-                        const isWithdrawn = deal.Status==='8. Withdrawn'
+                        const sc = STAGE_COLORS[deal.Status]||STAGE_COLORS[STAGES[0]]
+                        const isSettled = deal.Status===settledDisplay
+                        const isWithdrawn = deal.Status===withdrawnDisplay
                         const settleDateStr = deal['Date Settled']||deal['Finance Due Date']||null
                         const days = daysToDate(settleDateStr)
                         const daysColor = days === null ? '#9ca3af' : days < 0 ? '#ef4444' : days <= 7 ? '#f59e0b' : '#2A3545'
@@ -615,7 +661,7 @@ export default function CRM({ clients, onUpdateClients }) {
                               <div style={{ width:8, height:8, borderRadius:'50%', background:sc.dot }}/>
                             </td>
                             <td style={{ padding:'6px 10px' }}>
-                              <StageDropdown deal={deal} onChangeStage={changeStage} />
+                              <StageDropdown deal={deal} onChangeStage={changeStage} stages={STAGES} stageColors={STAGE_COLORS} />
                             </td>
                             <td style={{ padding:'6px 10px', fontSize:11, fontWeight:500, color:'#EB99C2', maxWidth:200, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', cursor:'pointer' }}
                               onClick={() => navigate(`/crm/deal/${encodeURIComponent(deal['Transaction Name'])}`)}>
@@ -691,9 +737,9 @@ export default function CRM({ clients, onUpdateClients }) {
                 </thead>
                 <tbody>
                   {searchResults.map((deal,i) => {
-                    const sc = STAGE_COLORS[deal.Status]||STAGE_COLORS['1. Discovery']
-                    const isSettled = deal.Status==='7. Settled'
-                    const isWithdrawn = deal.Status==='8. Withdrawn'
+                    const sc = STAGE_COLORS[deal.Status]||STAGE_COLORS[STAGES[0]]
+                    const isSettled = deal.Status===settledDisplay
+                    const isWithdrawn = deal.Status===withdrawnDisplay
                     return (
                       <tr key={i} style={{ borderBottom:'0.5px solid #e8eaed' }}
                         onMouseOver={e=>e.currentTarget.style.background='#fdf0f6'}
@@ -702,7 +748,7 @@ export default function CRM({ clients, onUpdateClients }) {
                           <div style={{ width:8, height:8, borderRadius:'50%', background:sc.dot }}/>
                         </td>
                         <td style={{ padding:'6px 10px' }}>
-                          <StageDropdown deal={deal} onChangeStage={changeStage} />
+                          <StageDropdown deal={deal} onChangeStage={changeStage} stages={STAGES} stageColors={STAGE_COLORS} />
                         </td>
                         <td style={{ padding:'6px 10px', fontSize:11, fontWeight:500, color:'#EB99C2', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', cursor:'pointer' }}
                           onClick={() => navigate(`/crm/deal/${encodeURIComponent(deal['Transaction Name'])}`)}>
@@ -734,10 +780,10 @@ export default function CRM({ clients, onUpdateClients }) {
         {/* Kanban */}
         {!searchTerm && viewMode==='kanban' && (
           <div style={{ display:'flex', gap:10, overflowX:'auto', paddingBottom:8 }}>
-            {[...ACTIVE_STAGES, '7. Settled', ...(showWithdrawn ? ['8. Withdrawn'] : [])].map(stage => {
+            {[...ACTIVE_STAGES, settledDisplay, ...(showWithdrawn ? [withdrawnDisplay] : [])].map(stage => {
               const stageDeals = deals.filter(d=>d.Status===stage)
               const sc = STAGE_COLORS[stage]
-              const isSettled = stage === '7. Settled'
+              const isSettled = stage === settledDisplay
               return (
                 <div key={stage}
                   style={{ minWidth:220, background:'#f8f9fa', borderRadius:8, border:`0.5px solid ${isSettled?'#bbf7d0':'#e8eaed'}`, overflow:'hidden', flexShrink:0 }}
@@ -750,7 +796,7 @@ export default function CRM({ clients, onUpdateClients }) {
                     if (txName) {
                       const droppedDeal = deals.find(d => d['Transaction Name'] === txName)
                       if (droppedDeal && droppedDeal.Status !== stage) {
-                        if (stage === '7. Settled') {
+                        if (stage === settledDisplay) {
                           handleSettle(droppedDeal)
                         } else {
                           changeStage(droppedDeal, stage)

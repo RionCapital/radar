@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { loadDeals, syncDealsFromSupabase } from '../lib/deals'
 import { fmt } from '../lib/data'
-import { calcUpfront } from '../lib/settings'
+import { calcUpfront, loadSettings, getDealStages } from '../lib/settings'
 import CRMTopbar from '../components/CRMTopbar'
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
@@ -214,9 +214,12 @@ export default function CRMDashboard() {
     })
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Stage names/order come from Settings > CRM > Stages — resolved by
+  // permanent id so "Settled" totals keep working even after a rename.
+  const settledDisplay = useMemo(() => getDealStages(loadSettings()).find(s => s.id === 'settled')?.display, [])
   const settled = useMemo(() =>
-    deals.filter(d => d.Status === '7. Settled' && d['Date Settled'])
-  , [deals])
+    deals.filter(d => d.Status === settledDisplay && d['Date Settled'])
+  , [deals, settledDisplay])
 
   const today = new Date()
 

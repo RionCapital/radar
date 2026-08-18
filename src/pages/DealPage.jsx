@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { loadDeals, saveDeals, syncDealsFromSupabase } from '../lib/deals'
 import { sbDeleteDeal } from '../lib/supabase'
@@ -7,10 +7,9 @@ import { notifySaveFailed } from '../lib/saveStatus'
 import CRMTopbar from '../components/CRMTopbar'
 import ReferrerPicker from '../components/ReferrerPicker'
 import { SettleModal, applySettlement } from '../components/SettleModal'
-import { calcUpfront, getUpfrontRate, dealUpfrontCommission, dealUpfrontRateEffective, dealCommissionIsOverridden } from '../lib/settings'
+import { calcUpfront, getUpfrontRate, dealUpfrontCommission, dealUpfrontRateEffective, dealCommissionIsOverridden, loadSettings, getDealStages, stageDisplay } from '../lib/settings'
 import { mapRradarContactToDealContact } from '../lib/data'
 
-const STAGES = ['1. Discovery','2. Strategy','3. Pre-Lodged','4. Lodged','5. Conditional','6. Unconditional','7. Settled','8. Withdrawn']
 // Category list and per-category Transaction Type options, per Cameron's
 // working spreadsheet (Category drives which Transaction Types are valid).
 // NOTE: this replaces the older, shorter category list. Two places still use
@@ -32,15 +31,27 @@ const CATEGORY_TRANSACTION_TYPES = {
 }
 const LEAD_SOURCES = ['1. Accountant','2. Solicitor','3. Client','4. Direct','5. Real Estate','6. Friend','7. Social Media','8. Financial Planner','9. BNI','10. Other']
 
-const STAGE_COLORS = {
-  '1. Discovery':          { bg: '#eef4fb', color: '#185fa5' },
-  '2. Strategy':      { bg: '#eef4fb', color: '#185fa5' },
-  '3. Pre-Lodged':    { bg: '#fdf0f6', color: '#9b2c6e' },
-  '4. Lodged':        { bg: '#fdf0f6', color: '#9b2c6e' },
-  '5. Conditional':   { bg: '#fff8e8', color: '#92600a' },
-  '6. Unconditional': { bg: '#eaf6ef', color: '#1a7a45' },
-  '7. Settled':       { bg: '#eaf6ef', color: '#1a7a45' },
-  '8. Withdrawn':     { bg: '#f5f5f5', color: '#7A8090' },
+// Stage names/order now come from Settings > CRM > Stages — this palette
+// just gives each stage a colour, keyed by its permanent id so a rename
+// doesn't lose its colour. A custom stage that isn't one of these falls
+// back to a rotating default.
+const STAGE_COLOR_MAP = {
+  'discovery':     { bg: '#eef4fb', color: '#185fa5' },
+  'strategy':      { bg: '#eef4fb', color: '#185fa5' },
+  'pre-lodged':    { bg: '#fdf0f6', color: '#9b2c6e' },
+  'lodged':        { bg: '#fdf0f6', color: '#9b2c6e' },
+  'conditional':   { bg: '#fff8e8', color: '#92600a' },
+  'unconditional': { bg: '#eaf6ef', color: '#1a7a45' },
+  'settled':       { bg: '#eaf6ef', color: '#1a7a45' },
+  'withdrawn':     { bg: '#f5f5f5', color: '#7A8090' },
+}
+const STAGE_COLOR_FALLBACKS = [
+  { bg: '#f3e8ff', color: '#7e22ce' },
+  { bg: '#fce7f3', color: '#be185d' },
+  { bg: '#e0f2fe', color: '#0369a1' },
+]
+function stageColorFor(id, index) {
+  return STAGE_COLOR_MAP[id] || STAGE_COLOR_FALLBACKS[index % STAGE_COLOR_FALLBACKS.length]
 }
 
 const inp = { border:'1px solid #e8eaed', borderRadius:6, padding:'6px 10px', fontSize:12, width:'100%', boxSizing:'border-box', fontFamily:'inherit' }
@@ -293,8 +304,6 @@ function ContactsPanel({ deal, clients, updateDeal }) {
    so it rides along with the existing saveDeals()/Supabase sync with no
    schema change required.
 ------------------------------------------------------------------------ */
-
-const TRACKER_STAGES = ['1. Discovery','2. Strategy','3. Pre-Lodged','4. Lodged','5. Conditional','6. Unconditional','7. Settled']
 
 const SECURITY_TYPES = ['1MTG','2MTG','GSA','PMSI','Gtee']
 const SEC_BANDS = [
@@ -672,14 +681,18 @@ function LiveDate({ value, onCommit }) {
   return <input style={inp} type="date" value={value?.slice(0,10)||''} onChange={e=>onCommit(e.target.value)} />
 }
 
-function StageTracker({ status, onChange }) {
-  const isWithdrawn = status === '8. Withdrawn'
-  const idx = TRACKER_STAGES.indexOf(isWithdrawn ? '1. Discovery' : status)
+// `stages` here is every stage except Withdrawn (Withdrawn shows as a
+// separate pill, not a tracker step) — the caller computes this from
+// Settings > CRM > Stages and passes it down, along with the current
+// display string for the Withdrawn stage specifically.
+function StageTracker({ status, onChange, stages, withdrawnDisplay }) {
+  const isWithdrawn = status === withdrawnDisplay
+  const idx = stages.indexOf(isWithdrawn ? stages[0] : status)
   return (
     <div style={{ background:'#fff', borderRadius:10, border:'0.5px solid #e8eaed', padding:'20px 24px 8px', marginBottom:16 }}>
       <div style={{ display:'flex', alignItems:'center' }}>
-        {TRACKER_STAGES.map((s, i) => (
-          <div key={s} style={{ display:'flex', alignItems:'center', flex: i === TRACKER_STAGES.length-1 ? '0 0 auto' : 1 }}>
+        {stages.map((s, i) => (
+          <div key={s} style={{ display:'flex', alignItems:'center', flex: i === stages.length-1 ? '0 0 auto' : 1 }}>
             <div
               onClick={() => onChange(s)}
               title={`Move to ${s.replace(/^\d+\.\s*/,'')}`}
@@ -693,12 +706,12 @@ function StageTracker({ status, onChange }) {
               }}/>
               <span style={{ fontSize:11, fontWeight: i===idx?700:500, color: i===idx?'#3D4F6B':'#7A8090', whiteSpace:'nowrap' }}>{s.replace(/^\d+\.\s*/,'')}</span>
             </div>
-            {i < TRACKER_STAGES.length-1 && <div style={{ flex:1, height:2, background: i<idx && !isWithdrawn ? '#EB99C2' : '#e8eaed', margin:'0 4px 20px' }}/>}
+            {i < stages.length-1 && <div style={{ flex:1, height:2, background: i<idx && !isWithdrawn ? '#EB99C2' : '#e8eaed', margin:'0 4px 20px' }}/>}
           </div>
         ))}
         {isWithdrawn && <span style={{ marginLeft:16, marginBottom:20 }}><Pill tone="slate">Withdrawn</Pill></span>}
       </div>
-      <div style={{ fontSize:10, color:'#9ca3af', paddingBottom:10 }}>Click any stage to move this deal straight there — set "8. Withdrawn" from Status in Loan Details.</div>
+      <div style={{ fontSize:10, color:'#9ca3af', paddingBottom:10 }}>Click any stage to move this deal straight there — set "{withdrawnDisplay}" from Status in Loan Details.</div>
     </div>
   )
 }
@@ -2563,6 +2576,21 @@ export default function DealPage({ onUpdateDeals, clients = [], onUpdateClients 
   const [deals, setDeals] = useState(() => getDeals())
   const [tab, setTab] = useState('details')
 
+  // Stage names/order come from Settings > CRM > Stages — everything below
+  // derives from that instead of a hardcoded list.
+  const settings = useMemo(() => loadSettings(), [])
+  const dealStagesFull = useMemo(() => getDealStages(settings), [settings])
+  const STAGES = useMemo(() => dealStagesFull.map(s => s.display), [dealStagesFull])
+  const STAGE_COLORS = useMemo(() => {
+    const map = {}
+    dealStagesFull.forEach((s, i) => { map[s.display] = stageColorFor(s.id, i) })
+    return map
+  }, [dealStagesFull])
+  // Tracker shows every stage except Withdrawn (Withdrawn is a separate pill).
+  const TRACKER_STAGES = useMemo(() => dealStagesFull.filter(s => s.id !== 'withdrawn').map(s => s.display), [dealStagesFull])
+  const settledDisplay = dealStagesFull.find(s => s.id === 'settled')?.display
+  const withdrawnDisplay = dealStagesFull.find(s => s.id === 'withdrawn')?.display
+
   // If the local cache was empty on load (e.g. cache just cleared), pull the
   // real deals down from Supabase rather than working from nothing.
   useEffect(() => {
@@ -2571,8 +2599,9 @@ export default function DealPage({ onUpdateDeals, clients = [], onUpdateClients 
       // Same one-time rename as CRM.jsx — "1. Lead" to "1. Discovery" —
       // applied here too in case a deal gets opened directly (a bookmarked
       // link, say) without visiting the pipeline list first.
+      const discoveryDisplay = stageDisplay('discovery', settings)
       if (base.some(d => d.Status === '1. Lead')) {
-        const renamed = base.map(d => d.Status === '1. Lead' ? { ...d, Status: '1. Discovery' } : d)
+        const renamed = base.map(d => d.Status === '1. Lead' ? { ...d, Status: discoveryDisplay } : d)
         saveDeals(renamed)
         setDeals(renamed)
       } else if (cloud) {
@@ -2617,11 +2646,11 @@ export default function DealPage({ onUpdateDeals, clients = [], onUpdateClients 
   // pathway in the CRM, so a deal can't slip through to "Settled" from here
   // without the discharge step ever being offered.
   function requestStageChange(s) {
-    if (s === '7. Settled') { setSettleModal(true); return }
+    if (s === settledDisplay) { setSettleModal(true); return }
     updateDeal({ Status: s })
   }
   function handleSettleConfirm({ deal: settledDeal, settlementDate, existingClient, createNew, dischargeLoans }) {
-    updateDeal({ Status: '7. Settled', 'Date Settled': settlementDate })
+    updateDeal({ Status: settledDisplay, 'Date Settled': settlementDate })
     if (onUpdateClients) {
       onUpdateClients(prevClients => applySettlement(prevClients, { deal: settledDeal, settlementDate, existingClient, createNew, dischargeLoans }))
     }
@@ -2675,7 +2704,7 @@ export default function DealPage({ onUpdateDeals, clients = [], onUpdateClients 
   }
 
   const d = editing ? draft : deal
-  const sc = STAGE_COLORS[d.Status] || STAGE_COLORS['1. Discovery']
+  const sc = STAGE_COLORS[d.Status] || STAGE_COLORS[STAGES[0]]
   const fmtAmt = v => v ? `$${Number(v).toLocaleString()}` : '—'
 
   const TABS = [
@@ -2728,7 +2757,7 @@ export default function DealPage({ onUpdateDeals, clients = [], onUpdateClients 
         </div>
 
         {/* Stage tracker */}
-        <StageTracker status={deal.Status} onChange={requestStageChange} />
+        <StageTracker status={deal.Status} onChange={requestStageChange} stages={TRACKER_STAGES} withdrawnDisplay={withdrawnDisplay} />
 
         {/* Tabs */}
         <div style={{ display:'flex', borderBottom:'2px solid #e8eaed', marginBottom:18 }}>

@@ -4,7 +4,7 @@ import { sbSaveMarketing, sbLoadMarketing } from '../lib/supabase'
 import { notifySaveFailed } from '../lib/saveStatus'
 import { loadDeals } from '../lib/deals'
 import { loadClients } from '../lib/data'
-import { loadSettings } from '../lib/settings'
+import { loadSettings, getDealStages } from '../lib/settings'
 import { logo_rion_notag } from '../lib/icons'
 
 const NAVY = '#3D5570'
@@ -34,9 +34,10 @@ const ACTIVITY_TYPES = ['Annual Review', 'Fixed Term Expiry', 'IO Term Expiry', 
 const ACTIVITY_TYPE_COLOR = { 'Annual Review': BLUE, 'Fixed Term Expiry': BRAND_PINK, 'IO Term Expiry': '#6A9FCC', 'Facility Maturity': NAVY, 'Other': SLATE }
 const ACTIVITY_STAGES = ['Initial Email', 'Follow-up', 'Outcome Email', 'Completed']
 
-// deal stages that haven't settled yet -- used to build the CRM dropdowns
-const ACTIVE_STAGES = ['1. Discovery', '2. Strategy', '3. Pre-Lodged', '4. Lodged', '5. Conditional', '6. Unconditional']
-const NEAR_SETTLEMENT_STAGES = ['4. Lodged', '5. Conditional', '6. Unconditional']
+// Deal stages that haven't settled yet, and the "near settlement" trio —
+// used to build the CRM dropdowns below. Stage names/order now come from
+// Settings > CRM > Stages, so these are computed inside the Planner
+// component (see dealStagesFull) rather than hardcoded here.
 
 const DEFAULT_LODGEMENT_COUNT_TARGET = 4
 const DEFAULT_SETTLEMENT_COUNT_TARGET = 3
@@ -370,6 +371,13 @@ export default function Planner() {
   const [deals, setDeals] = useState(() => loadDeals())
   const [clients, setClients] = useState(() => loadClients())
 
+  // Stage names/order come from Settings > CRM > Stages.
+  const dealStagesFull = useMemo(() => getDealStages(loadSettings()), [])
+  const ACTIVE_STAGES = useMemo(() => dealStagesFull.filter(s => s.id !== 'settled' && s.id !== 'withdrawn').map(s => s.display), [dealStagesFull])
+  const NEAR_SETTLEMENT_STAGES = useMemo(() => dealStagesFull.filter(s => ['lodged','conditional','unconditional'].includes(s.id)).map(s => s.display), [dealStagesFull])
+  const lodgedDisplay = dealStagesFull.find(s => s.id === 'lodged')?.display
+  const settledDisplay = dealStagesFull.find(s => s.id === 'settled')?.display
+
   // ─── cloud sync ─────────────────────────────────────────────────────────
   useEffect(() => {
     sbLoadMarketing(PLANNER_ROW_ID).then(cloud => {
@@ -460,7 +468,7 @@ export default function Planner() {
     if (!name) return
     const d = deals.find(x => x['Transaction Name'] === name)
     if (!d) return
-    const l = { id: uid(), priority: week.lodgements.length + 1, name: d['Transaction Name'], amount: d.Amount || '', done: d.Status === '4. Lodged' }
+    const l = { id: uid(), priority: week.lodgements.length + 1, name: d['Transaction Name'], amount: d.Amount || '', done: d.Status === lodgedDisplay }
     updateWeek({ lodgements: [...week.lodgements, l] })
   }
   function updateLodgement(id, patch) {
@@ -479,7 +487,7 @@ export default function Planner() {
     if (!name) return
     const d = deals.find(x => x['Transaction Name'] === name)
     if (!d) return
-    const s = { id: uid(), name: d['Transaction Name'], amount: d.Amount || '', done: d.Status === '7. Settled' }
+    const s = { id: uid(), name: d['Transaction Name'], amount: d.Amount || '', done: d.Status === settledDisplay }
     updateWeek({ settlements: [...week.settlements, s] })
   }
   function updateSettlement(id, patch) {
@@ -493,7 +501,7 @@ export default function Planner() {
     const weekEnd = addDays(viewWeek, 6)
     const settled = (deals || []).filter(d => {
       const ds = d['Date Settled']
-      if (!ds || d.Status !== '7. Settled') return false
+      if (!ds || d.Status !== settledDisplay) return false
       const dateOnly = String(ds).slice(0, 10)
       return dateOnly >= viewWeek && dateOnly <= weekEnd
     })
