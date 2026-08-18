@@ -2089,6 +2089,7 @@ function buildSectionsFromTemplate(template) {
 }
 
 function AttachmentsTab({ deal, deals, setDeals, editing, d, set }) {
+  const navigate = useNavigate()
   const att = d._attachments || {}
 
   function saveAtt(patch) {
@@ -2291,7 +2292,17 @@ function AttachmentsTab({ deal, deals, setDeals, editing, d, set }) {
           </select>
           <span style={{ fontSize:10.5, color:'#9ca3af' }}>{doneCount}/{allLeaf.length} received</span>
         </div>
-        <div style={{ fontSize:10.5, color:'#9ca3af' }}>Changing this replaces the checklist below with that transaction type's own requirements.</div>
+        <div style={{ fontSize:10.5, color:'#9ca3af', marginBottom:12 }}>Changing this replaces the checklist below with that transaction type's own requirements.</div>
+        <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+          <button onClick={()=>navigate(`/crm/deal/${encodeURIComponent(deal['Transaction Name'])}/request-documents/rfi`)}
+            style={{ padding:'7px 12px', borderRadius:6, border:'1px solid #3D4F6B', background:'#fff', color:'#3D4F6B', fontWeight:600, fontSize:11.5, cursor:'pointer' }}>
+            ✉ Email — Request Info (RFI)
+          </button>
+          <button onClick={()=>navigate(`/crm/deal/${encodeURIComponent(deal['Transaction Name'])}/request-documents/outstanding`)}
+            style={{ padding:'7px 12px', borderRadius:6, border:'1px solid #3D4F6B', background:'#fff', color:'#3D4F6B', fontWeight:600, fontSize:11.5, cursor:'pointer' }}>
+            ✉ Email — Outstanding Docs
+          </button>
+        </div>
       </TabCard>
 
       {sections.map((sec, si) => (

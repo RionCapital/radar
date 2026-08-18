@@ -56,6 +56,151 @@ export function downloadEml(to, subject, htmlBody, attachments = []) {
   URL.revokeObjectURL(url)
 }
 
+export function escapeHtml(str) {
+  return String(str ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]))
+}
+
+// Attachments-tab checklist items occasionally read as a short title
+// followed by ' - ' and a longer explanatory clause (e.g. "Credit Guide &
+// Privacy Statement (attached) - This will be sent to you separately via
+// DocuSign..."). Splitting on that exact separator (never an em-dash, which
+// shows up mid-sentence in items like "IF PURCHASE – A copy of...") lets the
+// title render bold with the explanation as an indented sub-line, matching
+// how these checklists actually read; anything without the separator is
+// just one flat bullet.
+function renderChecklistLine(text) {
+  const idx = text.indexOf(' - ')
+  if (idx === -1) return `<li style="margin-bottom:7px;line-height:1.5">${escapeHtml(text)}</li>`
+  const title = text.slice(0, idx)
+  const desc = text.slice(idx + 3)
+  return `<li style="margin-bottom:7px;line-height:1.5"><strong>${escapeHtml(title)}</strong><div style="margin:2px 0 0;padding-left:2px;font-size:12px;color:#5b6472">${escapeHtml(desc)}</div></li>`
+}
+
+// Walks a deal's live _attachments.sections (see DealPage.jsx
+// buildSectionsFromTemplate) and picks out which lines belong in a
+// Document Request email. `onlyOutstanding` filters to just the unticked
+// items/sub-items (for the follow-up email) — otherwise every item in the
+// deal's current checklist is included (for the initial RFI). A repeat
+// item (Individual/Property/Entity/Statement/Document) with no named
+// sub-instances yet is shown as its own line; once sub-instances exist,
+// each named one gets its own line instead of the parent item.
+function collectChecklistSections(sections, onlyOutstanding) {
+  return (sections || []).map(sec => {
+    const lines = []
+    ;(sec.items || []).forEach(it => {
+      if (it.repeat) {
+        const subItems = it.subItems || []
+        if (subItems.length === 0) {
+          if (!onlyOutstanding || !it.checked) lines.push(it.text)
+          return
+        }
+        const included = onlyOutstanding ? subItems.filter(su => !su.checked) : subItems
+        included.forEach(su => lines.push(su.text ? `${it.text} — ${su.text}` : it.text))
+      } else {
+        if (!onlyOutstanding || !it.checked) lines.push(it.text)
+      }
+    })
+    return { heading: sec.heading, lines }
+  }).filter(s => s.lines.length > 0)
+}
+
+export function buildChecklistHtml(sections, opts = {}) {
+  const built = collectChecklistSections(sections, !!opts.onlyOutstanding)
+  if (built.length === 0) {
+    return '<p style="font-size:12px;color:#7A8090;font-style:italic;margin:0">Every item on the checklist has been received — thank you!</p>'
+  }
+  return built.map(sec => `
+    <div style="margin:16px 0 6px">
+      <div style="font-size:11px;font-weight:700;color:#3D4F6B;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">${escapeHtml(sec.heading)}</div>
+      <ul style="margin:0;padding-left:20px;font-size:13px;color:#2A3545">${sec.lines.map(renderChecklistLine).join('')}</ul>
+    </div>`).join('')
+}
+
+// Plain-text equivalent of buildChecklistHtml — used as the clipboard
+// fallback / plain-text part of a copied email when the target app can't
+// take the rich HTML version.
+export function buildChecklistText(sections, opts = {}) {
+  const built = collectChecklistSections(sections, !!opts.onlyOutstanding)
+  if (built.length === 0) return 'Every item on the checklist has been received — thank you!'
+  return built.map(sec => `${sec.heading.toUpperCase()}\n${sec.lines.map(l => `  - ${l}`).join('\n')}`).join('\n\n')
+}
+
+// Copies both a rich-HTML and a plain-text version of the email body to the
+// clipboard where possible, so pasting into Gmail's (or any) compose window
+// keeps formatting, with a plain-text-only fallback for browsers that don't
+// support the multi-type Clipboard API.
+async function copyFormattedToClipboard(html, plainText) {
+  const text = plainText || html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+  try {
+    if (navigator.clipboard && window.ClipboardItem) {
+      const item = new window.ClipboardItem({
+        'text/html': new Blob([html], { type: 'text/html' }),
+        'text/plain': new Blob([text], { type: 'text/plain' }),
+      })
+      await navigator.clipboard.write([item])
+      return true
+    }
+  } catch {}
+  try {
+    await navigator.clipboard.writeText(text)
+    return true
+  } catch {}
+  return false
+}
+
+// Single entry point for "send this templated email" that respects the
+// broker's Settings > CRM > Communication > Email delivery preference.
+// 'outlook' downloads a .eml (double-click opens a native Outlook compose
+// window, the same mechanism used everywhere else in the app); 'gmail'
+// opens a Gmail compose tab pre-filled with To/Subject and copies the
+// formatted body to the clipboard (Gmail's compose URL can't carry a full
+// HTML body, so the broker pastes it in); anything else just copies the
+// formatted body to the clipboard for pasting into whatever's open.
+// Returns a status object describing what happened, so the caller can show
+// the right confirmation and log the correct method against the deal.
+export async function openInPreferredClient({ to, subject, html, plainText, attachments = [], emailClient }) {
+  const client = emailClient || 'outlook'
+  if (client === 'outlook') {
+    downloadEml(to, subject, html, attachments)
+    return { method: 'outlook', label: '.eml downloaded — opening in Outlook' }
+  }
+  if (client === 'gmail') {
+    const url = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(to || '')}&su=${encodeURIComponent(subject || '')}`
+    window.open(url, '_blank')
+    const copied = await copyFormattedToClipboard(html, plainText)
+    return copied
+      ? { method: 'gmail', label: 'Gmail compose opened — email body copied to your clipboard, paste it in' }
+      : { method: 'gmail', label: 'Gmail compose opened — could not copy body automatically, copy it manually below' }
+  }
+  const copied = await copyFormattedToClipboard(html, plainText)
+  return copied
+    ? { method: 'clipboard', label: 'Email body copied to your clipboard' }
+    : { method: 'clipboard', label: 'Could not copy automatically — copy the body manually below' }
+}
+
+export function renderTemplateSubject(subjectTemplate, clientName) {
+  return (subjectTemplate || '').replace(/\{\{CLIENT_NAME\}\}/g, clientName || '')
+}
+
+// Turns an editable template body (plain text, blank-line-separated
+// paragraphs, with {{CLIENT_NAME}}/{{CHECKLIST}}/{{KEY_POINTS_BLOCK}}
+// tokens) into HTML for the email preview/send. {{CLIENT_NAME}} is a plain
+// text substitution; {{CHECKLIST}} and {{KEY_POINTS_BLOCK}}, when they
+// occupy a paragraph by themselves, are swapped for their pre-built HTML
+// blocks rather than escaped — everything else is escaped and wrapped as a
+// normal paragraph.
+export function renderTemplateBodyHtml(bodyTemplate, tokens = {}) {
+  const withClientName = (bodyTemplate || '').replace(/\{\{CLIENT_NAME\}\}/g, tokens.CLIENT_NAME || '')
+  const paragraphs = withClientName.split(/\n\s*\n/)
+  return paragraphs.map(para => {
+    const trimmed = para.trim()
+    if (!trimmed) return ''
+    if (trimmed === '{{CHECKLIST}}') return tokens.CHECKLIST || ''
+    if (trimmed === '{{KEY_POINTS_BLOCK}}') return tokens.KEY_POINTS_BLOCK || ''
+    return `<p style="font-size:13px;line-height:1.7;margin:0 0 14px">${escapeHtml(trimmed).replace(/\n/g, '<br/>')}</p>`
+  }).join('')
+}
+
 export function emailHeader(greeting) {
   return `
     <div style="background:#3D4F6B;padding:22px 40px;text-align:center">

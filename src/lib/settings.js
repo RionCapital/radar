@@ -58,19 +58,70 @@ export const DEFAULT_SETTINGS = {
     { id: 'settled',       label: 'Settled' },
     { id: 'withdrawn',     label: 'Withdrawn' },
   ],
-  // Email templates authored in Settings > CRM > Communication. Just
-  // storage for now — wiring these into actual send flows comes later.
-  emailTemplates: [],
+  // Which email application should open when a broker sends a templated
+  // email from the CRM — editable in Settings > CRM > Communication.
+  // 'outlook' downloads a .eml file (double-click opens native Outlook
+  // compose), 'gmail' opens a Gmail compose tab + copies the formatted
+  // body to the clipboard (Gmail's URL scheme can't carry rich HTML),
+  // 'other' just copies the formatted body to the clipboard.
+  emailClient: 'outlook',
+  // Email templates authored in Settings > CRM > Communication. The two
+  // built-in templates below (type: 'rfi' / 'outstanding') power the
+  // Document Request emails on a deal's Attachments tab — their ids are
+  // fixed so code can always find them, but their content is fully
+  // editable here. {{CLIENT_NAME}}, {{CHECKLIST}} and {{KEY_POINTS_BLOCK}}
+  // are placeholder tokens filled in at send time. Any other templates a
+  // broker adds are freeform and untouched by the migration below.
+  emailTemplates: [
+    {
+      id: 'rfi-default',
+      type: 'rfi',
+      name: 'Request for Information (Initial)',
+      subject: 'Information Required — {{CLIENT_NAME}}',
+      body:
+        'Thank you for the opportunity to assist with your finance application.\n\n' +
+        'To progress your application, we require the following information and documentation:\n\n' +
+        '{{CHECKLIST}}\n\n' +
+        '{{KEY_POINTS_BLOCK}}\n\n' +
+        'Please provide these items at your earliest convenience so we can keep your application moving. If you have any questions about any of the items above, please don\'t hesitate to reach out.',
+    },
+    {
+      id: 'outstanding-default',
+      type: 'outstanding',
+      name: 'Outstanding Documents (Follow-up)',
+      subject: 'Outstanding Documents Required — {{CLIENT_NAME}}',
+      body:
+        'Thank you for the information provided so far.\n\n' +
+        'To continue progressing your application, we still require the following outstanding items:\n\n' +
+        '{{CHECKLIST}}\n\n' +
+        '{{KEY_POINTS_BLOCK}}\n\n' +
+        'Please provide these outstanding items as soon as possible so there is no delay to your application. If you have any questions, please don\'t hesitate to reach out.',
+    },
+  ],
   // User accounts — admins can manage these in Settings > Team
   users: [
     { id: '1', name: 'Cameron Finlayson', email: 'cameron@rion-capital.com', password: 'RionDash2', phone: '0400 000 000', role: 'admin', active: true },
   ],
 }
 
+// Ensures the two built-in typed templates (rfi / outstanding) always exist,
+// without discarding any freeform templates a broker has added. Existing
+// settings saved before these were introduced would otherwise have an
+// emailTemplates array missing them entirely.
+function withTypedTemplates(settings) {
+  const existing = settings.emailTemplates || []
+  const merged = [...existing]
+  DEFAULT_SETTINGS.emailTemplates.forEach(def => {
+    if (!merged.some(t => t.type === def.type)) merged.push(def)
+  })
+  if (merged.length === existing.length) return settings
+  return { ...settings, emailTemplates: merged }
+}
+
 export function loadSettings() {
   try {
     const s = localStorage.getItem(SETTINGS_KEY)
-    if (s) return { ...DEFAULT_SETTINGS, ...JSON.parse(s) }
+    if (s) return withTypedTemplates({ ...DEFAULT_SETTINGS, ...JSON.parse(s) })
   } catch {}
   return DEFAULT_SETTINGS
 }
@@ -85,10 +136,21 @@ export async function syncSettingsFromSupabase() {
     const cloud = await sbLoadSettings()
     if (cloud) {
       localStorage.setItem(SETTINGS_KEY, JSON.stringify(cloud))
-      return { ...DEFAULT_SETTINGS, ...cloud }
+      return withTypedTemplates({ ...DEFAULT_SETTINGS, ...cloud })
     }
   } catch {}
   return null
+}
+
+// Resolve the current (editable) built-in template for a given flow —
+// 'rfi' for the initial Request for Information email, 'outstanding' for
+// the follow-up that lists only unticked items. Falls back to the
+// hardcoded default if a broker somehow deletes it.
+export function getEmailTemplateByType(type, settingsArg) {
+  const settings = settingsArg || loadSettings()
+  const found = (settings.emailTemplates || []).find(t => t.type === type)
+  if (found) return found
+  return DEFAULT_SETTINGS.emailTemplates.find(t => t.type === type)
 }
 
 export function getUpfrontRate(category) {

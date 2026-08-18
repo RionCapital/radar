@@ -410,53 +410,76 @@ export default function AdminSettings({ clients, onUpdateClients }) {
 
           {/* CRM > Communication */}
           {section==='crm' && tab==='communication' && (
-            <Card>
-              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
-                <CardTitle style={{ margin:0 }}>Email templates</CardTitle>
-                <button onClick={addTemplate}
-                  style={{ fontSize:11, padding:'5px 14px', borderRadius:7, border:'none', background:'#3D4F6B', color:'#fff', cursor:'pointer', fontWeight:600 }}>
-                  + Add template
-                </button>
-              </div>
-              <div style={{ fontSize:11, color:'#7A8090', marginBottom:14, lineHeight:1.5 }}>
-                Draft reusable email templates here. These aren't wired into a send flow yet — for now this is just where they live, ready to be plugged in.
-              </div>
-              {(settings.emailTemplates||[]).length === 0 && (
-                <div style={{ fontSize:11.5, color:'#9ca3af' }}>No templates yet — add one above to get started.</div>
-              )}
-              {(settings.emailTemplates||[]).map(t => {
-                const open = expandedTemplateId === t.id
-                return (
-                  <div key={t.id} style={{ border:'0.5px solid #e8eaed', borderRadius:8, marginBottom:10, overflow:'hidden' }}>
-                    <div onClick={() => setExpandedTemplateId(open ? null : t.id)}
-                      style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'10px 14px', cursor:'pointer', background:'#f8f9fa' }}>
-                      <div style={{ fontSize:12, fontWeight:600, color:'#2A3545' }}>{t.name || 'Untitled template'}</div>
-                      <span style={{ fontSize:10, color:'#7A8090' }}>{open ? '▲' : '▼'}</span>
-                    </div>
-                    {open && (
-                      <div style={{ padding:14 }}>
-                        <div style={{ marginBottom:10 }}>
-                          <div style={{ fontSize:10, color:'#64748b', marginBottom:3, fontWeight:600 }}>Template name</div>
-                          <input style={inp} value={t.name||''} onChange={e => updateTemplate(t.id, { name:e.target.value })} />
+            <>
+              <Card style={{ marginBottom:16 }}>
+                <CardTitle>Email delivery</CardTitle>
+                <div style={{ fontSize:11, color:'#7A8090', marginBottom:14, lineHeight:1.5 }}>
+                  Which email app should open when a broker sends a templated email from the CRM (e.g. the Document Request emails on a deal's Attachments tab).
+                </div>
+                <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+                  {[['outlook','Outlook (.eml download)'],['gmail','Gmail (compose tab + clipboard)'],['other','Other (copy to clipboard)']].map(([id,lbl]) => (
+                    <button key={id} onClick={() => setSettings(s => ({ ...s, emailClient: id }))}
+                      style={{ fontSize:11.5, padding:'8px 14px', borderRadius:7, border:`1px solid ${(settings.emailClient||'outlook')===id ? '#3D4F6B' : '#e8eaed'}`, background:(settings.emailClient||'outlook')===id ? '#3D4F6B' : '#fff', color:(settings.emailClient||'outlook')===id ? '#fff' : '#2A3545', cursor:'pointer', fontWeight:600 }}>
+                      {lbl}
+                    </button>
+                  ))}
+                </div>
+              </Card>
+
+              <Card>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
+                  <CardTitle style={{ margin:0 }}>Email templates</CardTitle>
+                  <button onClick={addTemplate}
+                    style={{ fontSize:11, padding:'5px 14px', borderRadius:7, border:'none', background:'#3D4F6B', color:'#fff', cursor:'pointer', fontWeight:600 }}>
+                    + Add template
+                  </button>
+                </div>
+                <div style={{ fontSize:11, color:'#7A8090', marginBottom:14, lineHeight:1.5 }}>
+                  The two built-in templates below power the Document Request emails on a deal's Attachments tab — their content is fully editable here, they just can't be deleted. {'{{CLIENT_NAME}}'}, {'{{CHECKLIST}}'} and {'{{KEY_POINTS_BLOCK}}'} are placeholder tokens filled in automatically when an email is sent. Any other templates you add here are just drafts for now, ready to be plugged into a send flow later.
+                </div>
+                {(settings.emailTemplates||[]).length === 0 && (
+                  <div style={{ fontSize:11.5, color:'#9ca3af' }}>No templates yet — add one above to get started.</div>
+                )}
+                {(settings.emailTemplates||[]).map(t => {
+                  const open = expandedTemplateId === t.id
+                  const builtIn = t.type === 'rfi' || t.type === 'outstanding'
+                  return (
+                    <div key={t.id} style={{ border:'0.5px solid #e8eaed', borderRadius:8, marginBottom:10, overflow:'hidden' }}>
+                      <div onClick={() => setExpandedTemplateId(open ? null : t.id)}
+                        style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'10px 14px', cursor:'pointer', background:'#f8f9fa' }}>
+                        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                          <div style={{ fontSize:12, fontWeight:600, color:'#2A3545' }}>{t.name || 'Untitled template'}</div>
+                          {builtIn && <span style={{ fontSize:9, fontWeight:700, color:'#3D4F6B', background:'#eef4fb', padding:'2px 7px', borderRadius:10, textTransform:'uppercase', letterSpacing:'0.04em' }}>Built-in</span>}
                         </div>
-                        <div style={{ marginBottom:10 }}>
-                          <div style={{ fontSize:10, color:'#64748b', marginBottom:3, fontWeight:600 }}>Subject line</div>
-                          <input style={inp} value={t.subject||''} onChange={e => updateTemplate(t.id, { subject:e.target.value })} />
-                        </div>
-                        <div style={{ marginBottom:10 }}>
-                          <div style={{ fontSize:10, color:'#64748b', marginBottom:3, fontWeight:600 }}>Body</div>
-                          <textarea style={{ ...inp, minHeight:140, resize:'vertical', fontFamily:'inherit' }} value={t.body||''} onChange={e => updateTemplate(t.id, { body:e.target.value })} />
-                        </div>
-                        <button onClick={() => removeTemplate(t.id)}
-                          style={{ fontSize:11, padding:'5px 12px', borderRadius:6, border:'1px solid #fecaca', background:'#fff', color:'#dc2626', cursor:'pointer' }}>
-                          Delete template
-                        </button>
+                        <span style={{ fontSize:10, color:'#7A8090' }}>{open ? '▲' : '▼'}</span>
                       </div>
-                    )}
-                  </div>
-                )
-              })}
-            </Card>
+                      {open && (
+                        <div style={{ padding:14 }}>
+                          <div style={{ marginBottom:10 }}>
+                            <div style={{ fontSize:10, color:'#64748b', marginBottom:3, fontWeight:600 }}>Template name</div>
+                            <input style={inp} value={t.name||''} onChange={e => updateTemplate(t.id, { name:e.target.value })} />
+                          </div>
+                          <div style={{ marginBottom:10 }}>
+                            <div style={{ fontSize:10, color:'#64748b', marginBottom:3, fontWeight:600 }}>Subject line</div>
+                            <input style={inp} value={t.subject||''} onChange={e => updateTemplate(t.id, { subject:e.target.value })} />
+                          </div>
+                          <div style={{ marginBottom:10 }}>
+                            <div style={{ fontSize:10, color:'#64748b', marginBottom:3, fontWeight:600 }}>Body</div>
+                            <textarea style={{ ...inp, minHeight:140, resize:'vertical', fontFamily:'inherit' }} value={t.body||''} onChange={e => updateTemplate(t.id, { body:e.target.value })} />
+                          </div>
+                          {!builtIn && (
+                            <button onClick={() => removeTemplate(t.id)}
+                              style={{ fontSize:11, padding:'5px 12px', borderRadius:6, border:'1px solid #fecaca', background:'#fff', color:'#dc2626', cursor:'pointer' }}>
+                              Delete template
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </Card>
+            </>
           )}
 
           {/* Commission Rates */}
