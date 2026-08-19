@@ -98,11 +98,21 @@ export const EMAIL_FONT_CSS = "font-family:Aptos,Calibri,Arial,sans-serif;font-s
 // own default (much larger, non-configurable) list indent regardless of
 // padding-left — this is why an earlier version of this file that used
 // <ul>/<li> with padding-left still looked barely indented in a real
-// Outlook draft. Manual bullets on <p> tags with a hanging indent
-// (margin-left positions the whole block, a matching negative text-indent
-// pulls just the bullet back out onto the first line) survive Word's
-// renderer, because paragraph margin/text-indent IS respected even where
-// list-specific CSS isn't.
+// Outlook draft. Manual bullets with a hanging indent (margin-left
+// positions the whole block, a matching negative text-indent pulls just
+// the bullet back out onto the first line) survive Word's renderer,
+// because block margin/text-indent IS respected even where list-specific
+// CSS isn't.
+//
+// Also deliberately <div>, never <p>: testing showed Outlook's "auto
+// include signature on new message" inserts the signature immediately
+// after the FIRST <p> element it finds anywhere in the body — not at the
+// true end. An earlier pass here used <p> for these bullets, which meant
+// the first <p> in the whole email was the first checklist heading, and
+// the signature spliced in right there. <div> carries the same
+// margin/text-indent styling without tripping that heuristic — the entire
+// email (see buildHtml/renderTemplateBodyHtml) is now built with zero <p>
+// tags for exactly this reason.
 const BULLET = '&#8226;&nbsp;&nbsp;'
 function renderChecklistEntry(entry) {
   const dashIdx = entry.text.indexOf(' - ')
@@ -111,12 +121,12 @@ function renderChecklistEntry(entry) {
   let descHtml = ''
   if (dashIdx !== -1) {
     mainText = entry.text.slice(0, dashIdx)
-    descHtml = `<p style="${EMAIL_FONT_CSS}margin:2px 0 6px 36pt">${escapeHtml(entry.text.slice(dashIdx + 3))}</p>`
+    descHtml = `<div style="${EMAIL_FONT_CSS}margin:2px 0 6px 36pt">${escapeHtml(entry.text.slice(dashIdx + 3))}</div>`
   }
   if (hasChildren && !/[:.]\s*$/.test(mainText)) mainText = `${mainText}:`
-  const mainHtml = `<p style="${EMAIL_FONT_CSS}margin:0 0 ${descHtml ? 2 : 6}px 36pt;text-indent:-14pt">${BULLET}${escapeHtml(mainText)}</p>`
+  const mainHtml = `<div style="${EMAIL_FONT_CSS}margin:0 0 ${descHtml ? 2 : 6}px 36pt;text-indent:-14pt">${BULLET}${escapeHtml(mainText)}</div>`
   const childrenHtml = hasChildren
-    ? entry.children.map(c => `<p style="${EMAIL_FONT_CSS}margin:0 0 4px 64pt;text-indent:-14pt">${BULLET}${escapeHtml(c)}</p>`).join('')
+    ? entry.children.map(c => `<div style="${EMAIL_FONT_CSS}margin:0 0 4px 64pt;text-indent:-14pt">${BULLET}${escapeHtml(c)}</div>`).join('')
     : ''
   return `${mainHtml}${descHtml}${childrenHtml}`
 }
@@ -160,9 +170,9 @@ function collectChecklistSections(sections, onlyOutstanding) {
 export function buildChecklistHtml(sections, opts = {}) {
   const built = collectChecklistSections(sections, !!opts.onlyOutstanding)
   if (built.length === 0) {
-    return `<p style="${EMAIL_FONT_CSS}margin:0;font-style:italic">Every item on the checklist has been received — thank you!</p>`
+    return `<div style="${EMAIL_FONT_CSS}margin:0;font-style:italic">Every item on the checklist has been received — thank you!</div>`
   }
-  return built.map(sec => `<p style="${EMAIL_FONT_CSS}font-weight:700;margin:10px 0 4px">${escapeHtml(sec.heading)}</p>${sec.entries.map(renderChecklistEntry).join('')}`).join('')
+  return built.map(sec => `<div style="${EMAIL_FONT_CSS}font-weight:700;margin:10px 0 4px">${escapeHtml(sec.heading)}</div>${sec.entries.map(renderChecklistEntry).join('')}`).join('')
 }
 
 // Plain-text equivalent of buildChecklistHtml — used as the clipboard

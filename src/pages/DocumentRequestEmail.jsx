@@ -119,10 +119,13 @@ export default function DocumentRequestEmail() {
     saveDeals(updated)
   }
 
+  // <div>, not <p> — see the comment on renderChecklistEntry in
+  // emailUtils.js: Outlook's auto-signature splices in right after the
+  // first <p> anywhere in the body, so nothing in this email uses <p>.
   function keyPointsHtml() {
     if (!keyPoints.length) return ''
-    return `<p style="${EMAIL_FONT_CSS}margin:10px 0 4px">Following our discussion, I have summarised the key points:</p>${
-      keyPoints.map(k => `<p style="${EMAIL_FONT_CSS}margin:0 0 4px 36pt;text-indent:-14pt">&#8226;&nbsp;&nbsp;${escapeHtml(k)}</p>`).join('')
+    return `<div style="${EMAIL_FONT_CSS}margin:10px 0 4px">Following our discussion, I have summarised the key points:</div>${
+      keyPoints.map(k => `<div style="${EMAIL_FONT_CSS}margin:0 0 4px 36pt;text-indent:-14pt">&#8226;&nbsp;&nbsp;${escapeHtml(k)}</div>`).join('')
     }`
   }
 
