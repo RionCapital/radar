@@ -82,6 +82,18 @@ export default function DocumentRequestEmail() {
   const addKeyPoint = () => { if (!newKeyPoint.trim()) return; setKeyPoints(k => [...k, newKeyPoint.trim()]); setNewKeyPoint('') }
   const removeKeyPoint = i => setKeyPoints(k => k.filter((_, j) => j !== i))
 
+  // Which documents (from Settings > CRM > Communication > Email
+  // attachments) go out with this specific email — seeded from the
+  // template's own defaults, but freely adjustable per send without
+  // changing those defaults.
+  const availableAttachments = settings.emailAttachments || []
+  const [attachmentIds, setAttachmentIds] = useState(() => template?.attachmentIds || [])
+  const toggleAttachment = id => setAttachmentIds(ids => ids.includes(id) ? ids.filter(x => x !== id) : [...ids, id])
+  const attachmentsToSend = attachmentIds
+    .map(id => availableAttachments.find(a => a.id === id))
+    .filter(Boolean)
+    .map(a => ({ filename: a.fileName, content: a.content }))
+
   const [sending, setSending] = useState(null)
   const [sendError, setSendError] = useState('')
   const [statusMsg, setStatusMsg] = useState('')
@@ -184,6 +196,7 @@ export default function DocumentRequestEmail() {
     try {
       const result = await openInPreferredClient({
         to, subject, html, plainText: text || buildPlainText(),
+        attachments: attachmentsToSend,
         emailClient: settings.emailClient,
       })
       setSending('sent')
@@ -200,7 +213,7 @@ export default function DocumentRequestEmail() {
     if (!to) { alert('Please add at least one recipient'); return }
     const templateLabel = template?.name || 'Document Request'
     const { html, text } = readPreviewContent()
-    const result = await openInPreferredClient({ to, subject, html, plainText: text || buildPlainText(), emailClient: client })
+    const result = await openInPreferredClient({ to, subject, html, plainText: text || buildPlainText(), attachments: attachmentsToSend, emailClient: client })
     setStatusMsg(result.label)
     logEmailNote(templateLabel, to, result.label, text)
     setTimeout(() => setStatusMsg(''), 5000)
@@ -287,6 +300,27 @@ export default function DocumentRequestEmail() {
             <button onClick={addKeyPoint} style={{ padding: '5px 10px', borderRadius: 6, border: 'none', background: NAVY, color: '#fff', fontSize: 11, cursor: 'pointer' }}>+</button>
           </div>
         </Section>
+
+        {availableAttachments.length > 0 && (
+          <Section title="Attachments">
+            <div style={{ fontSize: 10, color: '#94a3b8', marginBottom: 8, fontStyle: 'italic' }}>
+              Ticked by default per the template's own settings — add or remove for this email only. Set defaults in Settings &gt; CRM &gt; Communication.
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {availableAttachments.map(a => (
+                <label key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5, color: '#334155', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={attachmentIds.includes(a.id)} onChange={() => toggleAttachment(a.id)} />
+                  📎 {a.name}
+                </label>
+              ))}
+            </div>
+            {settings.emailClient !== 'outlook' && attachmentIds.length > 0 && (
+              <div style={{ fontSize: 9.5, color: '#b45309', marginTop: 6 }}>
+                Your delivery app is set to {settings.emailClient === 'gmail' ? 'Gmail' : 'Copy to clipboard'} — attachments only travel automatically with Outlook (.eml) sends. You'll need to attach these manually this time.
+              </div>
+            )}
+          </Section>
+        )}
 
         {/* Send controls */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>

@@ -65,6 +65,18 @@ export const DEFAULT_SETTINGS = {
   // body to the clipboard (Gmail's URL scheme can't carry rich HTML),
   // 'other' just copies the formatted body to the clipboard.
   emailClient: 'outlook',
+  // Documents a broker can attach to CRM templated emails (e.g. credit
+  // guides, privacy statements, the Fact Find, the Asset & Liability
+  // Statement) — uploaded once in Settings > CRM > Communication and
+  // reused from there, rather than re-attached by hand every time.
+  // `content` is the raw base64 payload (no "data:mime;base64," prefix) —
+  // exactly the shape emailUtils.js's downloadEml() expects for an
+  // attachment, so it can go straight into a .eml with no reprocessing.
+  // A template's `attachmentIds` (see emailTemplates below) lists which of
+  // these attach automatically when that template's email is sent; the
+  // Document Request send screen also lets a broker tick/untick specific
+  // ones for a single email without changing the template's defaults.
+  emailAttachments: [],
   // Email templates authored in Settings > CRM > Communication. The two
   // built-in templates below (type: 'rfi' / 'outstanding') power the
   // Document Request emails on a deal's Attachments tab — their ids are

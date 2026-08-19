@@ -218,6 +218,48 @@ export default function AdminSettings({ clients, onUpdateClients }) {
     if (!window.confirm('Delete this template?')) return
     setSettings(s => ({ ...s, emailTemplates: (s.emailTemplates||[]).filter(t=>t.id!==id) }))
   }
+  function toggleTemplateAttachment(templateId, attachmentId) {
+    setSettings(s => ({
+      ...s,
+      emailTemplates: (s.emailTemplates||[]).map(t => {
+        if (t.id !== templateId) return t
+        const ids = t.attachmentIds || []
+        return { ...t, attachmentIds: ids.includes(attachmentId) ? ids.filter(x => x !== attachmentId) : [...ids, attachmentId] }
+      }),
+    }))
+  }
+
+  // Uploaded once here, reused by every template/send — see the comment on
+  // DEFAULT_SETTINGS.emailAttachments in settings.js. Read as a data URL so
+  // the raw base64 payload (after the comma) can be embedded straight into
+  // a .eml attachment part with no further conversion.
+  function addAttachment(file) {
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      const base64 = String(reader.result || '').split(',')[1] || ''
+      const id = Date.now().toString()
+      setSettings(s => ({
+        ...s,
+        emailAttachments: [...(s.emailAttachments||[]), {
+          id, name: file.name.replace(/\.[^.]+$/, ''), fileName: file.name,
+          mimeType: file.type || 'application/octet-stream', content: base64, size: file.size,
+        }],
+      }))
+    }
+    reader.readAsDataURL(file)
+  }
+  function renameAttachment(id, name) {
+    setSettings(s => ({ ...s, emailAttachments: (s.emailAttachments||[]).map(a => a.id===id ? { ...a, name } : a) }))
+  }
+  function removeAttachment(id) {
+    if (!window.confirm('Remove this attachment? Any templates set to auto-attach it will stop doing so.')) return
+    setSettings(s => ({
+      ...s,
+      emailAttachments: (s.emailAttachments||[]).filter(a => a.id !== id),
+      emailTemplates: (s.emailTemplates||[]).map(t => ({ ...t, attachmentIds: (t.attachmentIds||[]).filter(aid => aid !== id) })),
+    }))
+  }
 
   // Which top tabs show depends on which menu section is selected. General
   // carries everything that used to be the whole page (Commission Rates,
@@ -467,6 +509,19 @@ export default function AdminSettings({ clients, onUpdateClients }) {
                             <div style={{ fontSize:10, color:'#64748b', marginBottom:3, fontWeight:600 }}>Body</div>
                             <textarea style={{ ...inp, minHeight:140, resize:'vertical', fontFamily:'inherit' }} value={t.body||''} onChange={e => updateTemplate(t.id, { body:e.target.value })} />
                           </div>
+                          {(settings.emailAttachments||[]).length > 0 && (
+                            <div style={{ marginBottom:10 }}>
+                              <div style={{ fontSize:10, color:'#64748b', marginBottom:5, fontWeight:600 }}>Attach automatically</div>
+                              <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                                {settings.emailAttachments.map(a => (
+                                  <label key={a.id} style={{ display:'flex', alignItems:'center', gap:8, fontSize:11.5, color:'#2A3545', cursor:'pointer' }}>
+                                    <input type="checkbox" checked={(t.attachmentIds||[]).includes(a.id)} onChange={() => toggleTemplateAttachment(t.id, a.id)} />
+                                    {a.name}
+                                  </label>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                           {!builtIn && (
                             <button onClick={() => removeTemplate(t.id)}
                               style={{ fontSize:11, padding:'5px 12px', borderRadius:6, border:'1px solid #fecaca', background:'#fff', color:'#dc2626', cursor:'pointer' }}>
@@ -478,6 +533,33 @@ export default function AdminSettings({ clients, onUpdateClients }) {
                     </div>
                   )
                 })}
+              </Card>
+
+              <Card style={{ marginTop:16 }}>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
+                  <CardTitle style={{ margin:0 }}>Email attachments</CardTitle>
+                  <label style={{ fontSize:11, padding:'5px 14px', borderRadius:7, border:'none', background:'#3D4F6B', color:'#fff', cursor:'pointer', fontWeight:600 }}>
+                    + Add attachment
+                    <input type="file" style={{ display:'none' }} onChange={e => { addAttachment(e.target.files[0]); e.target.value = '' }} />
+                  </label>
+                </div>
+                <div style={{ fontSize:11, color:'#7A8090', marginBottom:14, lineHeight:1.5 }}>
+                  Upload documents here once — e.g. the Home Lending or Asset Finance Credit Guide &amp; Privacy Statement, your Fact Find, the Asset &amp; Liability Statement — and they're stored with your other settings, ready to reuse rather than attaching by hand each time. Tick a document under any template above to have it attach automatically whenever that email is sent; the Document Request send screen also lets a broker add or remove attachments for one specific email without changing the template's defaults. Attachments only travel with Outlook (.eml) sends — Gmail and copy-to-clipboard delivery can't carry file attachments automatically.
+                </div>
+                {(settings.emailAttachments||[]).length === 0 && (
+                  <div style={{ fontSize:11.5, color:'#9ca3af' }}>No attachments uploaded yet — add one above to get started.</div>
+                )}
+                {(settings.emailAttachments||[]).map(a => (
+                  <div key={a.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 10px', border:'0.5px solid #e8eaed', borderRadius:7, marginBottom:8 }}>
+                    <span style={{ fontSize:14 }}>📎</span>
+                    <input style={{ ...inp, flex:1 }} value={a.name} onChange={e => renameAttachment(a.id, e.target.value)} />
+                    <span style={{ fontSize:10, color:'#9ca3af', whiteSpace:'nowrap' }}>{a.fileName} · {Math.max(1, Math.round(a.size/1024))} KB</span>
+                    <button onClick={() => removeAttachment(a.id)}
+                      style={{ fontSize:10, padding:'4px 10px', borderRadius:5, border:'1px solid #fecaca', background:'#fff', color:'#dc2626', cursor:'pointer', flexShrink:0 }}>
+                      Remove
+                    </button>
+                  </div>
+                ))}
               </Card>
             </>
           )}
