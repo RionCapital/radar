@@ -121,13 +121,9 @@ export default function DocumentRequestEmail() {
 
   function keyPointsHtml() {
     if (!keyPoints.length) return ''
-    return `
-      <div style="margin:14px 0">
-        <div style="${EMAIL_FONT_CSS}margin:0 0 6px">Following our discussion, I have summarised the key points:</div>
-        <ul style="margin:4px 0 0;padding-left:20px">
-          ${keyPoints.map(k => `<li style="${EMAIL_FONT_CSS}margin-bottom:6px">${escapeHtml(k)}</li>`).join('')}
-        </ul>
-      </div>`
+    return `<p style="${EMAIL_FONT_CSS}margin:10px 0 4px">Following our discussion, I have summarised the key points:</p>${
+      keyPoints.map(k => `<p style="${EMAIL_FONT_CSS}margin:0 0 4px 36pt;text-indent:-14pt">&#8226;&nbsp;&nbsp;${escapeHtml(k)}</p>`).join('')
+    }`
   }
 
   // Deliberately plain — Aptos 10pt, uniform throughout (only section
@@ -144,9 +140,10 @@ export default function DocumentRequestEmail() {
       CHECKLIST: checklistHtml,
       KEY_POINTS_BLOCK: keyPointsHtml(),
     })
+    // The greeting is deliberately plain text + <br/> here, not its own <p> —
+    // see the comment on renderTemplateBodyHtml in emailUtils.js for why.
     return `<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="${EMAIL_FONT_CSS}margin:0;padding:0;color:#1a1a1a;line-height:1.5">
-      <div style="${EMAIL_FONT_CSS}max-width:640px">
-        <p style="${EMAIL_FONT_CSS}margin:0 0 14px">Hi ${escapeHtml(clientNameForTokens)},</p>
+      <div style="${EMAIL_FONT_CSS}max-width:640px">Hi ${escapeHtml(clientNameForTokens)},<br/><br/>
         ${body}
       </div></body></html>`
   }

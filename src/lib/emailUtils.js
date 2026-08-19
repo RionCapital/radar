@@ -92,6 +92,18 @@ export const EMAIL_FONT_CSS = "font-family:Aptos,Calibri,Arial,sans-serif;font-s
 // itself, with a trailing colon — with the named instances as an indented
 // sub-list underneath, rather than repeating the whole request once per
 // instance.
+//
+// Deliberately NOT <ul>/<li>: desktop Outlook renders HTML through Word's
+// engine, which overrides most CSS on real list elements and re-applies its
+// own default (much larger, non-configurable) list indent regardless of
+// padding-left — this is why an earlier version of this file that used
+// <ul>/<li> with padding-left still looked barely indented in a real
+// Outlook draft. Manual bullets on <p> tags with a hanging indent
+// (margin-left positions the whole block, a matching negative text-indent
+// pulls just the bullet back out onto the first line) survive Word's
+// renderer, because paragraph margin/text-indent IS respected even where
+// list-specific CSS isn't.
+const BULLET = '&#8226;&nbsp;&nbsp;'
 function renderChecklistEntry(entry) {
   const dashIdx = entry.text.indexOf(' - ')
   const hasChildren = !!(entry.children && entry.children.length)
@@ -99,13 +111,14 @@ function renderChecklistEntry(entry) {
   let descHtml = ''
   if (dashIdx !== -1) {
     mainText = entry.text.slice(0, dashIdx)
-    descHtml = `<div style="${EMAIL_FONT_CSS}margin:2px 0 0;padding-left:2px">${escapeHtml(entry.text.slice(dashIdx + 3))}</div>`
+    descHtml = `<p style="${EMAIL_FONT_CSS}margin:2px 0 6px 36pt">${escapeHtml(entry.text.slice(dashIdx + 3))}</p>`
   }
   if (hasChildren && !/[:.]\s*$/.test(mainText)) mainText = `${mainText}:`
+  const mainHtml = `<p style="${EMAIL_FONT_CSS}margin:0 0 ${descHtml ? 2 : 6}px 36pt;text-indent:-14pt">${BULLET}${escapeHtml(mainText)}</p>`
   const childrenHtml = hasChildren
-    ? `<ul style="margin:4px 0 0;padding-left:20px">${entry.children.map(c => `<li style="${EMAIL_FONT_CSS}margin-bottom:3px">${escapeHtml(c)}</li>`).join('')}</ul>`
+    ? entry.children.map(c => `<p style="${EMAIL_FONT_CSS}margin:0 0 4px 64pt;text-indent:-14pt">${BULLET}${escapeHtml(c)}</p>`).join('')
     : ''
-  return `<li style="${EMAIL_FONT_CSS}margin-bottom:7px">${escapeHtml(mainText)}${descHtml}${childrenHtml}</li>`
+  return `${mainHtml}${descHtml}${childrenHtml}`
 }
 
 // Walks a deal's live _attachments.sections (see DealPage.jsx
@@ -149,11 +162,7 @@ export function buildChecklistHtml(sections, opts = {}) {
   if (built.length === 0) {
     return `<p style="${EMAIL_FONT_CSS}margin:0;font-style:italic">Every item on the checklist has been received — thank you!</p>`
   }
-  return built.map(sec => `
-    <div style="margin:14px 0 4px">
-      <div style="${EMAIL_FONT_CSS}font-weight:700">${escapeHtml(sec.heading)}</div>
-      <ul style="margin:4px 0 0;padding-left:20px">${sec.entries.map(renderChecklistEntry).join('')}</ul>
-    </div>`).join('')
+  return built.map(sec => `<p style="${EMAIL_FONT_CSS}font-weight:700;margin:10px 0 4px">${escapeHtml(sec.heading)}</p>${sec.entries.map(renderChecklistEntry).join('')}`).join('')
 }
 
 // Plain-text equivalent of buildChecklistHtml — used as the clipboard
@@ -230,18 +239,29 @@ export function renderTemplateSubject(subjectTemplate, clientName) {
 // tokens) into HTML for the email preview/send. {{CLIENT_NAME}} is a plain
 // text substitution; {{CHECKLIST}} and {{KEY_POINTS_BLOCK}}, when they
 // occupy a paragraph by themselves, are swapped for their pre-built HTML
-// blocks rather than escaped — everything else is escaped and wrapped as a
-// normal paragraph.
+// blocks rather than escaped — everything else is escaped.
+//
+// Plain paragraphs are joined with <br/><br/> into one continuous run of
+// text rather than each wrapped in its own <p>. This is a second attempt at
+// the Outlook signature-splice problem (see the note on downloadEml): the
+// table wrap that reliably fixed it was rejected because it disables
+// Outlook's paragraph ruler, so this instead removes the isolated first
+// <p> (the greeting/intro line) that Outlook's "insert signature on new
+// message" logic appears to treat as a boundary and splice after. This is
+// a best-effort structural change, not a guaranteed fix — there's no way to
+// verify it against a real Outlook client from this environment, so it
+// needs a fresh test.
 export function renderTemplateBodyHtml(bodyTemplate, tokens = {}) {
   const withClientName = (bodyTemplate || '').replace(/\{\{CLIENT_NAME\}\}/g, tokens.CLIENT_NAME || '')
   const paragraphs = withClientName.split(/\n\s*\n/)
-  return paragraphs.map(para => {
+  const pieces = paragraphs.map(para => {
     const trimmed = para.trim()
     if (!trimmed) return ''
     if (trimmed === '{{CHECKLIST}}') return tokens.CHECKLIST || ''
     if (trimmed === '{{KEY_POINTS_BLOCK}}') return tokens.KEY_POINTS_BLOCK || ''
-    return `<p style="${EMAIL_FONT_CSS}margin:0 0 14px">${escapeHtml(trimmed).replace(/\n/g, '<br/>')}</p>`
-  }).join('')
+    return escapeHtml(trimmed).replace(/\n/g, '<br/>')
+  }).filter(Boolean)
+  return pieces.join('<br/><br/>')
 }
 
 export function emailHeader(greeting) {

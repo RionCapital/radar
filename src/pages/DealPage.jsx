@@ -2428,16 +2428,53 @@ function NotesTab({ d, editing, set, deal, deals, setDeals }) {
   const fileNotes = d._fileNotes || []
   const [selected, setSelected] = useState(0)
   const [draftNote, setDraftNote] = useState({ type:'General Note', title:'', body:'' })
+  const [editingIdx, setEditingIdx] = useState(null)
+  const [editDraft, setEditDraft] = useState({ title:'', body:'' })
+
+  function persistNotes(updatedNotes) {
+    const updated = deals.map(x => x['Transaction Name'] === deal['Transaction Name'] ? { ...x, _fileNotes: updatedNotes } : x)
+    setDeals(updated); saveDeals(updated)
+    if (editing) set('_fileNotes', updatedNotes)
+  }
 
   function addNote() {
     if (!draftNote.title.trim()) return
     const entry = { ...draftNote, date: new Date().toISOString().slice(0,10), user: d.Advisor || 'Cameron Finlayson' }
     const updatedNotes = [entry, ...fileNotes]
-    const updated = deals.map(x => x['Transaction Name'] === deal['Transaction Name'] ? { ...x, _fileNotes: updatedNotes } : x)
-    setDeals(updated); saveDeals(updated)
-    if (editing) set('_fileNotes', updatedNotes)
+    persistNotes(updatedNotes)
     setDraftNote({ type:'General Note', title:'', body:'' })
     setSelected(0)
+  }
+
+  // Emails are a factual record of what was actually sent to a client, so
+  // they stay read-only; general/manually-entered notes (General Note,
+  // Appointment, Call) can be corrected after the fact. Both types can be
+  // deleted, per Cameron's request.
+  const isEditableType = n => n && n.type !== 'Email Out'
+
+  function deleteNote(i) {
+    if (!window.confirm('Delete this file note? This cannot be undone.')) return
+    const updatedNotes = fileNotes.filter((_, j) => j !== i)
+    persistNotes(updatedNotes)
+    if (editingIdx === i) setEditingIdx(null)
+    setSelected(s => {
+      if (updatedNotes.length === 0) return 0
+      if (i < s) return s - 1
+      if (i === s) return Math.min(s, updatedNotes.length - 1)
+      return s
+    })
+  }
+
+  function startEditNote(i) {
+    setEditingIdx(i)
+    setEditDraft({ title: fileNotes[i].title || '', body: fileNotes[i].body || '' })
+  }
+
+  function saveEditNote() {
+    if (editingIdx === null) return
+    const updatedNotes = fileNotes.map((n, j) => j === editingIdx ? { ...n, title: editDraft.title, body: editDraft.body } : n)
+    persistNotes(updatedNotes)
+    setEditingIdx(null)
   }
 
   const bid = d._bid || {}
@@ -2480,9 +2517,13 @@ function NotesTab({ d, editing, set, deal, deals, setDeals }) {
             >⬇ Download all as PDF</button>
           )}>
             {fileNotes.map((n,i) => (
-              <div key={i} onClick={()=>setSelected(i)} style={{ padding:'10px 8px', borderRadius:6, cursor:'pointer', background: selected===i?'#EEF2F6':'transparent', borderBottom:'0.5px solid #f0f0f0' }}>
-                <div style={{ fontSize:10, color:'#9ca3af' }}>{n.date} · {n.type} · {n.user}</div>
-                <div style={{ fontSize:12, fontWeight:600, color:'#2A3545' }}>{n.title}</div>
+              <div key={i} onClick={()=>setSelected(i)} style={{ display:'flex', alignItems:'center', gap:8, padding:'10px 8px', borderRadius:6, cursor:'pointer', background: selected===i?'#EEF2F6':'transparent', borderBottom:'0.5px solid #f0f0f0' }}>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontSize:10, color:'#9ca3af' }}>{n.date} · {n.type} · {n.user}</div>
+                  <div style={{ fontSize:12, fontWeight:600, color:'#2A3545' }}>{n.title}</div>
+                </div>
+                <span onClick={e=>{e.stopPropagation(); deleteNote(i)}} title="Delete file note"
+                  style={{ fontSize:10, color:'#c0392b', padding:'2px 6px', borderRadius:4, border:'0.5px solid #fde8e8', background:'#fde8e8', cursor:'pointer', flexShrink:0 }}>✕</span>
               </div>
             ))}
             {fileNotes.length === 0 && <div style={{ fontSize:11, color:'#9ca3af', padding:'8px 0' }}>No file notes yet</div>}
@@ -2500,17 +2541,38 @@ function NotesTab({ d, editing, set, deal, deals, setDeals }) {
           </TabCard>
         </div>
 
-        <TabCard title="File Note Detail" right={fileNotes[selected] && (
-          <button
-            onClick={()=>downloadFileNotePdf(fileNotes[selected], d['Transaction Name'] || deal?.['Transaction Name'] || '')}
-            style={{ fontSize:10.5, fontWeight:600, color:'#3D4F6B', background:'#EEF2F6', border:'none', borderRadius:6, padding:'5px 10px', cursor:'pointer' }}
-          >⬇ Download PDF</button>
+        <TabCard title="File Note Detail" right={fileNotes[selected] && editingIdx !== selected && (
+          <div style={{ display:'flex', gap:6 }}>
+            {isEditableType(fileNotes[selected]) && (
+              <button onClick={()=>startEditNote(selected)}
+                style={{ fontSize:10.5, fontWeight:600, color:'#3D4F6B', background:'#EEF2F6', border:'none', borderRadius:6, padding:'5px 10px', cursor:'pointer' }}
+              >✎ Edit</button>
+            )}
+            <button
+              onClick={()=>downloadFileNotePdf(fileNotes[selected], d['Transaction Name'] || deal?.['Transaction Name'] || '')}
+              style={{ fontSize:10.5, fontWeight:600, color:'#3D4F6B', background:'#EEF2F6', border:'none', borderRadius:6, padding:'5px 10px', cursor:'pointer' }}
+            >⬇ Download PDF</button>
+            <button onClick={()=>deleteNote(selected)}
+              style={{ fontSize:10.5, fontWeight:600, color:'#c0392b', background:'#fde8e8', border:'none', borderRadius:6, padding:'5px 10px', cursor:'pointer' }}
+            >Delete</button>
+          </div>
         )}>
           {fileNotes[selected] ? (
-            <>
-              <div style={{ fontSize:13, fontWeight:700, color:'#3D4F6B', marginBottom:8 }}>{fileNotes[selected].title}</div>
-              <p style={{ fontSize:12, color:'#2A3545', lineHeight:1.6, whiteSpace:'pre-wrap' }}>{fileNotes[selected].body}</p>
-            </>
+            editingIdx === selected ? (
+              <>
+                <input style={{...inp,marginBottom:8,fontWeight:600}} value={editDraft.title} onChange={e=>setEditDraft(x=>({...x,title:e.target.value}))} placeholder="Title" />
+                <textarea style={{...inp,resize:'vertical',marginBottom:8}} rows={8} value={editDraft.body} onChange={e=>setEditDraft(x=>({...x,body:e.target.value}))} placeholder="Note detail…" />
+                <div style={{ display:'flex', gap:8 }}>
+                  <button onClick={saveEditNote} style={addBtnStyle}>Save</button>
+                  <button onClick={()=>setEditingIdx(null)} style={{ ...addBtnStyle, background:'#EEF2F6', color:'#3D4F6B' }}>Cancel</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div style={{ fontSize:13, fontWeight:700, color:'#3D4F6B', marginBottom:8 }}>{fileNotes[selected].title}</div>
+                <p style={{ fontSize:12, color:'#2A3545', lineHeight:1.6, whiteSpace:'pre-wrap' }}>{fileNotes[selected].body}</p>
+              </>
+            )
           ) : <div style={{ fontSize:11, color:'#9ca3af' }}>Select or add a file note to see detail here.</div>}
         </TabCard>
       </div>
