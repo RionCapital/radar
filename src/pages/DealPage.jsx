@@ -9,6 +9,7 @@ import ReferrerPicker from '../components/ReferrerPicker'
 import { SettleModal, applySettlement } from '../components/SettleModal'
 import { calcUpfront, getUpfrontRate, dealUpfrontCommission, dealUpfrontRateEffective, dealCommissionIsOverridden, loadSettings, getDealStages, stageDisplay } from '../lib/settings'
 import { mapRradarContactToDealContact } from '../lib/data'
+import { downloadFileNotePdf, downloadFileNotesPdf } from '../lib/fileNotePdf'
 
 // Category list and per-category Transaction Type options, per Cameron's
 // working spreadsheet (Category drives which Transaction Types are valid).
@@ -2472,7 +2473,12 @@ function NotesTab({ d, editing, set, deal, deals, setDeals }) {
             )}
           </TabCard>
 
-          <TabCard title="General Notes">
+          <TabCard title="General Notes" right={fileNotes.length > 0 && (
+            <button
+              onClick={()=>downloadFileNotesPdf(fileNotes, d['Transaction Name'] || deal?.['Transaction Name'] || '')}
+              style={{ fontSize:10.5, fontWeight:600, color:'#3D4F6B', background:'#EEF2F6', border:'none', borderRadius:6, padding:'5px 10px', cursor:'pointer' }}
+            >⬇ Download all as PDF</button>
+          )}>
             {fileNotes.map((n,i) => (
               <div key={i} onClick={()=>setSelected(i)} style={{ padding:'10px 8px', borderRadius:6, cursor:'pointer', background: selected===i?'#EEF2F6':'transparent', borderBottom:'0.5px solid #f0f0f0' }}>
                 <div style={{ fontSize:10, color:'#9ca3af' }}>{n.date} · {n.type} · {n.user}</div>
@@ -2494,7 +2500,12 @@ function NotesTab({ d, editing, set, deal, deals, setDeals }) {
           </TabCard>
         </div>
 
-        <TabCard title="File Note Detail">
+        <TabCard title="File Note Detail" right={fileNotes[selected] && (
+          <button
+            onClick={()=>downloadFileNotePdf(fileNotes[selected], d['Transaction Name'] || deal?.['Transaction Name'] || '')}
+            style={{ fontSize:10.5, fontWeight:600, color:'#3D4F6B', background:'#EEF2F6', border:'none', borderRadius:6, padding:'5px 10px', cursor:'pointer' }}
+          >⬇ Download PDF</button>
+        )}>
           {fileNotes[selected] ? (
             <>
               <div style={{ fontSize:13, fontWeight:700, color:'#3D4F6B', marginBottom:8 }}>{fileNotes[selected].title}</div>

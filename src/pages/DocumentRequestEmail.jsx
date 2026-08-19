@@ -6,7 +6,7 @@ import { loadSettings, getClientBroker } from '../lib/settings'
 import { findLinkedClient } from './DealPage'
 import {
   buildChecklistHtml, buildChecklistText, renderTemplateSubject, renderTemplateBodyHtml,
-  openInPreferredClient, escapeHtml,
+  openInPreferredClient, escapeHtml, EMAIL_FONT_CSS,
 } from '../lib/emailUtils'
 
 const NAVY = '#3D4F6B'
@@ -86,12 +86,31 @@ export default function DocumentRequestEmail() {
   const [sendError, setSendError] = useState('')
   const [statusMsg, setStatusMsg] = useState('')
 
+  const sections = deal?._attachments?.sections || null
+
+  // A plain-text rendition of the actual email that went out — resolves the
+  // same placeholders buildHtml() does, so the file note shows what was
+  // really sent rather than just a one-line "email sent" summary.
+  function buildEmailNotePlainText() {
+    if (!sections || !template) return ''
+    const checklistText = buildChecklistText(sections, { onlyOutstanding })
+    const keyPointsText = keyPoints.length
+      ? `Following our discussion, I have summarised the key points:\n${keyPoints.map(k => `  - ${k}`).join('\n')}`
+      : ''
+    const bodyText = (template.body || '')
+      .replace(/\{\{CLIENT_NAME\}\}/g, clientNameForTokens)
+      .replace(/\{\{CHECKLIST\}\}/g, checklistText)
+      .replace(/\{\{KEY_POINTS_BLOCK\}\}/g, keyPointsText)
+      .replace(/\n{3,}/g, '\n\n')
+    return `Hi ${clientNameForTokens},\n\n${bodyText}`
+  }
+
   function logEmailNote(templateLabel, recipientList, methodLabel) {
     if (!deal) return
     const note = {
       type: 'Email Out',
       title: templateLabel,
-      body: `To: ${recipientList}. Method: ${methodLabel}.`,
+      body: `To: ${recipientList} · Method: ${methodLabel}\n\n${buildEmailNotePlainText()}`,
       date: new Date().toISOString().slice(0, 10),
       user: deal.Advisor || assignedBroker.name || 'Cameron Finlayson',
     }
@@ -100,15 +119,13 @@ export default function DocumentRequestEmail() {
     saveDeals(updated)
   }
 
-  const sections = deal?._attachments?.sections || null
-
   function keyPointsHtml() {
     if (!keyPoints.length) return ''
     return `
       <div style="margin:14px 0">
-        <div style="margin:0 0 6px">Following our discussion, I have summarised the key points:</div>
+        <div style="${EMAIL_FONT_CSS}margin:0 0 6px">Following our discussion, I have summarised the key points:</div>
         <ul style="margin:4px 0 0;padding-left:20px">
-          ${keyPoints.map(k => `<li style="margin-bottom:6px">${escapeHtml(k)}</li>`).join('')}
+          ${keyPoints.map(k => `<li style="${EMAIL_FONT_CSS}margin-bottom:6px">${escapeHtml(k)}</li>`).join('')}
         </ul>
       </div>`
   }
@@ -127,9 +144,9 @@ export default function DocumentRequestEmail() {
       CHECKLIST: checklistHtml,
       KEY_POINTS_BLOCK: keyPointsHtml(),
     })
-    return `<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;font-family:Aptos,Calibri,Arial,sans-serif;font-size:10pt;color:#1a1a1a;line-height:1.5">
-      <div style="max-width:640px">
-        <p style="margin:0 0 14px">Hi ${escapeHtml(clientNameForTokens)},</p>
+    return `<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="${EMAIL_FONT_CSS}margin:0;padding:0;color:#1a1a1a;line-height:1.5">
+      <div style="${EMAIL_FONT_CSS}max-width:640px">
+        <p style="${EMAIL_FONT_CSS}margin:0 0 14px">Hi ${escapeHtml(clientNameForTokens)},</p>
         ${body}
       </div></body></html>`
   }

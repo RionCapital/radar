@@ -18,22 +18,15 @@ export async function sendEmail(to, subject, html, brokerName, brokerEmail, atta
   return data
 }
 
-// Outlook (opening a .eml with X-Unsent: 1 as a new compose window, with
-// "Automatically include my signature on new messages" turned on) inserts
-// the user's own default signature immediately after the FIRST paragraph
-// it finds anywhere in the body — not at the true end of the message —
-// which splices the signature into the middle of whatever we've written
-// (e.g. straight after "Hi Name,"). Wrapping the entire body's content in
-// one <table> is the standard fix: Outlook's Word-based rendering engine
-// treats a table as a single opaque block rather than something to insert
-// into, so the auto-inserted signature reliably lands after the table —
-// i.e. at the bottom, after everything — instead of partway through it.
-function wrapBodyForOutlookSignature(html) {
-  return html.replace(/(<body[^>]*>)([\s\S]*)(<\/body>)/i, (m, open, inner, close) =>
-    `${open}<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse"><tr><td>${inner}</td></tr></table>${close}`
-  )
-}
-
+// NOTE on Outlook's auto-signature: opening a .eml with X-Unsent: 1 as a new
+// compose window, with "Automatically include my signature on new messages"
+// turned on, can insert the signature partway through the body rather than
+// at the true end. A single wrapping <table> around the body prevents that,
+// but it also disables Outlook's paragraph ruler/indent controls inside the
+// message and makes the email look machine-generated rather than personally
+// typed — Cameron would rather have a normal, freely-editable compose body
+// and accept the signature-position quirk than have everything living in an
+// invisible table, so we deliberately do NOT wrap the body here.
 export function downloadEml(to, subject, htmlBody, attachments = []) {
   const boundary = 'rion_boundary_' + Date.now()
   const lines = [
@@ -47,7 +40,7 @@ export function downloadEml(to, subject, htmlBody, attachments = []) {
     'Content-Type: text/html; charset=UTF-8',
     'Content-Transfer-Encoding: 8bit',
     '',
-    wrapBodyForOutlookSignature(htmlBody),
+    htmlBody,
     '',
   ]
   attachments.forEach(a => {
@@ -76,6 +69,15 @@ export function escapeHtml(str) {
   return String(str ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]))
 }
 
+// Outlook (particularly the newer "New Outlook" client) tends to re-apply
+// its own default compose font over a message's body/container-level CSS
+// when it opens a .eml as a new draft, ignoring a single font declaration
+// set once at the top. Repeating the font explicitly on every individual
+// element below is the most reliable lever available from a generated
+// email — inline, per-element styles survive that re-normalization far
+// more often than one style set on a wrapping container.
+export const EMAIL_FONT_CSS = "font-family:Aptos,Calibri,Arial,sans-serif;font-size:10.0pt;"
+
 // Attachments-tab checklist items occasionally read as a short title
 // followed by ' - ' and a longer explanatory clause (e.g. "Credit Guide &
 // Privacy Statement (attached) - This will be sent to you separately via
@@ -97,13 +99,13 @@ function renderChecklistEntry(entry) {
   let descHtml = ''
   if (dashIdx !== -1) {
     mainText = entry.text.slice(0, dashIdx)
-    descHtml = `<div style="margin:2px 0 0;padding-left:2px">${escapeHtml(entry.text.slice(dashIdx + 3))}</div>`
+    descHtml = `<div style="${EMAIL_FONT_CSS}margin:2px 0 0;padding-left:2px">${escapeHtml(entry.text.slice(dashIdx + 3))}</div>`
   }
   if (hasChildren && !/[:.]\s*$/.test(mainText)) mainText = `${mainText}:`
   const childrenHtml = hasChildren
-    ? `<ul style="margin:4px 0 0;padding-left:20px">${entry.children.map(c => `<li style="margin-bottom:3px">${escapeHtml(c)}</li>`).join('')}</ul>`
+    ? `<ul style="margin:4px 0 0;padding-left:20px">${entry.children.map(c => `<li style="${EMAIL_FONT_CSS}margin-bottom:3px">${escapeHtml(c)}</li>`).join('')}</ul>`
     : ''
-  return `<li style="margin-bottom:7px">${escapeHtml(mainText)}${descHtml}${childrenHtml}</li>`
+  return `<li style="${EMAIL_FONT_CSS}margin-bottom:7px">${escapeHtml(mainText)}${descHtml}${childrenHtml}</li>`
 }
 
 // Walks a deal's live _attachments.sections (see DealPage.jsx
@@ -145,11 +147,11 @@ function collectChecklistSections(sections, onlyOutstanding) {
 export function buildChecklistHtml(sections, opts = {}) {
   const built = collectChecklistSections(sections, !!opts.onlyOutstanding)
   if (built.length === 0) {
-    return '<p style="margin:0;font-style:italic">Every item on the checklist has been received — thank you!</p>'
+    return `<p style="${EMAIL_FONT_CSS}margin:0;font-style:italic">Every item on the checklist has been received — thank you!</p>`
   }
   return built.map(sec => `
     <div style="margin:14px 0 4px">
-      <div style="font-weight:700">${escapeHtml(sec.heading)}</div>
+      <div style="${EMAIL_FONT_CSS}font-weight:700">${escapeHtml(sec.heading)}</div>
       <ul style="margin:4px 0 0;padding-left:20px">${sec.entries.map(renderChecklistEntry).join('')}</ul>
     </div>`).join('')
 }
@@ -238,7 +240,7 @@ export function renderTemplateBodyHtml(bodyTemplate, tokens = {}) {
     if (!trimmed) return ''
     if (trimmed === '{{CHECKLIST}}') return tokens.CHECKLIST || ''
     if (trimmed === '{{KEY_POINTS_BLOCK}}') return tokens.KEY_POINTS_BLOCK || ''
-    return `<p style="margin:0 0 14px">${escapeHtml(trimmed).replace(/\n/g, '<br/>')}</p>`
+    return `<p style="${EMAIL_FONT_CSS}margin:0 0 14px">${escapeHtml(trimmed).replace(/\n/g, '<br/>')}</p>`
   }).join('')
 }
 
