@@ -363,14 +363,14 @@ export default function AdminSettings({ clients, onUpdateClients }) {
       </div>
 
       <div style={{ display:'flex', flex:1, minHeight:0 }}>
-        {/* Left-hand menu */}
-        <div style={{ width:212, flexShrink:0, background:'#fff', borderRight:'0.5px solid #e8eaed', padding:'20px 12px', display:'flex', flexDirection:'column', gap:2, overflowY:'auto' }}>
-          <div style={{ fontSize:10, fontWeight:600, color:'#9aa3b2', textTransform:'uppercase', letterSpacing:'0.08em', padding:'0 10px', marginBottom:6 }}>Tools</div>
+        {/* Left-hand menu — same navy as the top bar, per Cameron's request */}
+        <div style={{ width:212, flexShrink:0, background:'#3D5570', borderRight:'1px solid rgba(255,255,255,0.08)', padding:'20px 12px', display:'flex', flexDirection:'column', gap:2, overflowY:'auto' }}>
+          <div style={{ fontSize:10, fontWeight:600, color:'rgba(255,255,255,0.45)', textTransform:'uppercase', letterSpacing:'0.08em', padding:'0 10px', marginBottom:6 }}>Tools</div>
           {MENU_TOOLS.map(m => (
             <MenuItem key={m.id} item={m} active={section===m.id} onClick={() => selectSection(m.id)} />
           ))}
-          <div style={{ height:1, background:'#e8eaed', margin:'14px 8px' }} />
-          <div style={{ fontSize:10, fontWeight:600, color:'#9aa3b2', textTransform:'uppercase', letterSpacing:'0.08em', padding:'0 10px', marginBottom:6 }}>System</div>
+          <div style={{ height:1, background:'rgba(255,255,255,0.12)', margin:'14px 8px' }} />
+          <div style={{ fontSize:10, fontWeight:600, color:'rgba(255,255,255,0.45)', textTransform:'uppercase', letterSpacing:'0.08em', padding:'0 10px', marginBottom:6 }}>System</div>
           {MENU_SYSTEM.map(m => (
             <MenuItem key={m.id} item={m} active={section===m.id} onClick={() => selectSection(m.id)} />
           ))}
@@ -930,12 +930,12 @@ function MenuItem({ item, active, onClick }) {
       display:'flex', alignItems:'center', gap:10, width:'100%', textAlign:'left',
       padding:'8px 10px', borderRadius:8, border:'none', cursor:'pointer',
       background: active ? '#fdf0f6' : 'transparent',
-      color: active ? '#DA408D' : '#2A3545',
+      color: active ? '#DA408D' : 'rgba(255,255,255,0.75)',
       fontSize:12.5, fontWeight: active ? 700 : 500,
     }}>
       {item.icon
-        ? <img src={item.icon} alt="" style={{ width:18, height:18, objectFit:'contain', filter: active ? 'none' : 'grayscale(0.4) opacity(0.8)' }} />
-        : <span style={{ width:18, height:18, display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:13, opacity: active ? 1 : 0.6 }}>
+        ? <img src={item.icon} alt="" style={{ width:18, height:18, objectFit:'contain', filter: active ? 'none' : 'brightness(0) invert(1)', opacity: active ? 1 : 0.75 }} />
+        : <span style={{ width:18, height:18, display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:13, opacity: active ? 1 : 0.75 }}>
             {item.id === 'general' ? '⚙' : '•'}
           </span>
       }
