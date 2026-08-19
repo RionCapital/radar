@@ -88,11 +88,36 @@ export default function DocumentRequestEmail() {
   // changing those defaults.
   const availableAttachments = settings.emailAttachments || []
   const [attachmentIds, setAttachmentIds] = useState(() => template?.attachmentIds || [])
-  const toggleAttachment = id => setAttachmentIds(ids => ids.includes(id) ? ids.filter(x => x !== id) : [...ids, id])
-  const attachmentsToSend = attachmentIds
-    .map(id => availableAttachments.find(a => a.id === id))
-    .filter(Boolean)
-    .map(a => ({ filename: a.fileName, content: a.content }))
+  const [libraryPick, setLibraryPick] = useState('')
+  const addLibraryAttachment = () => {
+    if (!libraryPick) return
+    setAttachmentIds(ids => ids.includes(libraryPick) ? ids : [...ids, libraryPick])
+    setLibraryPick('')
+  }
+  const removeLibraryAttachment = id => setAttachmentIds(ids => ids.filter(x => x !== id))
+
+  // One-off attachments picked straight from Cameron's computer for THIS
+  // email only — never saved to Settings' shared library. Read client-side
+  // as base64 via FileReader, same shape emailUtils.js's downloadEml()
+  // expects, so they slot in alongside the library attachments untouched.
+  const [manualAttachments, setManualAttachments] = useState([])
+  const handleManualFile = e => {
+    const file = e.target.files[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      const base64 = String(reader.result || '').split(',')[1] || ''
+      setManualAttachments(list => [...list, { name: file.name, fileName: file.name, mimeType: file.type || 'application/octet-stream', content: base64 }])
+    }
+    reader.readAsDataURL(file)
+    e.target.value = ''
+  }
+  const removeManualAttachment = i => setManualAttachments(list => list.filter((_, j) => j !== i))
+
+  const attachmentsToSend = [
+    ...attachmentIds.map(id => availableAttachments.find(a => a.id === id)).filter(Boolean).map(a => ({ filename: a.fileName, content: a.content })),
+    ...manualAttachments.map(a => ({ filename: a.fileName, content: a.content })),
+  ]
 
   const [sending, setSending] = useState(null)
   const [sendError, setSendError] = useState('')
@@ -301,26 +326,55 @@ export default function DocumentRequestEmail() {
           </div>
         </Section>
 
-        {availableAttachments.length > 0 && (
-          <Section title="Attachments">
-            <div style={{ fontSize: 10, color: '#94a3b8', marginBottom: 8, fontStyle: 'italic' }}>
-              Ticked by default per the template's own settings — add or remove for this email only. Set defaults in Settings &gt; CRM &gt; Communication.
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {availableAttachments.map(a => (
-                <label key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5, color: '#334155', cursor: 'pointer' }}>
-                  <input type="checkbox" checked={attachmentIds.includes(a.id)} onChange={() => toggleAttachment(a.id)} />
+        <Section title="Attachments">
+          <div style={{ fontSize: 10, color: '#94a3b8', marginBottom: 8, fontStyle: 'italic' }}>
+            Ticked by default per the template's own settings. Add more from your library, or attach a one-off file from your computer just for this email.
+          </div>
+
+          {attachmentIds.map(id => {
+            const a = availableAttachments.find(x => x.id === id)
+            if (!a) return null
+            return (
+              <div key={id} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                <div style={{ flex: 1, fontSize: 11, padding: '4px 8px', background: 'rgba(235,153,194,0.1)', borderRadius: 6, border: '0.5px solid #EB99C2', color: '#334155' }}>
                   📎 {a.name}
-                </label>
-              ))}
-            </div>
-            {settings.emailClient !== 'outlook' && attachmentIds.length > 0 && (
-              <div style={{ fontSize: 9.5, color: '#b45309', marginTop: 6 }}>
-                Your delivery app is set to {settings.emailClient === 'gmail' ? 'Gmail' : 'Copy to clipboard'} — attachments only travel automatically with Outlook (.eml) sends. You'll need to attach these manually this time.
+                </div>
+                <button onClick={() => removeLibraryAttachment(id)} style={{ fontSize: 12, color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer' }}>✕</button>
               </div>
-            )}
-          </Section>
-        )}
+            )
+          })}
+          {manualAttachments.map((a, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+              <div style={{ flex: 1, fontSize: 11, padding: '4px 8px', background: '#f1f5f9', borderRadius: 6, border: '0.5px dashed #94a3b8', color: '#334155' }}>
+                📁 {a.name} <span style={{ color: '#94a3b8' }}>(this email only)</span>
+              </div>
+              <button onClick={() => removeManualAttachment(i)} style={{ fontSize: 12, color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer' }}>✕</button>
+            </div>
+          ))}
+          {attachmentIds.length === 0 && manualAttachments.length === 0 && (
+            <div style={{ fontSize: 10.5, color: '#94a3b8', marginBottom: 6 }}>No attachments added.</div>
+          )}
+
+          <div style={{ display: 'flex', gap: 4, marginTop: 6 }}>
+            <select style={{ ...inp, flex: 1 }} value={libraryPick} onChange={e => setLibraryPick(e.target.value)}>
+              <option value="">Choose from library…</option>
+              {availableAttachments.filter(a => !attachmentIds.includes(a.id)).map(a => (
+                <option key={a.id} value={a.id}>{a.name}</option>
+              ))}
+            </select>
+            <button onClick={addLibraryAttachment} style={{ padding: '5px 10px', borderRadius: 6, border: 'none', background: NAVY, color: '#fff', fontSize: 11, cursor: 'pointer' }}>+</button>
+          </div>
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 8, fontSize: 10.5, color: NAVY, cursor: 'pointer', fontWeight: 600 }}>
+            📁 Attach from computer…
+            <input type="file" style={{ display: 'none' }} onChange={handleManualFile} />
+          </label>
+
+          {settings.emailClient !== 'outlook' && (attachmentIds.length > 0 || manualAttachments.length > 0) && (
+            <div style={{ fontSize: 9.5, color: '#b45309', marginTop: 8 }}>
+              Your delivery app is set to {settings.emailClient === 'gmail' ? 'Gmail' : 'Copy to clipboard'} — attachments only travel automatically with Outlook (.eml) sends. You'll need to attach these manually this time.
+            </div>
+          )}
+        </Section>
 
         {/* Send controls */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
