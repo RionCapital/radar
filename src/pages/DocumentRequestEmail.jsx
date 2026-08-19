@@ -1,7 +1,9 @@
 import React, { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { loadDeals, saveDeals } from '../lib/deals'
+import { loadClients } from '../lib/data'
 import { loadSettings, getClientBroker } from '../lib/settings'
+import { findLinkedClient } from './DealPage'
 import {
   buildChecklistHtml, buildChecklistText, renderTemplateSubject, renderTemplateBodyHtml,
   openInPreferredClient, escapeHtml,
@@ -10,13 +12,20 @@ import {
 const NAVY = '#3D4F6B'
 const PINK = '#EB99C2'
 const inp = { width: '100%', fontSize: 11, padding: '5px 8px', border: '0.5px solid #cbd5e1', borderRadius: 5, background: '#fff', color: '#1e293b', boxSizing: 'border-box' }
-const label = txt => <div style={{ fontSize: 10, color: '#64748b', fontWeight: 600, marginBottom: 3, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{txt}</div>
 const Section = ({ title, children }) => (
   <div style={{ background: '#fff', border: '0.5px solid #e2e8f0', borderRadius: 8, padding: '14px 16px', marginBottom: 12 }}>
     <div style={{ fontSize: 10, fontWeight: 700, color: NAVY, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10, paddingBottom: 6, borderBottom: '0.5px solid #f1f5f9' }}>{title}</div>
     {children}
   </div>
 )
+
+// A contact counts as an individual whether it came from the deal's own
+// (mapped) Contacts — where the type is spelled out, 'Individual' — or from
+// an older linked deal that's still reading live off the Rradar client's
+// raw contacts, where the type is Rradar's own short code, 'Ind'. Matching
+// on a case-insensitive "starts with ind" catches both, so recipients and
+// the greeting resolve correctly either way.
+const isIndividual = c => !c.type || /^ind/i.test(c.type)
 
 export default function DocumentRequestEmail() {
   const { dealName, templateId } = useParams()
@@ -25,20 +34,31 @@ export default function DocumentRequestEmail() {
   const decodedName = decodeURIComponent(dealName)
   const [deals, setDealsState] = useState(() => loadDeals())
   const deal = deals.find(d => d['Transaction Name'] === decodedName)
+  const [clients] = useState(() => loadClients())
   const settings = loadSettings()
   const template = (settings.emailTemplates || []).find(t => t.id === templateId)
   const onlyOutstanding = template?.type === 'outstanding'
-
   const assignedBroker = getClientBroker(undefined, settings)
-  const [brokerName, setBrokerName] = useState(assignedBroker.name)
-  const [brokerPhone, setBrokerPhone] = useState(assignedBroker.phone)
-  const [brokerEmail, setBrokerEmail] = useState(assignedBroker.email)
 
-  const contacts = deal?.Contacts || []
+  // Same fallback DealPage.jsx's own Contacts tab uses: the deal's own copy
+  // of its contacts if it has one, otherwise a live read of the linked
+  // Rradar client's contacts (for older deals linked before contacts were
+  // copied across onto the deal itself).
+  const linkedClient = deal ? findLinkedClient(deal, clients) : null
+  const rawContacts = deal?.Contacts?.length
+    ? deal.Contacts
+    : (linkedClient?.contacts || []).map(c => ({
+        name: [c.first, c.middle, c.last].filter(Boolean).join(' ') || c.first || '',
+        type: c.type || 'Individual',
+        email: c.email || '',
+        mobile: c.mobile || '',
+        firstName: c.first || '',
+      }))
+
   // Greet and address the email to the individuals on the deal (not the
   // linked companies/trusts/SMSFs) — e.g. "Hi Raymond & Jessica," even
   // though the deal itself may have half a dozen entity contacts attached.
-  const individualContacts = contacts.filter(c => c.type === 'Individual' || !c.type)
+  const individualContacts = rawContacts.filter(isIndividual)
   const contactGreeting = () => {
     const names = individualContacts.map(c => c.firstName || c.name || '').filter(Boolean)
     return names.length ? names.join(' & ') : (deal?.['Transaction Name'] || '')
@@ -73,7 +93,7 @@ export default function DocumentRequestEmail() {
       title: templateLabel,
       body: `To: ${recipientList}. Method: ${methodLabel}.`,
       date: new Date().toISOString().slice(0, 10),
-      user: deal.Advisor || brokerName || 'Cameron Finlayson',
+      user: deal.Advisor || assignedBroker.name || 'Cameron Finlayson',
     }
     const updated = deals.map(x => x['Transaction Name'] === deal['Transaction Name'] ? { ...x, _fileNotes: [note, ...(x._fileNotes || [])] } : x)
     setDealsState(updated)
@@ -85,18 +105,20 @@ export default function DocumentRequestEmail() {
   function keyPointsHtml() {
     if (!keyPoints.length) return ''
     return `
-      <div style="margin:16px 0">
-        <div style="margin:0 0 8px">Following our discussion, I have summarised the key points:</div>
-        <ul style="margin:0;padding-left:20px">
-          ${keyPoints.map(k => `<li style="margin-bottom:6px;line-height:1.5">${escapeHtml(k)}</li>`).join('')}
+      <div style="margin:14px 0">
+        <div style="margin:0 0 6px">Following our discussion, I have summarised the key points:</div>
+        <ul style="margin:4px 0 0;padding-left:20px">
+          ${keyPoints.map(k => `<li style="margin-bottom:6px">${escapeHtml(k)}</li>`).join('')}
         </ul>
       </div>`
   }
 
-  // Deliberately plain — Arial, black text, no logo/header bar/footer.
-  // Cameron wants this to read as a personal email he typed himself, not
-  // a branded platform template (that treatment stays on Annual/Security
-  // Review emails, which are meant to look corporate).
+  // Deliberately plain — Aptos 10pt, uniform throughout (only section
+  // headings are bold), no logo/header bar/footer, no "Kind regards" sign-
+  // off. Cameron wants this to read as a personal email he typed himself
+  // in Outlook, with Outlook's own default signature filling in the
+  // sign-off underneath (that branded/corporate treatment stays on the
+  // Annual/Security Review emails instead).
   function buildHtml() {
     if (!sections || !template) return ''
     const checklistHtml = buildChecklistHtml(sections, { onlyOutstanding })
@@ -105,11 +127,10 @@ export default function DocumentRequestEmail() {
       CHECKLIST: checklistHtml,
       KEY_POINTS_BLOCK: keyPointsHtml(),
     })
-    return `<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#1a1a1a;line-height:1.6">
+    return `<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;font-family:Aptos,Calibri,Arial,sans-serif;font-size:10pt;color:#1a1a1a;line-height:1.5">
       <div style="max-width:640px">
         <p style="margin:0 0 14px">Hi ${escapeHtml(clientNameForTokens)},</p>
         ${body}
-        <p style="margin:18px 0 0">Kind regards,<br/>${escapeHtml(brokerName || '')}${brokerPhone ? '<br/>' + escapeHtml(brokerPhone) : ''}</p>
       </div></body></html>`
   }
 
@@ -216,23 +237,8 @@ export default function DocumentRequestEmail() {
           <input style={inp} value={subject} onChange={e => setSubject(e.target.value)} />
         </Section>
 
-        <Section title="Broker details">
-          <div style={{ marginBottom: 8 }}>
-            {label('Broker name')}
-            <input style={inp} value={brokerName} onChange={e => setBrokerName(e.target.value)} placeholder="Cameron Finlayson" />
-          </div>
-          <div style={{ marginBottom: 8 }}>
-            {label('Broker phone')}
-            <input style={inp} value={brokerPhone} onChange={e => setBrokerPhone(e.target.value)} placeholder="0400 000 000" />
-          </div>
-          <div>
-            {label('Broker email')}
-            <input style={inp} type="email" value={brokerEmail} onChange={e => setBrokerEmail(e.target.value)} placeholder="broker@rion-capital.com.au" />
-          </div>
-        </Section>
-
         <Section title="Key points (optional)">
-          <div style={{ fontSize: 10, color: '#94a3b8', marginBottom: 8, fontStyle: 'italic' }}>Add any ad hoc points from your conversation with the client — shown as a bullet list before the closing paragraph.</div>
+          <div style={{ fontSize: 10, color: '#94a3b8', marginBottom: 8, fontStyle: 'italic' }}>Add any ad hoc points from your conversation with the client — shown as a bullet list before the checklist.</div>
           {keyPoints.map((k, i) => (
             <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5, padding: '4px 8px', background: '#f8fafc', borderRadius: 5, border: '0.5px solid #e2e8f0' }}>
               <span style={{ fontSize: 11, flex: 1 }}>{k}</span>
@@ -260,7 +266,7 @@ export default function DocumentRequestEmail() {
           {statusMsg && <div style={{ fontSize: 11, color: '#1a7a45', marginTop: 4 }}>{statusMsg}</div>}
           {sendError && <div style={{ fontSize: 11, color: '#ef4444', marginTop: 4 }}>{sendError}</div>}
           <div style={{ fontSize: 9.5, color: '#94a3b8', fontStyle: 'italic', marginTop: 2 }}>
-            Default delivery app and template content are set in Settings &gt; CRM &gt; Communication.
+            Outlook opens as a new message — your own default signature fills in the sign-off underneath. Default delivery app and template content are set in Settings &gt; CRM &gt; Communication.
           </div>
         </div>
       </div>

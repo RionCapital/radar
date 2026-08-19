@@ -75,7 +75,7 @@ function ReadRow({ label, value }) {
 
 function getDeals() { return loadDeals() }
 
-function findLinkedClient(deal, clients) {
+export function findLinkedClient(deal, clients) {
   if (!clients?.length) return null
   if (deal['RradarClient']) {
     const linked = clients.find(c => c.name === deal['RradarClient'])

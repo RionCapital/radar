@@ -18,6 +18,22 @@ export async function sendEmail(to, subject, html, brokerName, brokerEmail, atta
   return data
 }
 
+// Outlook (opening a .eml with X-Unsent: 1 as a new compose window, with
+// "Automatically include my signature on new messages" turned on) inserts
+// the user's own default signature immediately after the FIRST paragraph
+// it finds anywhere in the body — not at the true end of the message —
+// which splices the signature into the middle of whatever we've written
+// (e.g. straight after "Hi Name,"). Wrapping the entire body's content in
+// one <table> is the standard fix: Outlook's Word-based rendering engine
+// treats a table as a single opaque block rather than something to insert
+// into, so the auto-inserted signature reliably lands after the table —
+// i.e. at the bottom, after everything — instead of partway through it.
+function wrapBodyForOutlookSignature(html) {
+  return html.replace(/(<body[^>]*>)([\s\S]*)(<\/body>)/i, (m, open, inner, close) =>
+    `${open}<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse"><tr><td>${inner}</td></tr></table>${close}`
+  )
+}
+
 export function downloadEml(to, subject, htmlBody, attachments = []) {
   const boundary = 'rion_boundary_' + Date.now()
   const lines = [
@@ -31,7 +47,7 @@ export function downloadEml(to, subject, htmlBody, attachments = []) {
     'Content-Type: text/html; charset=UTF-8',
     'Content-Transfer-Encoding: 8bit',
     '',
-    htmlBody,
+    wrapBodyForOutlookSignature(htmlBody),
     '',
   ]
   attachments.forEach(a => {
@@ -64,29 +80,30 @@ export function escapeHtml(str) {
 // followed by ' - ' and a longer explanatory clause (e.g. "Credit Guide &
 // Privacy Statement (attached) - This will be sent to you separately via
 // DocuSign..."). Splitting on that exact separator (never an em-dash, which
-// shows up mid-sentence in items like "IF PURCHASE – A copy of...") lets the
-// title render bold with the explanation as an indented sub-line, matching
-// how these checklists actually read; anything without the separator is
-// just one flat bullet. A repeat item with named sub-instances (e.g. two
-// investment properties, three trading entities) renders as ONE bullet —
-// the request itself, bolded as a mini-heading — with the named instances
-// as an indented sub-list underneath, rather than repeating the whole
-// request once per instance.
+// shows up mid-sentence in items like "IF PURCHASE – A copy of...") renders
+// the explanation as its own indented sub-line, matching how these
+// checklists actually read; anything without the separator is just one
+// flat bullet. Nothing in the bullet list is bold — only the section
+// heading is (see buildChecklistHtml) — per Cameron's plain, personal-email
+// styling. A repeat item with named sub-instances (e.g. two investment
+// properties, three trading entities) renders as ONE bullet — the request
+// itself, with a trailing colon — with the named instances as an indented
+// sub-list underneath, rather than repeating the whole request once per
+// instance.
 function renderChecklistEntry(entry) {
   const dashIdx = entry.text.indexOf(' - ')
   const hasChildren = !!(entry.children && entry.children.length)
-  let titleHtml, descHtml = ''
-  if (dashIdx === -1) {
-    titleHtml = escapeHtml(entry.text)
-  } else {
-    titleHtml = escapeHtml(entry.text.slice(0, dashIdx))
-    descHtml = `<div style="margin:2px 0 0;padding-left:2px;font-size:12px;color:#5b6472">${escapeHtml(entry.text.slice(dashIdx + 3))}</div>`
+  let mainText = entry.text
+  let descHtml = ''
+  if (dashIdx !== -1) {
+    mainText = entry.text.slice(0, dashIdx)
+    descHtml = `<div style="margin:2px 0 0;padding-left:2px">${escapeHtml(entry.text.slice(dashIdx + 3))}</div>`
   }
-  if (hasChildren || dashIdx !== -1) titleHtml = `<strong>${titleHtml}</strong>`
+  if (hasChildren && !/[:.]\s*$/.test(mainText)) mainText = `${mainText}:`
   const childrenHtml = hasChildren
-    ? `<ul style="margin:4px 0 0;padding-left:18px">${entry.children.map(c => `<li style="margin-bottom:3px">${escapeHtml(c)}</li>`).join('')}</ul>`
+    ? `<ul style="margin:4px 0 0;padding-left:20px">${entry.children.map(c => `<li style="margin-bottom:3px">${escapeHtml(c)}</li>`).join('')}</ul>`
     : ''
-  return `<li style="margin-bottom:7px;line-height:1.5">${titleHtml}${descHtml}${childrenHtml}</li>`
+  return `<li style="margin-bottom:7px">${escapeHtml(mainText)}${descHtml}${childrenHtml}</li>`
 }
 
 // Walks a deal's live _attachments.sections (see DealPage.jsx
@@ -121,15 +138,19 @@ function collectChecklistSections(sections, onlyOutstanding) {
   }).filter(s => s.entries.length > 0)
 }
 
+// Plain, uniform styling throughout — the only bold in the whole email is
+// the section heading (e.g. "Personal Information"); every bullet, sub-line
+// and sub-bullet inherits the page's own font/size so the checklist reads
+// like the rest of a personally-typed email, not a separate template block.
 export function buildChecklistHtml(sections, opts = {}) {
   const built = collectChecklistSections(sections, !!opts.onlyOutstanding)
   if (built.length === 0) {
-    return '<p style="font-size:12px;color:#7A8090;font-style:italic;margin:0">Every item on the checklist has been received — thank you!</p>'
+    return '<p style="margin:0;font-style:italic">Every item on the checklist has been received — thank you!</p>'
   }
   return built.map(sec => `
-    <div style="margin:16px 0 6px">
-      <div style="font-size:11px;font-weight:700;color:#3D4F6B;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">${escapeHtml(sec.heading)}</div>
-      <ul style="margin:0;padding-left:20px;font-size:13px;color:#2A3545">${sec.entries.map(renderChecklistEntry).join('')}</ul>
+    <div style="margin:14px 0 4px">
+      <div style="font-weight:700">${escapeHtml(sec.heading)}</div>
+      <ul style="margin:4px 0 0;padding-left:20px">${sec.entries.map(renderChecklistEntry).join('')}</ul>
     </div>`).join('')
 }
 
@@ -139,9 +160,10 @@ export function buildChecklistHtml(sections, opts = {}) {
 export function buildChecklistText(sections, opts = {}) {
   const built = collectChecklistSections(sections, !!opts.onlyOutstanding)
   if (built.length === 0) return 'Every item on the checklist has been received — thank you!'
-  return built.map(sec => `${sec.heading.toUpperCase()}\n${sec.entries.map(e =>
-    `  - ${e.text}${e.children ? '\n' + e.children.map(c => `      • ${c}`).join('\n') : ''}`
-  ).join('\n')}`).join('\n\n')
+  return built.map(sec => `${sec.heading}\n${sec.entries.map(e => {
+    const line = e.children && !/[:.]\s*$/.test(e.text) ? `${e.text}:` : e.text
+    return `  - ${line}${e.children ? '\n' + e.children.map(c => `      • ${c}`).join('\n') : ''}`
+  }).join('\n')}`).join('\n\n')
 }
 
 // Copies both a rich-HTML and a plain-text version of the email body to the
@@ -216,7 +238,7 @@ export function renderTemplateBodyHtml(bodyTemplate, tokens = {}) {
     if (!trimmed) return ''
     if (trimmed === '{{CHECKLIST}}') return tokens.CHECKLIST || ''
     if (trimmed === '{{KEY_POINTS_BLOCK}}') return tokens.KEY_POINTS_BLOCK || ''
-    return `<p style="font-size:13px;line-height:1.7;margin:0 0 14px">${escapeHtml(trimmed).replace(/\n/g, '<br/>')}</p>`
+    return `<p style="margin:0 0 14px">${escapeHtml(trimmed).replace(/\n/g, '<br/>')}</p>`
   }).join('')
 }
 
