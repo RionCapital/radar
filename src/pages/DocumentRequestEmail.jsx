@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { loadDeals, saveDeals } from '../lib/deals'
 import { loadClients } from '../lib/data'
@@ -88,29 +88,48 @@ export default function DocumentRequestEmail() {
 
   const sections = deal?._attachments?.sections || null
 
-  // A plain-text rendition of the actual email that went out — resolves the
-  // same placeholders buildHtml() does, so the file note shows what was
-  // really sent rather than just a one-line "email sent" summary.
-  function buildEmailNotePlainText() {
-    if (!sections || !template) return ''
-    const checklistText = buildChecklistText(sections, { onlyOutstanding })
-    const keyPointsText = keyPoints.length
-      ? `Following our discussion, I have summarised the key points:\n${keyPoints.map(k => `  - ${k}`).join('\n')}`
-      : ''
-    const bodyText = (template.body || '')
-      .replace(/\{\{CLIENT_NAME\}\}/g, clientNameForTokens)
-      .replace(/\{\{CHECKLIST\}\}/g, checklistText)
-      .replace(/\{\{KEY_POINTS_BLOCK\}\}/g, keyPointsText)
-      .replace(/\n{3,}/g, '\n\n')
-    return `Hi ${clientNameForTokens},\n\n${bodyText}`
+  // The live preview (right-hand panel) is an editable iframe rather than a
+  // read-only render — Cameron wants to be able to tweak the actual wording
+  // in place before sending, not just via the Key points field. `dirty`
+  // tracks whether he's touched it: while false, the preview keeps
+  // regenerating live from the template/checklist/key points as before;
+  // once he types in the box, we stop overwriting it so his edits survive
+  // further changes to the inputs on the left, until he explicitly resets.
+  const previewRef = useRef(null)
+  const [dirty, setDirty] = useState(false)
+  // Frozen snapshot of the preview's HTML, captured once at the moment of
+  // the FIRST edit and never touched again — deliberately a ref, not state,
+  // so it doesn't feed back into the srcDoc prop on every keystroke. If it
+  // did, each keystroke would change srcDoc's string value, React would
+  // push that to the iframe's srcdoc attribute, and the browser would
+  // reload the whole document — wiping the cursor/selection after every
+  // single character. Freezing once means srcDoc stops changing at all
+  // once dirty, so the iframe is left alone and typing behaves normally.
+  const frozenRef = useRef(null)
+
+  // Reads whatever is CURRENTLY in the preview box — including any manual
+  // edits — so what gets sent (and what gets logged to the file note) is
+  // always exactly what Cameron last saw on screen, not a freshly
+  // regenerated version that could silently differ from his edits.
+  function readPreviewContent() {
+    const doc = previewRef.current?.contentDocument
+    if (doc && doc.documentElement) {
+      return { html: doc.documentElement.outerHTML, text: doc.body?.innerText || doc.body?.textContent || '' }
+    }
+    return { html: buildHtml(), text: '' }
   }
 
-  function logEmailNote(templateLabel, recipientList, methodLabel) {
+  function resetPreview() {
+    setDirty(false)
+    frozenRef.current = null
+  }
+
+  function logEmailNote(templateLabel, recipientList, methodLabel, sentText) {
     if (!deal) return
     const note = {
       type: 'Email Out',
       title: templateLabel,
-      body: `To: ${recipientList} · Method: ${methodLabel}\n\n${buildEmailNotePlainText()}`,
+      body: `To: ${recipientList} · Method: ${methodLabel}\n\n${sentText || ''}`,
       date: new Date().toISOString().slice(0, 10),
       user: deal.Advisor || assignedBroker.name || 'Cameron Finlayson',
     }
@@ -160,16 +179,16 @@ export default function DocumentRequestEmail() {
     const to = recipients.map(r => r.email).join(', ')
     if (!to) { alert('Please add at least one recipient'); return }
     const templateLabel = template?.name || 'Document Request'
-    const html = buildHtml()
+    const { html, text } = readPreviewContent()
     setSending('sending'); setSendError(''); setStatusMsg('')
     try {
       const result = await openInPreferredClient({
-        to, subject, html, plainText: buildPlainText(),
+        to, subject, html, plainText: text || buildPlainText(),
         emailClient: settings.emailClient,
       })
       setSending('sent')
       setStatusMsg(result.label)
-      logEmailNote(templateLabel, to, result.label)
+      logEmailNote(templateLabel, to, result.label, text)
       setTimeout(() => { setSending(null); setStatusMsg('') }, 5000)
     } catch (err) {
       setSendError(err.message || 'Something went wrong'); setSending('error')
@@ -180,10 +199,10 @@ export default function DocumentRequestEmail() {
     const to = recipients.map(r => r.email).join(', ')
     if (!to) { alert('Please add at least one recipient'); return }
     const templateLabel = template?.name || 'Document Request'
-    const html = buildHtml()
-    const result = await openInPreferredClient({ to, subject, html, plainText: buildPlainText(), emailClient: client })
+    const { html, text } = readPreviewContent()
+    const result = await openInPreferredClient({ to, subject, html, plainText: text || buildPlainText(), emailClient: client })
     setStatusMsg(result.label)
-    logEmailNote(templateLabel, to, result.label)
+    logEmailNote(templateLabel, to, result.label, text)
     setTimeout(() => setStatusMsg(''), 5000)
   }
 
@@ -288,14 +307,43 @@ export default function DocumentRequestEmail() {
         </div>
       </div>
 
-      {/* Right: Preview */}
+      {/* Right: Preview — editable directly in the box; click into the text
+          and type to adjust wording before sending. While untouched it
+          keeps regenerating live from the template/checklist/key points on
+          the left; once edited, those inputs stop overwriting it. */}
       <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <div style={{ padding: '10px 16px', background: '#fff', borderBottom: '0.5px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: NAVY }}>{template.name} — Live Preview</div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: NAVY }}>{template.name} — {dirty ? 'Edited Preview' : 'Live Preview'}</div>
+          {dirty && (
+            <button onClick={resetPreview} style={{ fontSize: 10.5, fontWeight: 600, color: NAVY, background: '#EEF2F6', border: 'none', borderRadius: 6, padding: '4px 10px', cursor: 'pointer' }}>
+              ↺ Reset to template
+            </button>
+          )}
+        </div>
+        <div style={{ padding: '6px 16px', background: '#fffbea', borderBottom: '0.5px solid #e2e8f0', flexShrink: 0, fontSize: 10, color: '#92742a' }}>
+          Click into the preview to edit the wording directly — this is exactly what will be sent.
         </div>
         <div style={{ flex: 1, overflow: 'auto', padding: 16, background: '#f1f5f9' }}>
           <div style={{ background: '#fff', borderRadius: 8, overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}>
-            <iframe srcDoc={buildHtml()} style={{ width: '100%', height: 700, border: 'none' }} title="preview" />
+            <iframe
+              ref={previewRef}
+              srcDoc={dirty ? frozenRef.current : buildHtml()}
+              onLoad={() => {
+                const doc = previewRef.current?.contentDocument
+                if (doc && doc.body) {
+                  doc.body.contentEditable = 'true'
+                  doc.body.style.cursor = 'text'
+                  doc.body.oninput = () => {
+                    if (!frozenRef.current) {
+                      frozenRef.current = doc.documentElement.outerHTML
+                      setDirty(true)
+                    }
+                  }
+                }
+              }}
+              style={{ width: '100%', height: 700, border: 'none' }}
+              title="preview"
+            />
           </div>
         </div>
       </div>
