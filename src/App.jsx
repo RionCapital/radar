@@ -376,7 +376,7 @@ export default function App() {
           <Route path="/crm/settings" element={<RequireAuth><AdminSettings clients={clients} onUpdateClients={updateAllClients} /></RequireAuth>} />
           <Route path="/settings" element={<RequireAuth><AdminSettings clients={clients} onUpdateClients={updateAllClients} /></RequireAuth>} />
           <Route path="/crm/deal/:dealName" element={<RequireAuth><DealPage onUpdateDeals={updateCrmDeals} clients={clients} onUpdateClients={updateAllClients} /></RequireAuth>} />
-          <Route path="/crm/deal/:dealName/request-documents/:mode" element={<RequireAuth><DocumentRequestEmail /></RequireAuth>} />
+          <Route path="/crm/deal/:dealName/request-documents/:templateId" element={<RequireAuth><DocumentRequestEmail /></RequireAuth>} />
           <Route path="/crm/dashboard" element={<RequireAuth><CRMDashboard /></RequireAuth>} />
           <Route path="/crm" element={<RequireAuth><CRM clients={clients} onUpdateClients={updateAllClients} /></RequireAuth>} />
           <Route path="/radar/clients/:name/opportunity" element={<RequireAuth><OpportunityScore clients={clients} updateClient={updateClient} /></RequireAuth>} />

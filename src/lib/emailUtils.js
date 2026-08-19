@@ -67,41 +67,58 @@ export function escapeHtml(str) {
 // shows up mid-sentence in items like "IF PURCHASE – A copy of...") lets the
 // title render bold with the explanation as an indented sub-line, matching
 // how these checklists actually read; anything without the separator is
-// just one flat bullet.
-function renderChecklistLine(text) {
-  const idx = text.indexOf(' - ')
-  if (idx === -1) return `<li style="margin-bottom:7px;line-height:1.5">${escapeHtml(text)}</li>`
-  const title = text.slice(0, idx)
-  const desc = text.slice(idx + 3)
-  return `<li style="margin-bottom:7px;line-height:1.5"><strong>${escapeHtml(title)}</strong><div style="margin:2px 0 0;padding-left:2px;font-size:12px;color:#5b6472">${escapeHtml(desc)}</div></li>`
+// just one flat bullet. A repeat item with named sub-instances (e.g. two
+// investment properties, three trading entities) renders as ONE bullet —
+// the request itself, bolded as a mini-heading — with the named instances
+// as an indented sub-list underneath, rather than repeating the whole
+// request once per instance.
+function renderChecklistEntry(entry) {
+  const dashIdx = entry.text.indexOf(' - ')
+  const hasChildren = !!(entry.children && entry.children.length)
+  let titleHtml, descHtml = ''
+  if (dashIdx === -1) {
+    titleHtml = escapeHtml(entry.text)
+  } else {
+    titleHtml = escapeHtml(entry.text.slice(0, dashIdx))
+    descHtml = `<div style="margin:2px 0 0;padding-left:2px;font-size:12px;color:#5b6472">${escapeHtml(entry.text.slice(dashIdx + 3))}</div>`
+  }
+  if (hasChildren || dashIdx !== -1) titleHtml = `<strong>${titleHtml}</strong>`
+  const childrenHtml = hasChildren
+    ? `<ul style="margin:4px 0 0;padding-left:18px">${entry.children.map(c => `<li style="margin-bottom:3px">${escapeHtml(c)}</li>`).join('')}</ul>`
+    : ''
+  return `<li style="margin-bottom:7px;line-height:1.5">${titleHtml}${descHtml}${childrenHtml}</li>`
 }
 
 // Walks a deal's live _attachments.sections (see DealPage.jsx
-// buildSectionsFromTemplate) and picks out which lines belong in a
+// buildSectionsFromTemplate) and picks out which entries belong in a
 // Document Request email. `onlyOutstanding` filters to just the unticked
 // items/sub-items (for the follow-up email) — otherwise every item in the
 // deal's current checklist is included (for the initial RFI). A repeat
-// item (Individual/Property/Entity/Statement/Document) with no named
-// sub-instances yet is shown as its own line; once sub-instances exist,
-// each named one gets its own line instead of the parent item.
+// item (Individual/Property/Entity/Statement/Document) becomes one entry —
+// its own request text — with each named sub-instance (e.g. "Property 1",
+// "Entity 2") listed as a nested child rather than as its own separate
+// entry, so requesting the same document from three entities reads as one
+// bullet with three sub-bullets, not three repeated bullets.
 function collectChecklistSections(sections, onlyOutstanding) {
   return (sections || []).map(sec => {
-    const lines = []
+    const entries = []
     ;(sec.items || []).forEach(it => {
       if (it.repeat) {
         const subItems = it.subItems || []
         if (subItems.length === 0) {
-          if (!onlyOutstanding || !it.checked) lines.push(it.text)
+          if (!onlyOutstanding || !it.checked) entries.push({ text: it.text })
           return
         }
         const included = onlyOutstanding ? subItems.filter(su => !su.checked) : subItems
-        included.forEach(su => lines.push(su.text ? `${it.text} — ${su.text}` : it.text))
+        const children = included.map(su => su.text).filter(Boolean)
+        if (children.length > 0) entries.push({ text: it.text, children })
+        else if (!onlyOutstanding) entries.push({ text: it.text })
       } else {
-        if (!onlyOutstanding || !it.checked) lines.push(it.text)
+        if (!onlyOutstanding || !it.checked) entries.push({ text: it.text })
       }
     })
-    return { heading: sec.heading, lines }
-  }).filter(s => s.lines.length > 0)
+    return { heading: sec.heading, entries }
+  }).filter(s => s.entries.length > 0)
 }
 
 export function buildChecklistHtml(sections, opts = {}) {
@@ -112,7 +129,7 @@ export function buildChecklistHtml(sections, opts = {}) {
   return built.map(sec => `
     <div style="margin:16px 0 6px">
       <div style="font-size:11px;font-weight:700;color:#3D4F6B;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">${escapeHtml(sec.heading)}</div>
-      <ul style="margin:0;padding-left:20px;font-size:13px;color:#2A3545">${sec.lines.map(renderChecklistLine).join('')}</ul>
+      <ul style="margin:0;padding-left:20px;font-size:13px;color:#2A3545">${sec.entries.map(renderChecklistEntry).join('')}</ul>
     </div>`).join('')
 }
 
@@ -122,7 +139,9 @@ export function buildChecklistHtml(sections, opts = {}) {
 export function buildChecklistText(sections, opts = {}) {
   const built = collectChecklistSections(sections, !!opts.onlyOutstanding)
   if (built.length === 0) return 'Every item on the checklist has been received — thank you!'
-  return built.map(sec => `${sec.heading.toUpperCase()}\n${sec.lines.map(l => `  - ${l}`).join('\n')}`).join('\n\n')
+  return built.map(sec => `${sec.heading.toUpperCase()}\n${sec.entries.map(e =>
+    `  - ${e.text}${e.children ? '\n' + e.children.map(c => `      • ${c}`).join('\n') : ''}`
+  ).join('\n')}`).join('\n\n')
 }
 
 // Copies both a rich-HTML and a plain-text version of the email body to the

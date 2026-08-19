@@ -2088,6 +2088,40 @@ function buildSectionsFromTemplate(template) {
   }))
 }
 
+// Single "Email Clients" button with a dropdown of every template in
+// Settings > CRM > Communication (the built-in RFI/Outstanding pair plus
+// any others Cameron adds there later) — picking one opens that deal's
+// Document Request email pre-filled from its live Attachments checklist.
+function EmailClientsButton({ deal, navigate }) {
+  const [open, setOpen] = useState(false)
+  const templates = (loadSettings().emailTemplates || [])
+  return (
+    <div style={{ position:'relative', display:'inline-block' }}>
+      <button onClick={()=>setOpen(o=>!o)}
+        style={{ padding:'7px 12px', borderRadius:6, border:'1px solid #3D4F6B', background:'#fff', color:'#3D4F6B', fontWeight:600, fontSize:11.5, cursor:'pointer', display:'flex', alignItems:'center', gap:6 }}>
+        ✉ Email Clients <span style={{ fontSize:9 }}>▼</span>
+      </button>
+      {open && (
+        <>
+          <div onClick={()=>setOpen(false)} style={{ position:'fixed', inset:0, zIndex:9 }} />
+          <div style={{ position:'absolute', top:'100%', left:0, marginTop:4, background:'#fff', border:'0.5px solid #e8eaed', borderRadius:8, boxShadow:'0 4px 16px rgba(0,0,0,0.12)', zIndex:10, minWidth:220, overflow:'hidden' }}>
+            {templates.length === 0 && (
+              <div style={{ padding:'10px 14px', fontSize:11.5, color:'#9ca3af' }}>No templates set up yet — add one in Settings &gt; CRM &gt; Communication.</div>
+            )}
+            {templates.map(t => (
+              <div key={t.id} onClick={()=>{ setOpen(false); navigate(`/crm/deal/${encodeURIComponent(deal['Transaction Name'])}/request-documents/${encodeURIComponent(t.id)}`) }}
+                style={{ padding:'10px 14px', fontSize:12, color:'#2A3545', cursor:'pointer' }}
+                onMouseEnter={e=>e.currentTarget.style.background='#f8f9fa'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+                {t.name || 'Untitled template'}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 function AttachmentsTab({ deal, deals, setDeals, editing, d, set }) {
   const navigate = useNavigate()
   const att = d._attachments || {}
@@ -2293,16 +2327,7 @@ function AttachmentsTab({ deal, deals, setDeals, editing, d, set }) {
           <span style={{ fontSize:10.5, color:'#9ca3af' }}>{doneCount}/{allLeaf.length} received</span>
         </div>
         <div style={{ fontSize:10.5, color:'#9ca3af', marginBottom:12 }}>Changing this replaces the checklist below with that transaction type's own requirements.</div>
-        <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
-          <button onClick={()=>navigate(`/crm/deal/${encodeURIComponent(deal['Transaction Name'])}/request-documents/rfi`)}
-            style={{ padding:'7px 12px', borderRadius:6, border:'1px solid #3D4F6B', background:'#fff', color:'#3D4F6B', fontWeight:600, fontSize:11.5, cursor:'pointer' }}>
-            ✉ Email — Request Info (RFI)
-          </button>
-          <button onClick={()=>navigate(`/crm/deal/${encodeURIComponent(deal['Transaction Name'])}/request-documents/outstanding`)}
-            style={{ padding:'7px 12px', borderRadius:6, border:'1px solid #3D4F6B', background:'#fff', color:'#3D4F6B', fontWeight:600, fontSize:11.5, cursor:'pointer' }}>
-            ✉ Email — Outstanding Docs
-          </button>
-        </div>
+        <EmailClientsButton deal={deal} navigate={navigate} />
       </TabCard>
 
       {sections.map((sec, si) => (

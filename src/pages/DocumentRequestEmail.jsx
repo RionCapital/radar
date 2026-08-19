@@ -1,9 +1,8 @@
 import React, { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { loadDeals, saveDeals } from '../lib/deals'
-import { loadSettings, getClientBroker, getEmailTemplateByType } from '../lib/settings'
+import { loadSettings, getClientBroker } from '../lib/settings'
 import {
-  emailHeader, emailFooter,
   buildChecklistHtml, buildChecklistText, renderTemplateSubject, renderTemplateBodyHtml,
   openInPreferredClient, escapeHtml,
 } from '../lib/emailUtils'
@@ -19,22 +18,16 @@ const Section = ({ title, children }) => (
   </div>
 )
 
-const MODE_META = {
-  rfi: { title: '📋 Request for Information', blurb: 'Initial email listing every item on the current checklist.' },
-  outstanding: { title: '📋 Outstanding Documents', blurb: 'Follow-up email listing only the items still unticked.' },
-}
-
 export default function DocumentRequestEmail() {
-  const { dealName, mode: rawMode } = useParams()
+  const { dealName, templateId } = useParams()
   const navigate = useNavigate()
-  const mode = rawMode === 'outstanding' ? 'outstanding' : 'rfi'
-  const meta = MODE_META[mode]
 
   const decodedName = decodeURIComponent(dealName)
   const [deals, setDealsState] = useState(() => loadDeals())
   const deal = deals.find(d => d['Transaction Name'] === decodedName)
   const settings = loadSettings()
-  const template = getEmailTemplateByType(mode, settings)
+  const template = (settings.emailTemplates || []).find(t => t.id === templateId)
+  const onlyOutstanding = template?.type === 'outstanding'
 
   const assignedBroker = getClientBroker(undefined, settings)
   const [brokerName, setBrokerName] = useState(assignedBroker.name)
@@ -42,14 +35,17 @@ export default function DocumentRequestEmail() {
   const [brokerEmail, setBrokerEmail] = useState(assignedBroker.email)
 
   const contacts = deal?.Contacts || []
+  // Greet and address the email to the individuals on the deal (not the
+  // linked companies/trusts/SMSFs) — e.g. "Hi Raymond & Jessica," even
+  // though the deal itself may have half a dozen entity contacts attached.
+  const individualContacts = contacts.filter(c => c.type === 'Individual' || !c.type)
   const contactGreeting = () => {
-    const individuals = contacts.filter(c => c.type === 'Individual' || !c.type)
-    const names = individuals.map(c => c.firstName || c.name || '').filter(Boolean)
+    const names = individualContacts.map(c => c.firstName || c.name || '').filter(Boolean)
     return names.length ? names.join(' & ') : (deal?.['Transaction Name'] || '')
   }
   const clientNameForTokens = contactGreeting()
 
-  const defaultRecipients = contacts.filter(c => c.email).map(c => ({ name: c.name || '', email: c.email }))
+  const defaultRecipients = individualContacts.filter(c => c.email).map(c => ({ name: c.name || '', email: c.email }))
   const [recipients, setRecipients] = useState(defaultRecipients)
   const [addName, setAddName] = useState('')
   const [addEmail, setAddEmail] = useState('')
@@ -85,32 +81,35 @@ export default function DocumentRequestEmail() {
   }
 
   const sections = deal?._attachments?.sections || null
-  const onlyOutstanding = mode === 'outstanding'
 
   function keyPointsHtml() {
     if (!keyPoints.length) return ''
     return `
       <div style="margin:16px 0">
-        <div style="font-size:13px;color:#2A3545;margin:0 0 8px">Following our discussion, I have summarised the key points:</div>
-        <ul style="margin:0;padding-left:20px;font-size:13px;color:#2A3545">
+        <div style="margin:0 0 8px">Following our discussion, I have summarised the key points:</div>
+        <ul style="margin:0;padding-left:20px">
           ${keyPoints.map(k => `<li style="margin-bottom:6px;line-height:1.5">${escapeHtml(k)}</li>`).join('')}
         </ul>
       </div>`
   }
 
+  // Deliberately plain — Arial, black text, no logo/header bar/footer.
+  // Cameron wants this to read as a personal email he typed himself, not
+  // a branded platform template (that treatment stays on Annual/Security
+  // Review emails, which are meant to look corporate).
   function buildHtml() {
-    if (!sections) return ''
+    if (!sections || !template) return ''
     const checklistHtml = buildChecklistHtml(sections, { onlyOutstanding })
-    const body = renderTemplateBodyHtml(template?.body, {
+    const body = renderTemplateBodyHtml(template.body, {
       CLIENT_NAME: clientNameForTokens,
       CHECKLIST: checklistHtml,
       KEY_POINTS_BLOCK: keyPointsHtml(),
     })
-    return `<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;background:#f8fafc">
-      <div style="max-width:600px;margin:0 auto;background:#fff">
-        ${emailHeader(contactGreeting())}
+    return `<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#1a1a1a;line-height:1.6">
+      <div style="max-width:640px">
+        <p style="margin:0 0 14px">Hi ${escapeHtml(clientNameForTokens)},</p>
         ${body}
-        ${emailFooter(brokerName, brokerPhone)}
+        <p style="margin:18px 0 0">Kind regards,<br/>${escapeHtml(brokerName || '')}${brokerPhone ? '<br/>' + escapeHtml(brokerPhone) : ''}</p>
       </div></body></html>`
   }
 
@@ -122,7 +121,7 @@ export default function DocumentRequestEmail() {
   async function handleSend() {
     const to = recipients.map(r => r.email).join(', ')
     if (!to) { alert('Please add at least one recipient'); return }
-    const templateLabel = template?.name || (mode === 'outstanding' ? 'Outstanding Documents' : 'Request for Information')
+    const templateLabel = template?.name || 'Document Request'
     const html = buildHtml()
     setSending('sending'); setSendError(''); setStatusMsg('')
     try {
@@ -142,7 +141,7 @@ export default function DocumentRequestEmail() {
   async function sendVia(client) {
     const to = recipients.map(r => r.email).join(', ')
     if (!to) { alert('Please add at least one recipient'); return }
-    const templateLabel = template?.name || (mode === 'outstanding' ? 'Outstanding Documents' : 'Request for Information')
+    const templateLabel = template?.name || 'Document Request'
     const html = buildHtml()
     const result = await openInPreferredClient({ to, subject, html, plainText: buildPlainText(), emailClient: client })
     setStatusMsg(result.label)
@@ -151,6 +150,20 @@ export default function DocumentRequestEmail() {
   }
 
   if (!deal) return <div style={{ padding: 32, color: '#c0392b' }}>Deal not found.</div>
+
+  if (!template) {
+    return (
+      <div style={{ padding: 32 }}>
+        <button onClick={() => navigate(`/crm/deal/${encodeURIComponent(deal['Transaction Name'])}`)}
+          style={{ fontSize: 11, color: '#64748b', background: 'none', border: 'none', cursor: 'pointer', padding: '0 0 12px' }}>
+          ← Back to {deal['Transaction Name']}
+        </button>
+        <div style={{ color: '#c0392b', fontSize: 13 }}>
+          Couldn't find that email template — it may have been deleted in Settings &gt; CRM &gt; Communication.
+        </div>
+      </div>
+    )
+  }
 
   if (!sections) {
     return (
@@ -177,9 +190,8 @@ export default function DocumentRequestEmail() {
         </button>
 
         <div style={{ marginBottom: 14 }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: NAVY }}>{meta.title}</div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: NAVY }}>✉ {template.name}</div>
           <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>{deal['Transaction Name']}</div>
-          <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 1 }}>{meta.blurb}</div>
         </div>
 
         <Section title="Recipients">
@@ -248,7 +260,7 @@ export default function DocumentRequestEmail() {
           {statusMsg && <div style={{ fontSize: 11, color: '#1a7a45', marginTop: 4 }}>{statusMsg}</div>}
           {sendError && <div style={{ fontSize: 11, color: '#ef4444', marginTop: 4 }}>{sendError}</div>}
           <div style={{ fontSize: 9.5, color: '#94a3b8', fontStyle: 'italic', marginTop: 2 }}>
-            Default delivery app is set in Settings &gt; CRM &gt; Communication. Template content is also editable there.
+            Default delivery app and template content are set in Settings &gt; CRM &gt; Communication.
           </div>
         </div>
       </div>
@@ -256,7 +268,7 @@ export default function DocumentRequestEmail() {
       {/* Right: Preview */}
       <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <div style={{ padding: '10px 16px', background: '#fff', borderBottom: '0.5px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: NAVY }}>{meta.title} — Live Preview</div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: NAVY }}>{template.name} — Live Preview</div>
         </div>
         <div style={{ flex: 1, overflow: 'auto', padding: 16, background: '#f1f5f9' }}>
           <div style={{ background: '#fff', borderRadius: 8, overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}>
