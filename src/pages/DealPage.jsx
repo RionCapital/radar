@@ -1800,13 +1800,20 @@ function StrategyTab({ deal, updateDeal }) {
                         const checked = rec && rec.scenarioId===sc.id && rec.groupId===g.id
                         const cols = ['Property','Purpose','Type','Term','Base Loan', ...(strat.showLMI ? ['LMI'] : []), 'Rate','Repayment','']
                         return (
-                          <div key={g.id||gi} style={{ marginBottom:14, padding:'10px 12px', background:'#f8fafc', borderRadius:8, border:'0.5px solid #e8eaed' }}>
+                          // When this box is the ticked recommendation, it gets a visible pink
+                          // border/tint — every field in here (including Total Loan Term below)
+                          // is what populates "Our Recommendation" further down the page, and
+                          // with several near-identical lender boxes stacked on top of each
+                          // other it was too easy to type the total term into the wrong one and
+                          // then wonder why it wasn't showing up below.
+                          <div key={g.id||gi} style={{ marginBottom:14, padding:'10px 12px', background: checked ? '#fdf0f6' : '#f8fafc', borderRadius:8, border: checked ? '1.5px solid #DA408D' : '0.5px solid #e8eaed' }}>
                             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8, gap:10, flexWrap:'wrap' }}>
                               <div style={{ display:'flex', alignItems:'center', gap:8 }}>
                                 <label style={{ display:'flex', alignItems:'center', gap:6, fontSize:11, color:'#7A8090', cursor:'pointer' }}>
                                   <input type="checkbox" checked={!!checked} onChange={()=>setRecommendation(sc.id, g.id)} title="Recommend this table" /> Recommend
                                 </label>
                                 <LiveText small value={g.lender} onCommit={v=>updGroup(i,gi,{lender:v})} placeholder="Lender name" list="comparison-lender-suggestions" />
+                                {checked && <span style={{ fontSize:10, color:'#DA408D', fontWeight:600, whiteSpace:'nowrap' }}>↓ feeds Our Recommendation below</span>}
                               </div>
                               <div style={{ display:'flex', alignItems:'center', gap:8 }}>
                                 <span style={{ fontSize:10, color:'#7A8090', whiteSpace:'nowrap', fontWeight:600 }}>Total Loan Term:</span>
