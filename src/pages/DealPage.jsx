@@ -1906,16 +1906,17 @@ function StrategyTab({ deal, updateDeal }) {
                           {splits.map((sp,si) => <td key={si} style={cellStyle}>{sp.term ? `${sp.term} Years (${sp.type})` : '—'}</td>)}
                           {showTotal && <td style={totalCellStyle}></td>}
                         </tr>
-                        {recommendedGroup.totalTerm && (
-                          // A single per-split "Term" (e.g. "5 Years (IO)") doesn't capture the
-                          // overall loan duration once an IO period sits inside a longer P&I
-                          // term — this spans the full row width to show that one group-level
-                          // figure regardless of how many splits there are.
-                          <tr>
-                            <td style={labelCellStyle}>Total Loan Term</td>
-                            <td colSpan={splits.length + (showTotal ? 1 : 0)} style={{ ...cellStyle, fontWeight:600 }}>{recommendedGroup.totalTerm}</td>
-                          </tr>
-                        )}
+                        <tr>
+                          {/* A single per-split "Term" (e.g. "5 Years (IO)") doesn't capture the
+                              overall loan duration once an IO period sits inside a longer P&I
+                              term — this always shows (editable right here, same field as the
+                              split box above) regardless of split count, so it's never hidden
+                              just because it hasn't been filled in yet. */}
+                          <td style={labelCellStyle}>Total Loan Term</td>
+                          <td colSpan={splits.length + (showTotal ? 1 : 0)} style={{ ...cellStyle, fontWeight:600 }}>
+                            <LiveText small value={recommendedGroup.totalTerm} onCommit={v=>updGroup(recommendedSceneIdx, recommendedGroupIdx, {totalTerm:v})} placeholder="e.g. 25 + 5 Years IO" />
+                          </td>
+                        </tr>
                         <tr>
                           <td style={labelCellStyle}>Rate</td>
                           {splits.map((sp,si) => <td key={si} style={cellStyle}>{sp.rate ? `${Number(sp.rate).toFixed(2)}%` : '—'}</td>)}
