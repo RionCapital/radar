@@ -10,6 +10,7 @@ import { SettleModal, applySettlement } from '../components/SettleModal'
 import { calcUpfront, getUpfrontRate, dealUpfrontCommission, dealUpfrontRateEffective, dealCommissionIsOverridden, loadSettings, getDealStages, stageDisplay } from '../lib/settings'
 import { mapRradarContactToDealContact } from '../lib/data'
 import { downloadFileNotePdf, downloadFileNotesPdf } from '../lib/fileNotePdf'
+import { newSplit, newGroup, newScenario, normalizeScenario, rowRepayment, groupTotals, findRecommendedGroup } from '../lib/comparisonUtils'
 
 // Category list and per-category Transaction Type options, per Cameron's
 // working spreadsheet (Category drives which Transaction Types are valid).
@@ -1390,41 +1391,17 @@ function LiveRowCheckbox({ label, checked, onChange }) {
 // options) is made of one or more "groups" — one group per lender — and
 // each group holds one or more "splits" — one split per facility/tranche
 // for that lender. A straightforward comparison (no splitting) is just N
-// groups with exactly one split each, rendered as one flat table with no
-// totals; the moment ANY group has more than one split, the whole table
-// renders as separate per-lender boxes instead, each with its own totals
-// and weighted average rate — see the isSplit check where these render.
-// This is derived from the data rather than toggled by a flag, so it can
-// never drift out of sync with what's actually on the page.
-function newSplit() {
-  return { id: `${Date.now()}-${Math.random().toString(36).slice(2,7)}`, property:'', purpose:'OO', type:'P&I', term:30, baseLoan:'', lmi:'', rate:'', features:'' }
-}
-function newGroup() {
-  return { id: `${Date.now()}-${Math.random().toString(36).slice(2,7)}`, lender:'', totalTerm:'', splits:[newSplit()] }
-}
-function newScenario() {
-  return { id: Date.now(), label:'', groups:[newGroup()] }
-}
-// Reads a comparison table saved before splits existed — a flat `rows`
-// array where the "Property" column was actually being used to hold the
-// lender's name (there was no separate Lender field). Returns the
-// scenario unchanged once it's already in the current { groups: [...] }
-// shape, which happens the first time any edit on it is saved.
-function normalizeScenario(sc) {
-  if (sc.groups) return sc
-  const rows = sc.rows || []
-  return {
-    id: sc.id, label: sc.label,
-    groups: rows.map((r, idx) => ({
-      id: r.id || `${sc.id}-g${idx}`,
-      lender: r.property || '',
-      totalTerm: '',
-      splits: [{ id:`${sc.id}-g${idx}-s0`, property:'', purpose:r.purpose||'OO', type:r.type||'P&I', term:r.term||30, baseLoan:r.baseLoan||'', lmi:r.lmi||'', rate:r.rate||'', features:'' }],
-    })),
-  }
-}
+// groups with exactly one split each; the moment ANY group has more than
+// one split, it gains extra rows plus a bold subtotal line — same table,
+// same columns either way (see the unified rendering in the 'comparison'
+// sub-tab below). This is derived from the data rather than toggled by a
+// flag, so it can never drift out of sync with what's actually on the
+// page. newSplit/newGroup/newScenario/normalizeScenario/rowRepayment/
+// groupTotals now live in lib/comparisonUtils.js so the Comparison Email
+// builder can share the exact same data shapes and calculations.
 
 function StrategyTab({ deal, updateDeal }) {
+  const navigate = useNavigate()
   const strat = deal._strategy || {}
   const s = (k, v) => updateDeal({ _strategy: { ...strat, [k]: v } })
   const setSale = (k, v) => updateDeal({ _strategy: { ...strat, sale: { ...(strat.sale||{}), [k]: v } } })
@@ -1495,36 +1472,14 @@ function StrategyTab({ deal, updateDeal }) {
     else s('comparisonRecommendation', { scenarioId, groupId })
   }
 
-  function rowRepayment(r) {
-    const n = v => Number(v)||0
-    const total = n(r.baseLoan) + n(r.lmi)
-    const rate = n(r.rate)/100
-    const termMo = n(r.term)*12
-    if (!rate || !termMo) return 0
-    if (r.type === 'IO') return (n(r.baseLoan) * rate) / 12
-    const rm = rate/12
-    return (total * rm) / (1 - Math.pow(1+rm, -termMo))
-  }
-  function groupTotals(g) {
-    const n = v => Number(v)||0
-    const splits = g.splits || []
-    const totalBaseLoan = splits.reduce((sum,sp)=>sum+n(sp.baseLoan),0)
-    const totalRepayment = splits.reduce((sum,sp)=>sum+rowRepayment(sp),0)
-    const weightedRate = totalBaseLoan ? splits.reduce((sum,sp)=>sum+n(sp.rate)*n(sp.baseLoan),0)/totalBaseLoan : 0
-    return { totalBaseLoan, totalRepayment, weightedRate }
-  }
+  // rowRepayment/groupTotals imported from lib/comparisonUtils.js — same
+  // functions the Comparison Email builder uses, so the numbers can never
+  // drift between what's shown here and what goes out in an email.
 
   // The recommended group, wherever it lives — plus the indices needed to
-  // write back to it (e.g. editing a split's Features from inside the
+  // write back to it (e.g. editing Total Loan Term from inside the
   // recommendation panel itself, rather than only from its source table).
-  let recommendedGroup = null, recommendedSceneIdx = -1, recommendedGroupIdx = -1
-  if (rec) {
-    scenarios.forEach((sc, sceneIdx) => {
-      if (sc.id !== rec.scenarioId) return
-      const gi = sc.groups.findIndex(g => g.id === rec.groupId)
-      if (gi !== -1) { recommendedGroup = sc.groups[gi]; recommendedSceneIdx = sceneIdx; recommendedGroupIdx = gi }
-    })
-  }
+  const { recommendedGroup, recommendedSceneIdx, recommendedGroupIdx } = findRecommendedGroup(scenarios, rec)
 
   const fundingTableTitle = dealType === 'Construction' ? 'Land & Construction Funding Table' : `${dealType} Funding Table`
   const baseValueLabel = dealType === 'Construction' ? 'Estimated Value' : dealType === 'Refinance' ? 'Property Value' : 'Purchase Price'
@@ -1741,16 +1696,33 @@ function StrategyTab({ deal, updateDeal }) {
                 <label style={{ fontSize:11, color:'#7A8090', display:'flex', alignItems:'center', gap:5, cursor:'pointer' }}>
                   <input type="checkbox" checked={!!strat.showLMI} onChange={e=>s('showLMI', e.target.checked)} /> Show LMI column
                 </label>
+                <button onClick={()=>navigate(`/crm/deal/${encodeURIComponent(deal['Transaction Name'])}/comparison-email`)}
+                  style={{ padding:'7px 12px', borderRadius:6, border:'1px solid #3D4F6B', background:'#fff', color:'#3D4F6B', fontWeight:600, fontSize:11.5, cursor:'pointer' }}>
+                  ✉ Send Comparison Email
+                </button>
                 <button onClick={addScenario} style={addBtnStyle}>+ Add comparison table</button>
               </div>
             }>
               <datalist id="comparison-lender-suggestions">{LENDER_SUGGESTIONS.map(l=><option key={l} value={l}/>)}</datalist>
               <div style={{ fontSize:11, color:'#9ca3af', marginBottom:14, lineHeight:1.5 }}>
-                A straightforward comparison — one row per lender, no splitting — stays as a single flat table with no totals. Click "+ Split" on a row (or "+ Add split" once a table's already split) when a lender's loan needs to be broken into multiple facilities — e.g. a P&amp;I portion plus a construction portion on IO. The moment any lender in a table has more than one split, that whole table separates into one box per lender with its own totals and weighted average rate. Tick a row (or a lender's whole box) to mark it the recommendation — it'll appear in "Our Recommendation" below.
+                A straightforward comparison — one row per lender, no splitting — is a single flat table with no totals. Click "+ Split" on a lender's row when its loan needs to be broken into multiple facilities — e.g. a P&amp;I portion plus a construction portion on IO — and it gains extra rows of its own plus a bold subtotal line (total base loan, weighted average rate, total repayment). Every lender uses the exact same columns either way. Tick any row to mark that lender the recommendation — it'll appear in "Our Recommendation" below.
               </div>
               {scenarios.length === 0 && <div style={{ fontSize:11.5, color:'#9ca3af', padding:'10px 0' }}>No comparisons yet — add one for each lender or structuring option (e.g. a split loan across two facilities).</div>}
               {scenarios.map((sc, i) => {
-                const isSplit = sc.groups.some(g => (g.splits||[]).length > 1)
+                // One continuous table per scenario, always — a straightforward,
+                // unsplit comparison and a split one look identical (same columns,
+                // same row layout); a lender with more than one split just
+                // contributes more than one row, with a bold subtotal row
+                // (Total Base Loan / Weighted Avg Rate / Total Repayment) right
+                // after its last split. No separate "boxed" layout for splits —
+                // Cameron wants zero visual difference between the two cases.
+                const cols = ['Lender','Property','Purpose','Type','Term','Total Loan Term','Base Loan', ...(strat.showLMI ? ['LMI'] : []), 'Rate','Repayment','Recommend','']
+                // Text columns (Lender/Property especially) were getting squeezed down
+                // to a few characters by the browser's auto table layout once there
+                // were 11+ columns — a sane minimum width per column, with the
+                // overflowX:auto wrapper handling any overflow, keeps names readable.
+                const colMinWidth = { 'Lender':150, 'Property':100, 'Purpose':70, 'Total Loan Term':110, 'Base Loan':100 }
+                const tdStyle = { padding:'6px 8px', borderBottom:'0.5px solid #f0f0f0', color:'#2A3545', whiteSpace:'nowrap' }
                 return (
                   <div key={sc.id||i} style={{ marginBottom:20, paddingBottom:16, borderBottom: i<scenarios.length-1 ? '1px solid #e8eaed' : 'none' }}>
                     <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}>
@@ -1761,93 +1733,85 @@ function StrategyTab({ deal, updateDeal }) {
                       </div>
                     </div>
 
-                    {!isSplit ? (
-                      <MiniTable columns={['Lender','Property','Purpose','Type','Term','Total Loan Term','Base Loan', ...(strat.showLMI ? ['LMI'] : []), 'Rate','Repayment','Recommend','']}
-                        rows={sc.groups.map((g, gi) => {
-                          const sp = g.splits[0] || newSplit()
-                          const repay = rowRepayment(sp)
-                          const checked = rec && rec.scenarioId===sc.id && rec.groupId===g.id
-                          const base = [
-                            <LiveText small value={g.lender} onCommit={v=>updGroup(i,gi,{lender:v})} placeholder="Lender name" list="comparison-lender-suggestions" />,
-                            <LiveText small value={sp.property} onCommit={v=>updSplit(i,gi,0,'property',v)} placeholder="TBC" />,
-                            <LiveText small value={sp.purpose} onCommit={v=>updSplit(i,gi,0,'purpose',v)} placeholder="OO / Inv" />,
-                            <LiveSelect small value={sp.type} onCommit={v=>updSplit(i,gi,0,'type',v)} options={['P&I','IO']} allowBlank={false} />,
-                            <LiveNumber small value={sp.term} onCommit={v=>updSplit(i,gi,0,'term',v)} />,
-                            // Total Loan Term matters mainly when this single split is IO —
-                            // e.g. a 5yr IO period sitting inside a 30yr overall loan. Kept as
-                            // free text (rather than derived) since brokers phrase it their own
-                            // way ("25 + 5 Years IO", "30yrs (5 IO)", etc).
-                            <LiveText small value={g.totalTerm} onCommit={v=>updGroup(i,gi,{totalTerm:v})} placeholder={sp.type==='IO' ? 'e.g. 25 + 5 Years IO' : 'n/a'} />,
-                            <LiveNumber small value={sp.baseLoan} onCommit={v=>updSplit(i,gi,0,'baseLoan',v)} />,
-                          ]
-                          if (strat.showLMI) base.push(<LiveNumber small value={sp.lmi} onCommit={v=>updSplit(i,gi,0,'lmi',v)} />)
-                          base.push(<LiveNumber small value={sp.rate} onCommit={v=>updSplit(i,gi,0,'rate',v)} step="0.01" />)
-                          base.push(repay ? `$${Math.round(repay).toLocaleString()}` : '—')
-                          base.push(<input type="checkbox" checked={!!checked} onChange={()=>setRecommendation(sc.id, g.id)} title="Recommend this loan" />)
-                          base.push(
-                            <div style={{ display:'flex', gap:4 }}>
-                              <button onClick={()=>addSplit(i,gi)} disabled={g.splits.length>=MAX_SPLITS} title={g.splits.length>=MAX_SPLITS ? `Maximum ${MAX_SPLITS} splits` : "Split this lender's loan into multiple facilities"} style={{ ...addBtnStyle, padding:'2px 8px', fontSize:10, opacity: g.splits.length>=MAX_SPLITS ? 0.5 : 1, cursor: g.splits.length>=MAX_SPLITS ? 'default' : 'pointer' }}>+ Split</button>
-                              <button onClick={()=>rmGroup(i,gi)} style={rmBtnStyle}>✕</button>
-                            </div>
-                          )
-                          return base
-                        })}
-                        empty="No rows yet"
-                      />
-                    ) : (
-                      sc.groups.map((g, gi) => {
-                        const totals = groupTotals(g)
-                        const checked = rec && rec.scenarioId===sc.id && rec.groupId===g.id
-                        const cols = ['Property','Purpose','Type','Term','Base Loan', ...(strat.showLMI ? ['LMI'] : []), 'Rate','Repayment','']
-                        return (
-                          // When this box is the ticked recommendation, it gets a visible pink
-                          // border/tint — every field in here (including Total Loan Term below)
-                          // is what populates "Our Recommendation" further down the page, and
-                          // with several near-identical lender boxes stacked on top of each
-                          // other it was too easy to type the total term into the wrong one and
-                          // then wonder why it wasn't showing up below.
-                          <div key={g.id||gi} style={{ marginBottom:14, padding:'10px 12px', background: checked ? '#fdf0f6' : '#f8fafc', borderRadius:8, border: checked ? '1.5px solid #DA408D' : '0.5px solid #e8eaed' }}>
-                            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8, gap:10, flexWrap:'wrap' }}>
-                              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                                <label style={{ display:'flex', alignItems:'center', gap:6, fontSize:11, color:'#7A8090', cursor:'pointer' }}>
-                                  <input type="checkbox" checked={!!checked} onChange={()=>setRecommendation(sc.id, g.id)} title="Recommend this table" /> Recommend
-                                </label>
-                                <LiveText small value={g.lender} onCommit={v=>updGroup(i,gi,{lender:v})} placeholder="Lender name" list="comparison-lender-suggestions" />
-                                {checked && <span style={{ fontSize:10, color:'#DA408D', fontWeight:600, whiteSpace:'nowrap' }}>↓ feeds Our Recommendation below</span>}
-                              </div>
-                              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                                <span style={{ fontSize:10, color:'#7A8090', whiteSpace:'nowrap', fontWeight:600 }}>Total Loan Term:</span>
-                                <LiveText small value={g.totalTerm} onCommit={v=>updGroup(i,gi,{totalTerm:v})} placeholder="e.g. 25 + 5 Years IO" />
-                              </div>
-                              <div style={{ display:'flex', gap:6 }}>
-                                <button onClick={()=>addSplit(i,gi)} disabled={g.splits.length>=MAX_SPLITS} title={g.splits.length>=MAX_SPLITS ? `Maximum ${MAX_SPLITS} splits` : undefined} style={{ ...addBtnStyle, padding:'3px 10px', fontSize:10.5, opacity: g.splits.length>=MAX_SPLITS ? 0.5 : 1, cursor: g.splits.length>=MAX_SPLITS ? 'default' : 'pointer' }}>+ Add split</button>
-                                <button onClick={()=>rmGroup(i,gi)} style={rmBtnStyle}>Remove lender</button>
-                              </div>
-                            </div>
-                            <MiniTable columns={cols} rows={g.splits.map((sp, si) => {
-                              const repay = rowRepayment(sp)
-                              const base = [
-                                <LiveText small value={sp.property} onCommit={v=>updSplit(i,gi,si,'property',v)} placeholder="TBC" />,
-                                <LiveText small value={sp.purpose} onCommit={v=>updSplit(i,gi,si,'purpose',v)} placeholder="OO / Inv" />,
-                                <LiveSelect small value={sp.type} onCommit={v=>updSplit(i,gi,si,'type',v)} options={['P&I','IO']} allowBlank={false} />,
-                                <LiveNumber small value={sp.term} onCommit={v=>updSplit(i,gi,si,'term',v)} />,
-                                <LiveNumber small value={sp.baseLoan} onCommit={v=>updSplit(i,gi,si,'baseLoan',v)} />,
-                              ]
-                              if (strat.showLMI) base.push(<LiveNumber small value={sp.lmi} onCommit={v=>updSplit(i,gi,si,'lmi',v)} />)
-                              base.push(<LiveNumber small value={sp.rate} onCommit={v=>updSplit(i,gi,si,'rate',v)} step="0.01" />)
-                              base.push(repay ? `$${Math.round(repay).toLocaleString()}` : '—')
-                              base.push(g.splits.length > 1 ? <button onClick={()=>rmSplit(i,gi,si)} style={rmBtnStyle}>✕</button> : null)
-                              return base
-                            })} empty="No splits yet" />
-                            <div style={{ display:'flex', gap:24, marginTop:8, paddingLeft:4 }}>
-                              <div style={{ fontSize:11.5, color:'#7A8090' }}>Total Base Loan: <strong style={{color:'#2A3545'}}>{fmtM(totals.totalBaseLoan)}</strong></div>
-                              <div style={{ fontSize:11.5, color:'#7A8090' }}>Total Repayment: <strong style={{color:'#2A3545'}}>{totals.totalRepayment ? `$${Math.round(totals.totalRepayment).toLocaleString()}` : '—'}</strong></div>
-                              <div style={{ fontSize:11.5, color:'#7A8090' }}>Weighted Avg Rate: <strong style={{color:'#2A3545'}}>{totals.weightedRate ? `${totals.weightedRate.toFixed(2)}%` : '—'}</strong></div>
-                            </div>
-                          </div>
-                        )
-                      })
-                    )}
+                    <div style={{ overflowX:'auto' }}>
+                      <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+                        <thead>
+                          <tr>
+                            {cols.map(c => (
+                              <th key={c} style={{ textAlign:'left', padding:'6px 8px', color:'#fff', background:'#3D4F6B', fontSize:10, fontWeight:600, textTransform:'uppercase', letterSpacing:'0.03em', whiteSpace:'nowrap', minWidth: colMinWidth[c] }}>{c}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {sc.groups.length === 0 && (
+                            <tr><td colSpan={cols.length} style={{ padding:'12px 8px', fontSize:11, color:'#9ca3af', textAlign:'center' }}>No rows yet</td></tr>
+                          )}
+                          {sc.groups.map((g, gi) => {
+                            const checked = rec && rec.scenarioId===sc.id && rec.groupId===g.id
+                            const totals = groupTotals(g)
+                            const multi = g.splits.length > 1
+                            const rowBg = checked ? '#fdf0f6' : (gi%2 ? '#fafafa' : '#fff')
+                            return (
+                              <React.Fragment key={g.id||gi}>
+                                {g.splits.map((sp, si) => {
+                                  const repay = rowRepayment(sp)
+                                  const isLast = si === g.splits.length - 1
+                                  return (
+                                    <tr key={sp.id||si} style={{ background: rowBg }}>
+                                      <td style={tdStyle}><LiveText small value={g.lender} onCommit={v=>updGroup(i,gi,{lender:v})} placeholder="Lender name" list="comparison-lender-suggestions" /></td>
+                                      <td style={tdStyle}><LiveText small value={sp.property} onCommit={v=>updSplit(i,gi,si,'property',v)} placeholder="TBC" /></td>
+                                      <td style={tdStyle}><LiveText small value={sp.purpose} onCommit={v=>updSplit(i,gi,si,'purpose',v)} placeholder="OO / Inv" /></td>
+                                      <td style={tdStyle}><LiveSelect small value={sp.type} onCommit={v=>updSplit(i,gi,si,'type',v)} options={['P&I','IO']} allowBlank={false} /></td>
+                                      <td style={tdStyle}><LiveNumber small value={sp.term} onCommit={v=>updSplit(i,gi,si,'term',v)} /></td>
+                                      <td style={tdStyle}>
+                                        {/* A single, plain number of years for the WHOLE loan — e.g. 30 —
+                                            not a description of the split (each split's own Term/Type
+                                            column already shows "25 Years (P&I)" / "5 Years (IO)" etc).
+                                            Matters mainly for an IO split sitting inside a longer overall
+                                            term, but freely editable for any loan, commercial included. */}
+                                        <div style={{ display:'flex', alignItems:'center', gap:4 }}>
+                                          <LiveNumber small value={g.totalTerm} onCommit={v=>updGroup(i,gi,{totalTerm:v})} placeholder={sp.type==='IO' ? 'e.g. 30' : 'n/a'} />
+                                          <span style={{ fontSize:10, color:'#7A8090', whiteSpace:'nowrap' }}>Years</span>
+                                        </div>
+                                      </td>
+                                      <td style={tdStyle}><LiveNumber small value={sp.baseLoan} onCommit={v=>updSplit(i,gi,si,'baseLoan',v)} /></td>
+                                      {strat.showLMI && <td style={tdStyle}><LiveNumber small value={sp.lmi} onCommit={v=>updSplit(i,gi,si,'lmi',v)} /></td>}
+                                      <td style={tdStyle}><LiveNumber small value={sp.rate} onCommit={v=>updSplit(i,gi,si,'rate',v)} step="0.01" /></td>
+                                      <td style={tdStyle}>{repay ? `$${Math.round(repay).toLocaleString()}` : '—'}</td>
+                                      <td style={tdStyle}><input type="checkbox" checked={!!checked} onChange={()=>setRecommendation(sc.id, g.id)} title="Recommend this loan" /></td>
+                                      <td style={tdStyle}>
+                                        <div style={{ display:'flex', gap:4 }}>
+                                          {isLast && (
+                                            <button onClick={()=>addSplit(i,gi)} disabled={g.splits.length>=MAX_SPLITS} title={g.splits.length>=MAX_SPLITS ? `Maximum ${MAX_SPLITS} splits` : "Split this lender's loan into multiple facilities"} style={{ ...addBtnStyle, padding:'2px 8px', fontSize:10, opacity: g.splits.length>=MAX_SPLITS ? 0.5 : 1, cursor: g.splits.length>=MAX_SPLITS ? 'default' : 'pointer' }}>+ Split</button>
+                                          )}
+                                          {multi ? (
+                                            <button onClick={()=>rmSplit(i,gi,si)} style={rmBtnStyle}>✕</button>
+                                          ) : (
+                                            isLast && <button onClick={()=>rmGroup(i,gi)} style={rmBtnStyle}>✕</button>
+                                          )}
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  )
+                                })}
+                                {multi && (
+                                  <tr style={{ background: checked ? '#fdf0f6' : '#eef2f6' }}>
+                                    <td style={{ ...tdStyle, fontWeight:700 }} colSpan={5}>Subtotal — {g.lender || 'Untitled lender'}</td>
+                                    <td style={tdStyle}></td>
+                                    <td style={{ ...tdStyle, fontWeight:700 }}>{fmtM(totals.totalBaseLoan)}</td>
+                                    {strat.showLMI && <td style={tdStyle}></td>}
+                                    <td style={{ ...tdStyle, fontWeight:700 }}>{totals.weightedRate ? `${totals.weightedRate.toFixed(2)}% avg` : '—'}</td>
+                                    <td style={{ ...tdStyle, fontWeight:700 }}>{totals.totalRepayment ? `$${Math.round(totals.totalRepayment).toLocaleString()}` : '—'}</td>
+                                    <td style={tdStyle}></td>
+                                    <td style={tdStyle}><button onClick={()=>rmGroup(i,gi)} style={rmBtnStyle}>Remove lender</button></td>
+                                  </tr>
+                                )}
+                              </React.Fragment>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 )
               })}
@@ -1921,7 +1885,10 @@ function StrategyTab({ deal, updateDeal }) {
                               just because it hasn't been filled in yet. */}
                           <td style={labelCellStyle}>Total Loan Term</td>
                           <td colSpan={splits.length + (showTotal ? 1 : 0)} style={{ ...cellStyle, fontWeight:600 }}>
-                            <LiveText small value={recommendedGroup.totalTerm} onCommit={v=>updGroup(recommendedSceneIdx, recommendedGroupIdx, {totalTerm:v})} placeholder="e.g. 25 + 5 Years IO" />
+                            <div style={{ display:'flex', alignItems:'center', gap:4 }}>
+                              <LiveNumber small value={recommendedGroup.totalTerm} onCommit={v=>updGroup(recommendedSceneIdx, recommendedGroupIdx, {totalTerm:v})} placeholder="e.g. 30" />
+                              <span style={{ fontSize:10, color:'#7A8090', whiteSpace:'nowrap' }}>Years</span>
+                            </div>
                           </td>
                         </tr>
                         <tr>
@@ -2335,10 +2302,14 @@ function buildSectionsFromTemplate(template) {
   }))
 }
 
-// Single "Email Clients" button with a dropdown of every template in
-// Settings > CRM > Communication (the built-in RFI/Outstanding pair plus
-// any others Cameron adds there later) — picking one opens that deal's
-// Document Request email pre-filled from its live Attachments checklist.
+// Single "Email Clients" button with a dropdown listing every template in
+// Settings > CRM > Communication (the built-in RFI/Outstanding pair plus any
+// others Cameron adds there later) — picking one opens that deal's Document
+// Request email pre-filled from its live Attachments checklist — plus the
+// fixed built-in Lender Comparison email (not a Settings template, since its
+// tables are generated live from the deal's own Comparison Tables data).
+// Reused on both the Attachments tab and the Notes tab, so every template
+// can be sent from either place.
 function EmailClientsButton({ deal, navigate }) {
   const [open, setOpen] = useState(false)
   const templates = (loadSettings().emailTemplates || [])
@@ -2362,6 +2333,12 @@ function EmailClientsButton({ deal, navigate }) {
                 {t.name || 'Untitled template'}
               </div>
             ))}
+            <div style={{ borderTop:'0.5px solid #e8eaed' }} />
+            <div onClick={()=>{ setOpen(false); navigate(`/crm/deal/${encodeURIComponent(deal['Transaction Name'])}/comparison-email`) }}
+              style={{ padding:'10px 14px', fontSize:12, color:'#2A3545', cursor:'pointer' }}
+              onMouseEnter={e=>e.currentTarget.style.background='#f8f9fa'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+              Lender Comparison
+            </div>
           </div>
         </>
       )}
@@ -2671,6 +2648,7 @@ function AddSectionItemRow({ onAdd }) {
 }
 
 function NotesTab({ d, editing, set, deal, deals, setDeals }) {
+  const navigate = useNavigate()
   const fileNotes = d._fileNotes || []
   const [selected, setSelected] = useState(0)
   const [draftNote, setDraftNote] = useState({ type:'General Note', title:'', body:'' })
@@ -2756,12 +2734,17 @@ function NotesTab({ d, editing, set, deal, deals, setDeals }) {
             )}
           </TabCard>
 
-          <TabCard title="General Notes" right={fileNotes.length > 0 && (
-            <button
-              onClick={()=>downloadFileNotesPdf(fileNotes, d['Transaction Name'] || deal?.['Transaction Name'] || '')}
-              style={{ fontSize:10.5, fontWeight:600, color:'#3D4F6B', background:'#EEF2F6', border:'none', borderRadius:6, padding:'5px 10px', cursor:'pointer' }}
-            >⬇ Download all as PDF</button>
-          )}>
+          <TabCard title="General Notes" right={
+            <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+              <EmailClientsButton deal={deal} navigate={navigate} />
+              {fileNotes.length > 0 && (
+                <button
+                  onClick={()=>downloadFileNotesPdf(fileNotes, d['Transaction Name'] || deal?.['Transaction Name'] || '')}
+                  style={{ fontSize:10.5, fontWeight:600, color:'#3D4F6B', background:'#EEF2F6', border:'none', borderRadius:6, padding:'5px 10px', cursor:'pointer' }}
+                >⬇ Download all as PDF</button>
+              )}
+            </div>
+          }>
             {fileNotes.map((n,i) => (
               <div key={i} onClick={()=>setSelected(i)} style={{ display:'flex', alignItems:'center', gap:8, padding:'10px 8px', borderRadius:6, cursor:'pointer', background: selected===i?'#EEF2F6':'transparent', borderBottom:'0.5px solid #f0f0f0' }}>
                 <div style={{ flex:1, minWidth:0 }}>

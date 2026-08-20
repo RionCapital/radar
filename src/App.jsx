@@ -29,6 +29,7 @@ import AddClient from './pages/AddClient'
 import CommissionImportPage from './pages/CommissionImportPage'
 import SecurityReviewEmail from './pages/SecurityReviewEmail'
 import DocumentRequestEmail from './pages/DocumentRequestEmail'
+import ComparisonEmail from './pages/ComparisonEmail'
 import EmailBuilder from './pages/EmailBuilder'
 import Marketing from './pages/Marketing'
 import Planner from './pages/Planner'
@@ -377,6 +378,7 @@ export default function App() {
           <Route path="/settings" element={<RequireAuth><AdminSettings clients={clients} onUpdateClients={updateAllClients} /></RequireAuth>} />
           <Route path="/crm/deal/:dealName" element={<RequireAuth><DealPage onUpdateDeals={updateCrmDeals} clients={clients} onUpdateClients={updateAllClients} /></RequireAuth>} />
           <Route path="/crm/deal/:dealName/request-documents/:templateId" element={<RequireAuth><DocumentRequestEmail /></RequireAuth>} />
+          <Route path="/crm/deal/:dealName/comparison-email" element={<RequireAuth><ComparisonEmail /></RequireAuth>} />
           <Route path="/crm/dashboard" element={<RequireAuth><CRMDashboard /></RequireAuth>} />
           <Route path="/crm" element={<RequireAuth><CRM clients={clients} onUpdateClients={updateAllClients} /></RequireAuth>} />
           <Route path="/radar/clients/:name/opportunity" element={<RequireAuth><OpportunityScore clients={clients} updateClient={updateClient} /></RequireAuth>} />
