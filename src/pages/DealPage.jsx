@@ -1385,6 +1385,45 @@ function LiveRowCheckbox({ label, checked, onChange }) {
   )
 }
 
+// ── Comparison Tables data model ────────────────────────────────────────
+// A comparison "table" (a scenario a broker adds to compare lender/loan
+// options) is made of one or more "groups" — one group per lender — and
+// each group holds one or more "splits" — one split per facility/tranche
+// for that lender. A straightforward comparison (no splitting) is just N
+// groups with exactly one split each, rendered as one flat table with no
+// totals; the moment ANY group has more than one split, the whole table
+// renders as separate per-lender boxes instead, each with its own totals
+// and weighted average rate — see the isSplit check where these render.
+// This is derived from the data rather than toggled by a flag, so it can
+// never drift out of sync with what's actually on the page.
+function newSplit() {
+  return { id: `${Date.now()}-${Math.random().toString(36).slice(2,7)}`, property:'', purpose:'OO', type:'P&I', term:30, baseLoan:'', lmi:'', rate:'', features:'' }
+}
+function newGroup() {
+  return { id: `${Date.now()}-${Math.random().toString(36).slice(2,7)}`, lender:'', totalTerm:'', splits:[newSplit()] }
+}
+function newScenario() {
+  return { id: Date.now(), label:'', groups:[newGroup()] }
+}
+// Reads a comparison table saved before splits existed — a flat `rows`
+// array where the "Property" column was actually being used to hold the
+// lender's name (there was no separate Lender field). Returns the
+// scenario unchanged once it's already in the current { groups: [...] }
+// shape, which happens the first time any edit on it is saved.
+function normalizeScenario(sc) {
+  if (sc.groups) return sc
+  const rows = sc.rows || []
+  return {
+    id: sc.id, label: sc.label,
+    groups: rows.map((r, idx) => ({
+      id: r.id || `${sc.id}-g${idx}`,
+      lender: r.property || '',
+      totalTerm: '',
+      splits: [{ id:`${sc.id}-g${idx}-s0`, property:'', purpose:r.purpose||'OO', type:r.type||'P&I', term:r.term||30, baseLoan:r.baseLoan||'', lmi:r.lmi||'', rate:r.rate||'', features:'' }],
+    })),
+  }
+}
+
 function StrategyTab({ deal, updateDeal }) {
   const strat = deal._strategy || {}
   const s = (k, v) => updateDeal({ _strategy: { ...strat, [k]: v } })
@@ -1416,13 +1455,39 @@ function StrategyTab({ deal, updateDeal }) {
   const updContribution = (i, k, v) => s('contributions', contributions.map((r,idx)=> idx===i ? {...r,[k]:v} : r))
   const rmContribution = (i) => s('contributions', contributions.filter((_,idx)=>idx!==i))
 
-  const scenarios = strat.comparisonScenarios || []
-  const addScenario = () => s('comparisonScenarios', [...scenarios, { id: Date.now(), label:'', rows: [{ property:'Home', purpose:'OO', type:'P&I', term:30, baseLoan:'', lmi:'', rate:'' }] }])
-  const updScenario = (i, patch) => s('comparisonScenarios', scenarios.map((sc,idx)=> idx===i ? {...sc,...patch} : sc))
-  const rmScenario = (i) => s('comparisonScenarios', scenarios.filter((_,idx)=>idx!==i))
-  const addScenarioRow = (i) => updScenario(i, { rows: [...scenarios[i].rows, { property:'Home', purpose:'OO', type:'P&I', term:30, baseLoan:'', lmi:'', rate:'' }] })
-  const updScenarioRow = (i, ri, k, v) => updScenario(i, { rows: scenarios[i].rows.map((r,idx)=> idx===ri ? {...r,[k]:v} : r) })
-  const rmScenarioRow = (i, ri) => updScenario(i, { rows: scenarios[i].rows.filter((_,idx)=>idx!==ri) })
+  const scenarios = (strat.comparisonScenarios || []).map(normalizeScenario)
+  const commitScenarios = (next) => s('comparisonScenarios', next)
+  const rec = strat.comparisonRecommendation || null
+  const clearRecommendationIfMatches = (scenarioId, groupId) => {
+    if (rec && rec.scenarioId === scenarioId && rec.groupId === groupId) s('comparisonRecommendation', null)
+  }
+
+  const addScenario = () => commitScenarios([...scenarios, newScenario()])
+  const updScenario = (i, patch) => commitScenarios(scenarios.map((sc,idx)=> idx===i ? {...sc,...patch} : sc))
+  const rmScenario = (i) => {
+    const sc = scenarios[i]
+    if (rec && rec.scenarioId === sc.id) s('comparisonRecommendation', null)
+    commitScenarios(scenarios.filter((_,idx)=>idx!==i))
+  }
+  const addGroup = (i) => updScenario(i, { groups: [...scenarios[i].groups, newGroup()] })
+  const updGroup = (i, gi, patch) => updScenario(i, { groups: scenarios[i].groups.map((g,idx)=> idx===gi ? {...g,...patch} : g) })
+  const rmGroup = (i, gi) => {
+    const sc = scenarios[i], g = sc.groups[gi]
+    clearRecommendationIfMatches(sc.id, g.id)
+    updScenario(i, { groups: sc.groups.filter((_,idx)=>idx!==gi) })
+  }
+  const addSplit = (i, gi) => updGroup(i, gi, { splits: [...scenarios[i].groups[gi].splits, newSplit()] })
+  const updSplit = (i, gi, si, k, v) => updGroup(i, gi, { splits: scenarios[i].groups[gi].splits.map((sp,idx)=> idx===si ? {...sp,[k]:v} : sp) })
+  const rmSplit = (i, gi, si) => updGroup(i, gi, { splits: scenarios[i].groups[gi].splits.filter((_,idx)=>idx!==si) })
+
+  // A single deal-wide recommendation — ticking a lender's row (no-split
+  // table) or a lender's whole box (split table) elsewhere unticks any
+  // other, since "Our Recommendation" is meant to be the one structure
+  // actually going forward with, not a per-table shortlist.
+  const setRecommendation = (scenarioId, groupId) => {
+    if (rec && rec.scenarioId === scenarioId && rec.groupId === groupId) s('comparisonRecommendation', null)
+    else s('comparisonRecommendation', { scenarioId, groupId })
+  }
 
   function rowRepayment(r) {
     const n = v => Number(v)||0
@@ -1434,12 +1499,25 @@ function StrategyTab({ deal, updateDeal }) {
     const rm = rate/12
     return (total * rm) / (1 - Math.pow(1+rm, -termMo))
   }
-  function scenarioTotals(sc) {
+  function groupTotals(g) {
     const n = v => Number(v)||0
-    const totalBaseLoan = sc.rows.reduce((sum,r)=>sum+n(r.baseLoan),0)
-    const totalRepayment = sc.rows.reduce((sum,r)=>sum+rowRepayment(r),0)
-    const weightedRate = totalBaseLoan ? sc.rows.reduce((sum,r)=>sum+n(r.rate)*n(r.baseLoan),0)/totalBaseLoan : 0
+    const splits = g.splits || []
+    const totalBaseLoan = splits.reduce((sum,sp)=>sum+n(sp.baseLoan),0)
+    const totalRepayment = splits.reduce((sum,sp)=>sum+rowRepayment(sp),0)
+    const weightedRate = totalBaseLoan ? splits.reduce((sum,sp)=>sum+n(sp.rate)*n(sp.baseLoan),0)/totalBaseLoan : 0
     return { totalBaseLoan, totalRepayment, weightedRate }
+  }
+
+  // The recommended group, wherever it lives — plus the indices needed to
+  // write back to it (e.g. editing a split's Features from inside the
+  // recommendation panel itself, rather than only from its source table).
+  let recommendedGroup = null, recommendedSceneIdx = -1, recommendedGroupIdx = -1
+  if (rec) {
+    scenarios.forEach((sc, sceneIdx) => {
+      if (sc.id !== rec.scenarioId) return
+      const gi = sc.groups.findIndex(g => g.id === rec.groupId)
+      if (gi !== -1) { recommendedGroup = sc.groups[gi]; recommendedSceneIdx = sceneIdx; recommendedGroupIdx = gi }
+    })
   }
 
   const fundingTableTitle = dealType === 'Construction' ? 'Land & Construction Funding Table' : `${dealType} Funding Table`
@@ -1651,6 +1729,7 @@ function StrategyTab({ deal, updateDeal }) {
           )}
 
           {subTab === 'comparison' && (
+            <>
             <TabCard title="Comparison Tables — Lender Options" right={
               <div style={{ display:'flex', gap:10, alignItems:'center' }}>
                 <label style={{ fontSize:11, color:'#7A8090', display:'flex', alignItems:'center', gap:5, cursor:'pointer' }}>
@@ -1659,45 +1738,176 @@ function StrategyTab({ deal, updateDeal }) {
                 <button onClick={addScenario} style={addBtnStyle}>+ Add comparison table</button>
               </div>
             }>
+              <datalist id="comparison-lender-suggestions">{LENDER_SUGGESTIONS.map(l=><option key={l} value={l}/>)}</datalist>
+              <div style={{ fontSize:11, color:'#9ca3af', marginBottom:14, lineHeight:1.5 }}>
+                A straightforward comparison — one row per lender, no splitting — stays as a single flat table with no totals. Click "+ Split" on a row (or "+ Add split" once a table's already split) when a lender's loan needs to be broken into multiple facilities — e.g. a P&amp;I portion plus a construction portion on IO. The moment any lender in a table has more than one split, that whole table separates into one box per lender with its own totals and weighted average rate. Tick a row (or a lender's whole box) to mark it the recommendation — it'll appear in "Our Recommendation" below.
+              </div>
               {scenarios.length === 0 && <div style={{ fontSize:11.5, color:'#9ca3af', padding:'10px 0' }}>No comparisons yet — add one for each lender or structuring option (e.g. a split loan across two facilities).</div>}
               {scenarios.map((sc, i) => {
-                const totals = scenarioTotals(sc)
-                const cols = ['Property','Purpose','Type','Term','Base Loan', ...(strat.showLMI ? ['LMI'] : []), 'Rate','Repayment','']
+                const isSplit = sc.groups.some(g => (g.splits||[]).length > 1)
                 return (
-                  <div key={sc.id||i} style={{ marginBottom:18, paddingBottom:14, borderBottom: i<scenarios.length-1 ? '1px solid #e8eaed' : 'none' }}>
+                  <div key={sc.id||i} style={{ marginBottom:20, paddingBottom:16, borderBottom: i<scenarios.length-1 ? '1px solid #e8eaed' : 'none' }}>
                     <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}>
                       <LiveText value={sc.label} onCommit={v=>updScenario(i,{label:v})} placeholder="Comparison name (e.g. Pepper Money, or Split Structure A)" />
                       <div style={{ display:'flex', gap:6, marginLeft:10 }}>
-                        <button onClick={()=>addScenarioRow(i)} style={addBtnStyle}>+ Add row</button>
+                        <button onClick={()=>addGroup(i)} style={addBtnStyle}>+ Add row</button>
                         <button onClick={()=>rmScenario(i)} style={rmBtnStyle}>Remove table</button>
                       </div>
                     </div>
-                    <MiniTable columns={cols} rows={[
-                      ...sc.rows.map((r, ri) => {
-                        const repay = rowRepayment(r)
-                        const base = [
-                          <LiveText small value={r.property} onCommit={v=>updScenarioRow(i,ri,'property',v)} placeholder="Home / Inv" />,
-                          <LiveText small value={r.purpose} onCommit={v=>updScenarioRow(i,ri,'purpose',v)} placeholder="OO / Inv" />,
-                          <LiveSelect small value={r.type} onCommit={v=>updScenarioRow(i,ri,'type',v)} options={['P&I','IO']} allowBlank={false} />,
-                          <LiveNumber small value={r.term} onCommit={v=>updScenarioRow(i,ri,'term',v)} />,
-                          <LiveNumber small value={r.baseLoan} onCommit={v=>updScenarioRow(i,ri,'baseLoan',v)} />,
-                        ]
-                        if (strat.showLMI) base.push(<LiveNumber small value={r.lmi} onCommit={v=>updScenarioRow(i,ri,'lmi',v)} />)
-                        base.push(<LiveNumber small value={r.rate} onCommit={v=>updScenarioRow(i,ri,'rate',v)} step="0.01" />)
-                        base.push(repay ? `$${Math.round(repay).toLocaleString()}` : '—')
-                        base.push(<button onClick={()=>rmScenarioRow(i,ri)} style={rmBtnStyle}>✕</button>)
-                        return base
-                      }),
-                    ]} empty="No rows yet"/>
-                    <div style={{ display:'flex', gap:24, marginTop:8, paddingLeft:4 }}>
-                      <div style={{ fontSize:11.5, color:'#7A8090' }}>Total Base Loan: <strong style={{color:'#2A3545'}}>{fmtM(totals.totalBaseLoan)}</strong></div>
-                      <div style={{ fontSize:11.5, color:'#7A8090' }}>Total Repayment: <strong style={{color:'#2A3545'}}>{totals.totalRepayment ? `$${Math.round(totals.totalRepayment).toLocaleString()}` : '—'}</strong></div>
-                      <div style={{ fontSize:11.5, color:'#7A8090' }}>Weighted Avg Rate: <strong style={{color:'#2A3545'}}>{totals.weightedRate ? `${totals.weightedRate.toFixed(2)}%` : '—'}</strong></div>
-                    </div>
+
+                    {!isSplit ? (
+                      <MiniTable columns={['Lender','Property','Purpose','Type','Term','Base Loan', ...(strat.showLMI ? ['LMI'] : []), 'Rate','Repayment','Recommend','']}
+                        rows={sc.groups.map((g, gi) => {
+                          const sp = g.splits[0] || newSplit()
+                          const repay = rowRepayment(sp)
+                          const checked = rec && rec.scenarioId===sc.id && rec.groupId===g.id
+                          const base = [
+                            <LiveText small value={g.lender} onCommit={v=>updGroup(i,gi,{lender:v})} placeholder="Lender name" list="comparison-lender-suggestions" />,
+                            <LiveText small value={sp.property} onCommit={v=>updSplit(i,gi,0,'property',v)} placeholder="TBC" />,
+                            <LiveText small value={sp.purpose} onCommit={v=>updSplit(i,gi,0,'purpose',v)} placeholder="OO / Inv" />,
+                            <LiveSelect small value={sp.type} onCommit={v=>updSplit(i,gi,0,'type',v)} options={['P&I','IO']} allowBlank={false} />,
+                            <LiveNumber small value={sp.term} onCommit={v=>updSplit(i,gi,0,'term',v)} />,
+                            <LiveNumber small value={sp.baseLoan} onCommit={v=>updSplit(i,gi,0,'baseLoan',v)} />,
+                          ]
+                          if (strat.showLMI) base.push(<LiveNumber small value={sp.lmi} onCommit={v=>updSplit(i,gi,0,'lmi',v)} />)
+                          base.push(<LiveNumber small value={sp.rate} onCommit={v=>updSplit(i,gi,0,'rate',v)} step="0.01" />)
+                          base.push(repay ? `$${Math.round(repay).toLocaleString()}` : '—')
+                          base.push(<input type="checkbox" checked={!!checked} onChange={()=>setRecommendation(sc.id, g.id)} title="Recommend this loan" />)
+                          base.push(
+                            <div style={{ display:'flex', gap:4 }}>
+                              <button onClick={()=>addSplit(i,gi)} title="Split this lender's loan into multiple facilities" style={{ ...addBtnStyle, padding:'2px 8px', fontSize:10 }}>+ Split</button>
+                              <button onClick={()=>rmGroup(i,gi)} style={rmBtnStyle}>✕</button>
+                            </div>
+                          )
+                          return base
+                        })}
+                        empty="No rows yet"
+                      />
+                    ) : (
+                      sc.groups.map((g, gi) => {
+                        const totals = groupTotals(g)
+                        const checked = rec && rec.scenarioId===sc.id && rec.groupId===g.id
+                        const cols = ['Property','Purpose','Type','Term','Base Loan', ...(strat.showLMI ? ['LMI'] : []), 'Rate','Repayment','']
+                        return (
+                          <div key={g.id||gi} style={{ marginBottom:14, padding:'10px 12px', background:'#f8fafc', borderRadius:8, border:'0.5px solid #e8eaed' }}>
+                            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8, gap:10, flexWrap:'wrap' }}>
+                              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                                <label style={{ display:'flex', alignItems:'center', gap:6, fontSize:11, color:'#7A8090', cursor:'pointer' }}>
+                                  <input type="checkbox" checked={!!checked} onChange={()=>setRecommendation(sc.id, g.id)} title="Recommend this table" /> Recommend
+                                </label>
+                                <LiveText small value={g.lender} onCommit={v=>updGroup(i,gi,{lender:v})} placeholder="Lender name" list="comparison-lender-suggestions" />
+                              </div>
+                              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                                <span style={{ fontSize:10, color:'#7A8090', whiteSpace:'nowrap' }}>Total term:</span>
+                                <LiveText small value={g.totalTerm} onCommit={v=>updGroup(i,gi,{totalTerm:v})} placeholder="e.g. 25 + 5 Years IO" />
+                              </div>
+                              <div style={{ display:'flex', gap:6 }}>
+                                <button onClick={()=>addSplit(i,gi)} style={{ ...addBtnStyle, padding:'3px 10px', fontSize:10.5 }}>+ Add split</button>
+                                <button onClick={()=>rmGroup(i,gi)} style={rmBtnStyle}>Remove lender</button>
+                              </div>
+                            </div>
+                            <MiniTable columns={cols} rows={g.splits.map((sp, si) => {
+                              const repay = rowRepayment(sp)
+                              const base = [
+                                <LiveText small value={sp.property} onCommit={v=>updSplit(i,gi,si,'property',v)} placeholder="TBC" />,
+                                <LiveText small value={sp.purpose} onCommit={v=>updSplit(i,gi,si,'purpose',v)} placeholder="OO / Inv" />,
+                                <LiveSelect small value={sp.type} onCommit={v=>updSplit(i,gi,si,'type',v)} options={['P&I','IO']} allowBlank={false} />,
+                                <LiveNumber small value={sp.term} onCommit={v=>updSplit(i,gi,si,'term',v)} />,
+                                <LiveNumber small value={sp.baseLoan} onCommit={v=>updSplit(i,gi,si,'baseLoan',v)} />,
+                              ]
+                              if (strat.showLMI) base.push(<LiveNumber small value={sp.lmi} onCommit={v=>updSplit(i,gi,si,'lmi',v)} />)
+                              base.push(<LiveNumber small value={sp.rate} onCommit={v=>updSplit(i,gi,si,'rate',v)} step="0.01" />)
+                              base.push(repay ? `$${Math.round(repay).toLocaleString()}` : '—')
+                              base.push(g.splits.length > 1 ? <button onClick={()=>rmSplit(i,gi,si)} style={rmBtnStyle}>✕</button> : null)
+                              return base
+                            })} empty="No splits yet" />
+                            <div style={{ display:'flex', gap:24, marginTop:8, paddingLeft:4 }}>
+                              <div style={{ fontSize:11.5, color:'#7A8090' }}>Total Base Loan: <strong style={{color:'#2A3545'}}>{fmtM(totals.totalBaseLoan)}</strong></div>
+                              <div style={{ fontSize:11.5, color:'#7A8090' }}>Total Repayment: <strong style={{color:'#2A3545'}}>{totals.totalRepayment ? `$${Math.round(totals.totalRepayment).toLocaleString()}` : '—'}</strong></div>
+                              <div style={{ fontSize:11.5, color:'#7A8090' }}>Weighted Avg Rate: <strong style={{color:'#2A3545'}}>{totals.weightedRate ? `${totals.weightedRate.toFixed(2)}%` : '—'}</strong></div>
+                            </div>
+                          </div>
+                        )
+                      })
+                    )}
                   </div>
                 )
               })}
             </TabCard>
+
+            {recommendedGroup && (() => {
+              const splits = recommendedGroup.splits
+              const n = v => Number(v)||0
+              const totalLoan = splits.reduce((sum,sp)=>sum+n(sp.baseLoan),0)
+              const totalRepay = splits.reduce((sum,sp)=>sum+rowRepayment(sp),0)
+              const weightedRate = totalLoan ? splits.reduce((sum,sp)=>sum+n(sp.rate)*n(sp.baseLoan),0)/totalLoan : 0
+              const labelCellStyle = { padding:'7px 10px', color:'#7A8090', fontSize:10.5, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.03em', whiteSpace:'nowrap', borderBottom:'0.5px solid #f0f0f0' }
+              const cellStyle = { padding:'7px 10px', color:'#2A3545', fontSize:12, borderBottom:'0.5px solid #f0f0f0' }
+              const totalCellStyle = { ...cellStyle, fontWeight:700, background:'#f8fafc' }
+              return (
+                <TabCard title="Our Recommendation">
+                  <div style={{ overflowX:'auto' }}>
+                    <table style={{ borderCollapse:'collapse', minWidth:'100%', fontSize:12 }}>
+                      <tbody>
+                        <tr>
+                          <td style={labelCellStyle}>Split</td>
+                          {splits.map((sp,si) => <td key={si} style={{ ...cellStyle, fontWeight:700, textAlign:'center' }}>{si+1}</td>)}
+                          <td style={{ ...totalCellStyle, textAlign:'center' }}>TOTAL</td>
+                        </tr>
+                        <tr>
+                          <td style={labelCellStyle}>Bank</td>
+                          {splits.map((sp,si) => <td key={si} style={cellStyle}>{recommendedGroup.lender || '—'}</td>)}
+                          <td style={totalCellStyle}></td>
+                        </tr>
+                        <tr>
+                          <td style={labelCellStyle}>Property</td>
+                          {splits.map((sp,si) => <td key={si} style={cellStyle}>{sp.property || 'TBC'}</td>)}
+                          <td style={totalCellStyle}></td>
+                        </tr>
+                        <tr>
+                          <td style={labelCellStyle}>Purpose</td>
+                          {splits.map((sp,si) => <td key={si} style={cellStyle}>{sp.purpose || '—'}</td>)}
+                          <td style={totalCellStyle}></td>
+                        </tr>
+                        <tr>
+                          <td style={labelCellStyle}>Loan Amount</td>
+                          {splits.map((sp,si) => <td key={si} style={cellStyle}>{fmtM(n(sp.baseLoan))}</td>)}
+                          <td style={totalCellStyle}>{fmtM(totalLoan)}</td>
+                        </tr>
+                        <tr>
+                          <td style={labelCellStyle}>Term</td>
+                          {splits.map((sp,si) => <td key={si} style={cellStyle}>{sp.term ? `${sp.term} Years (${sp.type})` : '—'}</td>)}
+                          <td style={totalCellStyle}>{recommendedGroup.totalTerm || '—'}</td>
+                        </tr>
+                        <tr>
+                          <td style={labelCellStyle}>Rate</td>
+                          {splits.map((sp,si) => <td key={si} style={cellStyle}>{sp.rate ? `${Number(sp.rate).toFixed(2)}%` : '—'}</td>)}
+                          <td style={totalCellStyle}>{weightedRate ? `${weightedRate.toFixed(2)}% W.avg` : '—'}</td>
+                        </tr>
+                        <tr>
+                          <td style={labelCellStyle}>Repayment</td>
+                          {splits.map((sp,si) => { const repay = rowRepayment(sp); return <td key={si} style={cellStyle}>{repay ? `$${Math.round(repay).toLocaleString()}` : '—'}</td> })}
+                          <td style={totalCellStyle}>{totalRepay ? `$${Math.round(totalRepay).toLocaleString()}` : '—'}</td>
+                        </tr>
+                        <tr>
+                          <td style={labelCellStyle}>Features</td>
+                          {splits.map((sp,si) => (
+                            <td key={si} style={{ ...cellStyle, minWidth:160 }}>
+                              <LiveText small value={sp.features} onCommit={v=>updSplit(recommendedSceneIdx, recommendedGroupIdx, si, 'features', v)} placeholder="e.g. offset account" />
+                            </td>
+                          ))}
+                          <td style={totalCellStyle}></td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                  <div style={{ fontSize:10.5, color:'#9ca3af', marginTop:10 }}>
+                    This feeds the client comparison email template — coming in a later pass.
+                  </div>
+                </TabCard>
+              )
+            })()}
+            </>
           )}
 
           <div style={{ fontSize:11, color:'#9ca3af' }}>Stamp duty is a manual estimate for now — flagged for a proper state-based OSR calculator in a later pass.</div>
