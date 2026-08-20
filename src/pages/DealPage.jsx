@@ -1762,7 +1762,7 @@ function StrategyTab({ deal, updateDeal }) {
                     </div>
 
                     {!isSplit ? (
-                      <MiniTable columns={['Lender','Property','Purpose','Type','Term','Base Loan', ...(strat.showLMI ? ['LMI'] : []), 'Rate','Repayment','Recommend','']}
+                      <MiniTable columns={['Lender','Property','Purpose','Type','Term','Total Loan Term','Base Loan', ...(strat.showLMI ? ['LMI'] : []), 'Rate','Repayment','Recommend','']}
                         rows={sc.groups.map((g, gi) => {
                           const sp = g.splits[0] || newSplit()
                           const repay = rowRepayment(sp)
@@ -1773,6 +1773,11 @@ function StrategyTab({ deal, updateDeal }) {
                             <LiveText small value={sp.purpose} onCommit={v=>updSplit(i,gi,0,'purpose',v)} placeholder="OO / Inv" />,
                             <LiveSelect small value={sp.type} onCommit={v=>updSplit(i,gi,0,'type',v)} options={['P&I','IO']} allowBlank={false} />,
                             <LiveNumber small value={sp.term} onCommit={v=>updSplit(i,gi,0,'term',v)} />,
+                            // Total Loan Term matters mainly when this single split is IO —
+                            // e.g. a 5yr IO period sitting inside a 30yr overall loan. Kept as
+                            // free text (rather than derived) since brokers phrase it their own
+                            // way ("25 + 5 Years IO", "30yrs (5 IO)", etc).
+                            <LiveText small value={g.totalTerm} onCommit={v=>updGroup(i,gi,{totalTerm:v})} placeholder={sp.type==='IO' ? 'e.g. 25 + 5 Years IO' : 'n/a'} />,
                             <LiveNumber small value={sp.baseLoan} onCommit={v=>updSplit(i,gi,0,'baseLoan',v)} />,
                           ]
                           if (strat.showLMI) base.push(<LiveNumber small value={sp.lmi} onCommit={v=>updSplit(i,gi,0,'lmi',v)} />)
@@ -1856,7 +1861,7 @@ function StrategyTab({ deal, updateDeal }) {
               // wrapper) rather than every existing column shrinking to
               // squeeze the new one in, which is what a plain % or auto
               // layout would otherwise do.
-              const LABEL_COL_WIDTH = 92, DATA_COL_WIDTH = 84
+              const LABEL_COL_WIDTH = 161, DATA_COL_WIDTH = 147
               // A TOTAL column only means anything once there's more than
               // one split to total up — for a single, unsplit loan it'd
               // just repeat Split 1's own numbers back at you.
@@ -1899,8 +1904,18 @@ function StrategyTab({ deal, updateDeal }) {
                         <tr>
                           <td style={labelCellStyle}>Term</td>
                           {splits.map((sp,si) => <td key={si} style={cellStyle}>{sp.term ? `${sp.term} Years (${sp.type})` : '—'}</td>)}
-                          {showTotal && <td style={totalCellStyle}>{recommendedGroup.totalTerm || '—'}</td>}
+                          {showTotal && <td style={totalCellStyle}></td>}
                         </tr>
+                        {recommendedGroup.totalTerm && (
+                          // A single per-split "Term" (e.g. "5 Years (IO)") doesn't capture the
+                          // overall loan duration once an IO period sits inside a longer P&I
+                          // term — this spans the full row width to show that one group-level
+                          // figure regardless of how many splits there are.
+                          <tr>
+                            <td style={labelCellStyle}>Total Loan Term</td>
+                            <td colSpan={splits.length + (showTotal ? 1 : 0)} style={{ ...cellStyle, fontWeight:600 }}>{recommendedGroup.totalTerm}</td>
+                          </tr>
+                        )}
                         <tr>
                           <td style={labelCellStyle}>Rate</td>
                           {splits.map((sp,si) => <td key={si} style={cellStyle}>{sp.rate ? `${Number(sp.rate).toFixed(2)}%` : '—'}</td>)}
