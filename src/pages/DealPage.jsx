@@ -1476,7 +1476,13 @@ function StrategyTab({ deal, updateDeal }) {
     clearRecommendationIfMatches(sc.id, g.id)
     updScenario(i, { groups: sc.groups.filter((_,idx)=>idx!==gi) })
   }
-  const addSplit = (i, gi) => updGroup(i, gi, { splits: [...scenarios[i].groups[gi].splits, newSplit()] })
+  // Capped at 5 — Cameron's usual case is 1-2 splits, occasionally 3; this
+  // is just a backstop against the recommendation panel growing unbounded.
+  const MAX_SPLITS = 5
+  const addSplit = (i, gi) => {
+    if (scenarios[i].groups[gi].splits.length >= MAX_SPLITS) return
+    updGroup(i, gi, { splits: [...scenarios[i].groups[gi].splits, newSplit()] })
+  }
   const updSplit = (i, gi, si, k, v) => updGroup(i, gi, { splits: scenarios[i].groups[gi].splits.map((sp,idx)=> idx===si ? {...sp,[k]:v} : sp) })
   const rmSplit = (i, gi, si) => updGroup(i, gi, { splits: scenarios[i].groups[gi].splits.filter((_,idx)=>idx!==si) })
 
@@ -1775,7 +1781,7 @@ function StrategyTab({ deal, updateDeal }) {
                           base.push(<input type="checkbox" checked={!!checked} onChange={()=>setRecommendation(sc.id, g.id)} title="Recommend this loan" />)
                           base.push(
                             <div style={{ display:'flex', gap:4 }}>
-                              <button onClick={()=>addSplit(i,gi)} title="Split this lender's loan into multiple facilities" style={{ ...addBtnStyle, padding:'2px 8px', fontSize:10 }}>+ Split</button>
+                              <button onClick={()=>addSplit(i,gi)} disabled={g.splits.length>=MAX_SPLITS} title={g.splits.length>=MAX_SPLITS ? `Maximum ${MAX_SPLITS} splits` : "Split this lender's loan into multiple facilities"} style={{ ...addBtnStyle, padding:'2px 8px', fontSize:10, opacity: g.splits.length>=MAX_SPLITS ? 0.5 : 1, cursor: g.splits.length>=MAX_SPLITS ? 'default' : 'pointer' }}>+ Split</button>
                               <button onClick={()=>rmGroup(i,gi)} style={rmBtnStyle}>✕</button>
                             </div>
                           )
@@ -1802,7 +1808,7 @@ function StrategyTab({ deal, updateDeal }) {
                                 <LiveText small value={g.totalTerm} onCommit={v=>updGroup(i,gi,{totalTerm:v})} placeholder="e.g. 25 + 5 Years IO" />
                               </div>
                               <div style={{ display:'flex', gap:6 }}>
-                                <button onClick={()=>addSplit(i,gi)} style={{ ...addBtnStyle, padding:'3px 10px', fontSize:10.5 }}>+ Add split</button>
+                                <button onClick={()=>addSplit(i,gi)} disabled={g.splits.length>=MAX_SPLITS} title={g.splits.length>=MAX_SPLITS ? `Maximum ${MAX_SPLITS} splits` : undefined} style={{ ...addBtnStyle, padding:'3px 10px', fontSize:10.5, opacity: g.splits.length>=MAX_SPLITS ? 0.5 : 1, cursor: g.splits.length>=MAX_SPLITS ? 'default' : 'pointer' }}>+ Add split</button>
                                 <button onClick={()=>rmGroup(i,gi)} style={rmBtnStyle}>Remove lender</button>
                               </div>
                             </div>
@@ -1841,62 +1847,69 @@ function StrategyTab({ deal, updateDeal }) {
               const totalLoan = splits.reduce((sum,sp)=>sum+n(sp.baseLoan),0)
               const totalRepay = splits.reduce((sum,sp)=>sum+rowRepayment(sp),0)
               const weightedRate = totalLoan ? splits.reduce((sum,sp)=>sum+n(sp.rate)*n(sp.baseLoan),0)/totalLoan : 0
-              const labelCellStyle = { padding:'7px 10px', color:'#7A8090', fontSize:10.5, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.03em', whiteSpace:'nowrap', borderBottom:'0.5px solid #f0f0f0' }
-              const cellStyle = { padding:'7px 10px', color:'#2A3545', fontSize:12, borderBottom:'0.5px solid #f0f0f0' }
+              const labelCellStyle = { padding:'5px 8px', color:'#7A8090', fontSize:10, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.03em', whiteSpace:'nowrap', borderBottom:'0.5px solid #f0f0f0', overflow:'hidden', textOverflow:'ellipsis' }
+              const cellStyle = { padding:'5px 8px', color:'#2A3545', fontSize:11, borderBottom:'0.5px solid #f0f0f0', overflow:'hidden', textOverflow:'ellipsis' }
               const totalCellStyle = { ...cellStyle, fontWeight:700, background:'#f8fafc' }
+              // Fixed-width columns via colgroup + table-layout:fixed — so
+              // adding a 4th or 5th split grows the table's total width
+              // (scrolling if it overflows, per the overflowX:'auto'
+              // wrapper) rather than every existing column shrinking to
+              // squeeze the new one in, which is what a plain % or auto
+              // layout would otherwise do.
+              const LABEL_COL_WIDTH = 92, DATA_COL_WIDTH = 84
+              // A TOTAL column only means anything once there's more than
+              // one split to total up — for a single, unsplit loan it'd
+              // just repeat Split 1's own numbers back at you.
+              const showTotal = splits.length > 1
               return (
                 <TabCard title="Our Recommendation">
                   <div style={{ overflowX:'auto' }}>
-                    <table style={{ borderCollapse:'collapse', minWidth:'100%', fontSize:12 }}>
+                    <table style={{ borderCollapse:'collapse', fontSize:11, tableLayout:'fixed' }}>
+                      <colgroup>
+                        <col style={{ width:LABEL_COL_WIDTH }} />
+                        {splits.map((_,si) => <col key={si} style={{ width:DATA_COL_WIDTH }} />)}
+                        {showTotal && <col style={{ width:DATA_COL_WIDTH }} />}
+                      </colgroup>
                       <tbody>
                         <tr>
                           <td style={labelCellStyle}>Split</td>
                           {splits.map((sp,si) => <td key={si} style={{ ...cellStyle, fontWeight:700, textAlign:'center' }}>{si+1}</td>)}
-                          <td style={{ ...totalCellStyle, textAlign:'center' }}>TOTAL</td>
+                          {showTotal && <td style={{ ...totalCellStyle, textAlign:'center' }}>TOTAL</td>}
                         </tr>
                         <tr>
                           <td style={labelCellStyle}>Bank</td>
                           {splits.map((sp,si) => <td key={si} style={cellStyle}>{recommendedGroup.lender || '—'}</td>)}
-                          <td style={totalCellStyle}></td>
+                          {showTotal && <td style={totalCellStyle}></td>}
                         </tr>
                         <tr>
                           <td style={labelCellStyle}>Property</td>
                           {splits.map((sp,si) => <td key={si} style={cellStyle}>{sp.property || 'TBC'}</td>)}
-                          <td style={totalCellStyle}></td>
+                          {showTotal && <td style={totalCellStyle}></td>}
                         </tr>
                         <tr>
                           <td style={labelCellStyle}>Purpose</td>
                           {splits.map((sp,si) => <td key={si} style={cellStyle}>{sp.purpose || '—'}</td>)}
-                          <td style={totalCellStyle}></td>
+                          {showTotal && <td style={totalCellStyle}></td>}
                         </tr>
                         <tr>
                           <td style={labelCellStyle}>Loan Amount</td>
                           {splits.map((sp,si) => <td key={si} style={cellStyle}>{fmtM(n(sp.baseLoan))}</td>)}
-                          <td style={totalCellStyle}>{fmtM(totalLoan)}</td>
+                          {showTotal && <td style={totalCellStyle}>{fmtM(totalLoan)}</td>}
                         </tr>
                         <tr>
                           <td style={labelCellStyle}>Term</td>
                           {splits.map((sp,si) => <td key={si} style={cellStyle}>{sp.term ? `${sp.term} Years (${sp.type})` : '—'}</td>)}
-                          <td style={totalCellStyle}>{recommendedGroup.totalTerm || '—'}</td>
+                          {showTotal && <td style={totalCellStyle}>{recommendedGroup.totalTerm || '—'}</td>}
                         </tr>
                         <tr>
                           <td style={labelCellStyle}>Rate</td>
                           {splits.map((sp,si) => <td key={si} style={cellStyle}>{sp.rate ? `${Number(sp.rate).toFixed(2)}%` : '—'}</td>)}
-                          <td style={totalCellStyle}>{weightedRate ? `${weightedRate.toFixed(2)}% W.avg` : '—'}</td>
+                          {showTotal && <td style={totalCellStyle}>{weightedRate ? `${weightedRate.toFixed(2)}% W.avg` : '—'}</td>}
                         </tr>
                         <tr>
                           <td style={labelCellStyle}>Repayment</td>
                           {splits.map((sp,si) => { const repay = rowRepayment(sp); return <td key={si} style={cellStyle}>{repay ? `$${Math.round(repay).toLocaleString()}` : '—'}</td> })}
-                          <td style={totalCellStyle}>{totalRepay ? `$${Math.round(totalRepay).toLocaleString()}` : '—'}</td>
-                        </tr>
-                        <tr>
-                          <td style={labelCellStyle}>Features</td>
-                          {splits.map((sp,si) => (
-                            <td key={si} style={{ ...cellStyle, minWidth:160 }}>
-                              <LiveText small value={sp.features} onCommit={v=>updSplit(recommendedSceneIdx, recommendedGroupIdx, si, 'features', v)} placeholder="e.g. offset account" />
-                            </td>
-                          ))}
-                          <td style={totalCellStyle}></td>
+                          {showTotal && <td style={totalCellStyle}>{totalRepay ? `$${Math.round(totalRepay).toLocaleString()}` : '—'}</td>}
                         </tr>
                       </tbody>
                     </table>
