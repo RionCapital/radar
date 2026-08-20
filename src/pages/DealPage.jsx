@@ -1809,7 +1809,7 @@ function StrategyTab({ deal, updateDeal }) {
                                 <LiveText small value={g.lender} onCommit={v=>updGroup(i,gi,{lender:v})} placeholder="Lender name" list="comparison-lender-suggestions" />
                               </div>
                               <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                                <span style={{ fontSize:10, color:'#7A8090', whiteSpace:'nowrap' }}>Total term:</span>
+                                <span style={{ fontSize:10, color:'#7A8090', whiteSpace:'nowrap', fontWeight:600 }}>Total Loan Term:</span>
                                 <LiveText small value={g.totalTerm} onCommit={v=>updGroup(i,gi,{totalTerm:v})} placeholder="e.g. 25 + 5 Years IO" />
                               </div>
                               <div style={{ display:'flex', gap:6 }}>
