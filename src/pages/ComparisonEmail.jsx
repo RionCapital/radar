@@ -174,7 +174,7 @@ export default function ComparisonEmail() {
       : `${bulletDiv(PLACEHOLDER('Insert outstanding items 1'), { placeholder: true })}${bulletDiv(PLACEHOLDER('Insert outstanding items 2'), { placeholder: true })}`
 
     return `<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="${EMAIL_FONT_CSS}margin:0;padding:0;color:#1a1a1a;line-height:1.5">
-      <div style="${EMAIL_FONT_CSS}max-width:720px">Hi ${escapeHtml(clientNameForTokens)},<br/><br/>
+      <div style="${EMAIL_FONT_CSS}max-width:1100px">Hi ${escapeHtml(clientNameForTokens)},<br/><br/>
         ${textDiv('Thank you for providing the requested information, I appreciate your prompt response.')}
         ${textDiv("Following our recent discussions and taking into account your goals, financial position, and preferences, I've shortlisted the most suitable lenders for your scenario:")}
         ${lenders.length ? lenders.map(l => bulletDiv(escapeHtml(l))).join('') : bulletDiv(PLACEHOLDER('Lender 1'), { placeholder: true }) + bulletDiv(PLACEHOLDER('Lender 2'), { placeholder: true })}

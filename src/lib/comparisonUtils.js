@@ -87,6 +87,13 @@ const TD = `padding:6px 8px;border-bottom:0.5px solid #e2e8f0;color:#1a1a1a;${EM
 // DealPage.jsx, but as static markup (no inputs) suitable for an email
 // body. Deliberately no <p> tags anywhere (see emailUtils.js's note on the
 // Outlook signature-splice heuristic) — everything here is <table>/<div>.
+// Fixed per-column pixel widths (via <colgroup> + table-layout:fixed) rather
+// than leaving the browser to auto-size each column by content — auto-sizing
+// squeezed Property and Rate down to their narrowest values. table-layout:
+// fixed means these are the actual rendered widths regardless of content
+// length, so the table comes out wider overall too.
+const COMPARISON_COL_WIDTH = { 'Lender':140, 'Property':130, 'Purpose':80, 'Type':70, 'Term':90, 'Total Loan Term':120, 'Base Loan':120, 'LMI':90, 'Rate':100, 'Repayment':110 }
+
 export function buildComparisonTableHtml(scenarios, opts = {}) {
   const showLMI = !!opts.showLMI
   if (!scenarios || scenarios.length === 0) return ''
@@ -125,7 +132,8 @@ export function buildComparisonTableHtml(scenarios, opts = {}) {
       }
     })
     const label = sc.label ? `<div style="${EMAIL_TABLE_FONT}font-weight:700;margin:0 0 6px">${esc(sc.label)}</div>` : ''
-    return `${label}<table style="border-collapse:collapse;width:100%;margin:0 0 16px"><thead><tr>${cols.map(c => `<th style="${TH}">${esc(c)}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table>`
+    const colgroup = `<colgroup>${cols.map(c => `<col style="width:${COMPARISON_COL_WIDTH[c] || 100}px" />`).join('')}</colgroup>`
+    return `${label}<table style="border-collapse:collapse;table-layout:fixed;margin:0 0 16px">${colgroup}<thead><tr>${cols.map(c => `<th style="${TH}">${esc(c)}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table>`
   }).join('')
 }
 
@@ -133,6 +141,13 @@ export function buildComparisonTableHtml(scenarios, opts = {}) {
 // same Split/Bank/Property/Purpose/Loan Amount/Term/Total Loan
 // Term/Rate/Repayment layout as the on-screen panel, TOTAL column included
 // only once there's more than one split.
+// Label column and every split/TOTAL data column are the same fixed width —
+// "even" per Cameron, and about 50% wider than the columns were rendering
+// at before (auto-sized by content, which is roughly 85-90px for typical
+// values like "$4,960,000") — so ~130px per data column.
+const REC_LABEL_COL_WIDTH = 120
+const REC_DATA_COL_WIDTH = 130
+
 export function buildRecommendationTableHtml(recommendedGroup) {
   if (!recommendedGroup) return ''
   const n = v => Number(v)||0
@@ -144,6 +159,7 @@ export function buildRecommendationTableHtml(recommendedGroup) {
   const LABEL_TD = `padding:6px 8px;${EMAIL_TABLE_FONT}font-weight:700;text-transform:uppercase;font-size:9pt;color:#7A8090;white-space:nowrap;border-bottom:0.5px solid #e2e8f0`
   const CELL = `padding:6px 8px;${EMAIL_TABLE_FONT}color:#1a1a1a;border-bottom:0.5px solid #e2e8f0`
   const TOTAL_CELL = `${CELL}font-weight:700;background:#f8fafc`
+  const colgroup = `<colgroup><col style="width:${REC_LABEL_COL_WIDTH}px" />${splits.map(() => `<col style="width:${REC_DATA_COL_WIDTH}px" />`).join('')}${showTotal ? `<col style="width:${REC_DATA_COL_WIDTH}px" />` : ''}</colgroup>`
   const row = (label, cellsFn, totalVal) => `<tr><td style="${LABEL_TD}">${label}</td>${splits.map((sp,si)=>`<td style="${CELL}">${cellsFn(sp,si)}</td>`).join('')}${showTotal ? `<td style="${TOTAL_CELL}">${totalVal ?? ''}</td>` : ''}</tr>`
   const rows = [
     `<tr><td style="${LABEL_TD}">Split</td>${splits.map((sp,si)=>`<td style="${CELL}font-weight:700;text-align:center">${si+1}</td>`).join('')}${showTotal ? `<td style="${TOTAL_CELL}text-align:center">TOTAL</td>` : ''}</tr>`,
@@ -156,5 +172,5 @@ export function buildRecommendationTableHtml(recommendedGroup) {
     row('Rate', sp => sp.rate ? `${Number(sp.rate).toFixed(2)}%` : '—', weightedRate ? `${weightedRate.toFixed(2)}% W.avg` : '—'),
     row('Repayment', sp => { const r = rowRepayment(sp); return r ? `$${Math.round(r).toLocaleString()}` : '—' }, totalRepay ? `$${Math.round(totalRepay).toLocaleString()}` : '—'),
   ]
-  return `<table style="border-collapse:collapse;margin:0 0 16px">${rows.join('')}</table>`
+  return `<table style="border-collapse:collapse;table-layout:fixed;margin:0 0 16px">${colgroup}${rows.join('')}</table>`
 }
