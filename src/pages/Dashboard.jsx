@@ -116,11 +116,14 @@ function mergeCommission(clients, directByMonth = {}) {
 }
 
 // ─── Panel A: Annual Reviews ──────────────────────────────────────────────────
-// Uses c.days which is "Days Past Review" — clients sorted most overdue first
-// One row per client (their first active loan), threshold ≥ 365d, max 10
+// Uses c.days which is "Days Since Review" — clients sorted most overdue first.
+// No day-threshold filter (matches Panel C's approach) so the full pipeline is
+// visible: DayBadge colours it green (≤180d), amber (181–365d), red (>365d
+// overdue) — previously a hard c.days >= 365 filter meant only the red/overdue
+// case could ever appear here. One row per client (their first active loan), max 30.
 function buildAnnualRows(clients) {
   return clients
-    .filter(c => !c._demo && c.days >= 365 && c.loans.filter(l => !l.closed).length > 0)
+    .filter(c => !c._demo && c.loans.filter(l => !l.closed).length > 0)
     .sort((a, b) => b.days - a.days)
     .slice(0, 30)
     .map(c => {
