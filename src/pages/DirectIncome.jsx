@@ -189,6 +189,15 @@ export default function DirectIncome() {
     if (monthClosed) return
     persist(entries.filter(e => e.id !== id))
   }
+  // History rows are closed (locked against the normal edit/delete in the
+  // Current tab) — this is a separate, deliberately-confirmed path for
+  // fixing genuine mistakes in already-closed months, e.g. a duplicate row
+  // that came in from a bulk CSV import.
+  function removeClosedEntry(e) {
+    const label = `${e.supplierName || 'this entry'} — $${fmt2((Number(e.amount) || 0) + (Number(e.taxAmount) || 0))} (${monthLabel(e.month)})`
+    if (!window.confirm(`Delete ${label}? This can't be undone.`)) return
+    persist(entries.filter(x => x.id !== e.id))
+  }
   function selectDeal(id, dealName) {
     const deal = settledDealsThisMonth.find(d => d['Transaction Name'] === dealName)
     const clientName = deal ? (deal['RradarClient'] || deal.Contacts?.[0]?.name || '') : ''
@@ -611,6 +620,7 @@ export default function DirectIncome() {
                     <span style={{ flex: 1, color: '#2A3545' }}>{e.supplierName || '—'} — {e.item}{e.description ? ' · ' + e.description : ''}</span>
                     <span style={{ width: 90, textAlign: 'right', fontWeight: 600 }}>${fmt2((Number(e.amount)||0)+(Number(e.taxAmount)||0))}</span>
                     <button onClick={() => downloadTaxInvoice(e)} style={{ background: '#fff', color: NAVY, border: `1px solid ${NAVY}`, borderRadius: 5, padding: '3px 8px', cursor: 'pointer', fontSize: 10.5, whiteSpace:'nowrap' }}>📄 Invoice</button>
+                    <button onClick={() => removeClosedEntry(e)} title="Delete this entry" style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', borderRadius: 5, padding: '3px 8px', cursor: 'pointer', fontSize: 11 }}>✕</button>
                   </div>
                 ))}
               </div>
