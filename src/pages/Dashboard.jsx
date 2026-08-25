@@ -212,19 +212,35 @@ function buildMaturingRows(clients) {
   return rows.sort((a, b) => new Date(a.expiryDate) - new Date(b.expiryDate)).slice(0, 30)
 }
 
-function BarChart({ data, keys, colors, title, formatY, onBarHover, onBarLeave, hoveredIdx }) {
-  const maxVal = Math.max(...data.map(d => keys.reduce((s, k) => s + (d[k] || 0), 0))) * 1.1 || 1
+function BarChart({ data, keys, colors, title, formatY, tickStep, onBarHover, onBarLeave, hoveredIdx }) {
+  const rawMax = Math.max(...data.map(d => keys.reduce((s, k) => s + (d[k] || 0), 0))) || 1
+  // Default: 5 gridlines evenly splitting whatever the tallest bar happens to
+  // be — the labels land on whatever number that produces (e.g. $11k/$23k),
+  // which reads as arbitrary. Passing tickStep (e.g. 10000) switches to
+  // gridlines at round multiples of that step instead — 0/10k/20k/30k/… —
+  // so every label is a "nice" number, at the cost of a variable tick count.
+  let maxVal, tickValues
+  if (tickStep) {
+    maxVal = Math.max(tickStep, Math.ceil((rawMax * 1.1) / tickStep) * tickStep)
+    tickValues = Array.from({ length: Math.round(maxVal / tickStep) + 1 }, (_, i) => i * tickStep)
+  } else {
+    maxVal = rawMax * 1.1
+    tickValues = [0, 0.25, 0.5, 0.75, 1].map(p => maxVal * p)
+  }
   const h = 120, barW = Math.max(12, Math.floor(420 / data.length) - 3)
   return (
     <div style={{ flex: 1 }}>
       <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-secondary)', textAlign: 'center', marginBottom: 6 }}>{title}</div>
       <svg width="100%" viewBox={`0 0 ${data.length * (barW + 3) + 42} ${h + 34}`} style={{ overflow: 'visible', display: 'block' }}>
-        {[0, 0.25, 0.5, 0.75, 1].map(p => (
-          <g key={p}>
-            <line x1={38} x2={data.length * (barW + 3) + 38} y1={h - p * h} y2={h - p * h} stroke="var(--border-light)" strokeWidth={0.5} />
-            <text x={34} y={h - p * h + 3} textAnchor="end" fontSize={8} fill="var(--text-tertiary)">{formatY ? formatY(maxVal * p) : Math.round(maxVal * p / 1000) + 'k'}</text>
-          </g>
-        ))}
+        {tickValues.map(tv => {
+          const p = maxVal > 0 ? tv / maxVal : 0
+          return (
+            <g key={tv}>
+              <line x1={38} x2={data.length * (barW + 3) + 38} y1={h - p * h} y2={h - p * h} stroke="var(--border-light)" strokeWidth={0.5} />
+              <text x={34} y={h - p * h + 3} textAnchor="end" fontSize={8} fill="var(--text-tertiary)">{formatY ? formatY(tv) : Math.round(tv / 1000) + 'k'}</text>
+            </g>
+          )
+        })}
         {data.map((d, i) => {
           const x = 40 + i * (barW + 3); let yOff = h
           const isHovered = onBarHover && hoveredIdx === i
@@ -563,7 +579,7 @@ export default function Dashboard({ clients, onImport, onUpdateClients }) {
           })()}
         </Panel>
         <Panel style={{ display: 'flex', flexDirection: 'column' }}>
-          <BarChart data={last12} keys={['trail', 'upfront', 'direct']} colors={['#3D5570', '#EB99C2', '#7A8090']} title="Commission Income" formatY={v => `$${Math.round(v / 1000)}k`} onBarHover={setHoveredCommIdx} onBarLeave={() => setHoveredCommIdx(null)} hoveredIdx={hoveredCommIdx} />
+          <BarChart data={last12} keys={['trail', 'upfront', 'direct']} colors={['#3D5570', '#EB99C2', '#7A8090']} title="Commission Income" formatY={v => `$${Math.round(v / 1000)}k`} tickStep={10000} onBarHover={setHoveredCommIdx} onBarLeave={() => setHoveredCommIdx(null)} hoveredIdx={hoveredCommIdx} />
         </Panel>
         <Panel style={{ padding: '12px 14px' }}>
           {hoveredCommIdx != null ? (() => {
