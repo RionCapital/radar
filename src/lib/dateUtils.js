@@ -119,9 +119,10 @@ export function quarterlyIncome(commData) {
     // Quarter ends in the month of the last month of that quarter
     const endMonth = Q_END[q]
     const key = `${endMonth} ${yr}`
-    if (!qMap[key]) qMap[key] = { label: `Q${endMonth} ${yr}`, endMonth, yr: parseInt('20'+yr), q, trail:0, upfront:0, total:0, months:[] }
+    if (!qMap[key]) qMap[key] = { label: `Q${endMonth} ${yr}`, endMonth, yr: parseInt('20'+yr), q, trail:0, upfront:0, direct:0, total:0, months:[] }
     qMap[key].trail += m.trail
     qMap[key].upfront += m.upfront
+    qMap[key].direct += (m.direct || 0)
     qMap[key].total += m.total
     qMap[key].months.push(mon)
   })

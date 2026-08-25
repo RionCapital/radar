@@ -595,7 +595,7 @@ export default function Dashboard({ clients, onImport, onUpdateClients }) {
                   {m.month}
                 </div>
                 {stat('Trail',   `$${Math.round(m.trail).toLocaleString()}`,   '#3D5570')}
-                {stat('Upfront', `$${Math.round(m.upfront).toLocaleString()}`, isClawback ? 'var(--pk)' : '#EB99C2')}
+                {stat('Upfront/Direct', `$${Math.round(m.upfront + (m.direct || 0)).toLocaleString()}`, isClawback ? 'var(--pk)' : '#EB99C2')}
                 {stat('Total',   `$${Math.round(m.total).toLocaleString()}`,   m.total > 0 ? '#27ae60' : 'var(--pk)')}
                 {stat('Balance', `$${Math.round(m.balance || 0).toLocaleString()}`)}
                 {prior && (
@@ -657,6 +657,7 @@ export default function Dashboard({ clients, onImport, onUpdateClients }) {
                   </div>
                   <div style={{ fontSize: 9, color: 'var(--text-tertiary)', marginTop: 2 }}>T: ${Math.round(m.trail).toLocaleString()}</div>
                   <div style={{ fontSize: 9, color: isClawback ? 'var(--pk)' : 'var(--text-tertiary)', marginTop: 1 }}>U: ${Math.round(m.upfront).toLocaleString()}</div>
+                  <div style={{ fontSize: 9, color: 'var(--text-tertiary)', marginTop: 1 }}>D: ${Math.round(m.direct || 0).toLocaleString()}</div>
                   {isClawback && <div style={{ fontSize: 9, color: 'var(--pk)', marginTop: 3, fontWeight: 500 }}>Clawback</div>}
                   {prior && (
                     <div style={{ marginTop: 5, paddingTop: 5, borderTop: '0.5px solid var(--border-light)' }}>
@@ -712,7 +713,7 @@ export default function Dashboard({ clients, onImport, onUpdateClients }) {
                   <div style={{ fontSize: 10, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 3 }}>Rolling 12m</div>
                   <div style={{ fontSize: 12, fontWeight: 500, color: '#27ae60' }}>${Math.round(rolling12).toLocaleString()}</div>
                   <div style={{ fontSize: 9, color: 'var(--text-tertiary)', marginTop: 1 }}>
-                    T: ${Math.round(COMM.slice(-12).reduce((s,m)=>s+m.trail,0)/1000)}k U: ${Math.round(COMM.slice(-12).reduce((s,m)=>s+m.upfront,0)/1000)}k
+                    T: ${Math.round(COMM.slice(-12).reduce((s,m)=>s+m.trail,0)/1000)}k U: ${Math.round(COMM.slice(-12).reduce((s,m)=>s+m.upfront,0)/1000)}k D: ${Math.round(COMM.slice(-12).reduce((s,m)=>s+(m.direct||0),0)/1000)}k
                   </div>
                   {pct !== null && (
                     <div style={{ marginTop: 4 }}>
@@ -725,7 +726,7 @@ export default function Dashboard({ clients, onImport, onUpdateClients }) {
                     <div style={{ fontSize: 9, color: 'var(--text-tertiary)', marginBottom: 2 }}>Prior 12m</div>
                     <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-secondary)' }}>${Math.round(prior12).toLocaleString()}</div>
                     <div style={{ fontSize: 9, color: 'var(--text-tertiary)', marginTop: 1 }}>
-                      T: ${Math.round(COMM.slice(-24,-12).reduce((s,m)=>s+m.trail,0)/1000)}k U: ${Math.round(COMM.slice(-24,-12).reduce((s,m)=>s+m.upfront,0)/1000)}k
+                      T: ${Math.round(COMM.slice(-24,-12).reduce((s,m)=>s+m.trail,0)/1000)}k U: ${Math.round(COMM.slice(-24,-12).reduce((s,m)=>s+m.upfront,0)/1000)}k D: ${Math.round(COMM.slice(-24,-12).reduce((s,m)=>s+(m.direct||0),0)/1000)}k
                     </div>
                   </div>
                 </div>
@@ -749,7 +750,7 @@ export default function Dashboard({ clients, onImport, onUpdateClients }) {
                   <div key={i} style={{ background: 'var(--bg)', borderRadius: 8, padding: '10px 12px' }}>
                     <div style={{ fontSize: 10, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 3 }}>{q.label}</div>
                     <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-primary)' }}>${Math.round(q.total).toLocaleString()}</div>
-                    <div style={{ fontSize: 9, color: 'var(--text-tertiary)', marginTop: 1 }}>T: ${Math.round(q.trail / 1000)}k U: ${Math.round(q.upfront / 1000)}k</div>
+                    <div style={{ fontSize: 9, color: 'var(--text-tertiary)', marginTop: 1 }}>T: ${Math.round(q.trail / 1000)}k U: ${Math.round(q.upfront / 1000)}k D: ${Math.round((q.direct||0) / 1000)}k</div>
                     {hasClawback && <div style={{ fontSize: 9, color: 'var(--pk)', marginTop: 2, fontWeight: 500 }}>Clawback</div>}
                     {pct !== null && (
                       <div style={{ marginTop: 4 }}>
@@ -762,7 +763,7 @@ export default function Dashboard({ clients, onImport, onUpdateClients }) {
                       <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px dashed var(--border-light)' }}>
                         <div style={{ fontSize: 9, color: 'var(--text-tertiary)', marginBottom: 2 }}>{prior.label}</div>
                         <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-secondary)' }}>${Math.round(prior.total).toLocaleString()}</div>
-                        <div style={{ fontSize: 9, color: 'var(--text-tertiary)', marginTop: 1 }}>T: ${Math.round(prior.trail / 1000)}k U: ${Math.round(prior.upfront / 1000)}k</div>
+                        <div style={{ fontSize: 9, color: 'var(--text-tertiary)', marginTop: 1 }}>T: ${Math.round(prior.trail / 1000)}k U: ${Math.round(prior.upfront / 1000)}k D: ${Math.round((prior.direct||0) / 1000)}k</div>
                       </div>
                     )}
                   </div>
