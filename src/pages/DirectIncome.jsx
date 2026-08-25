@@ -57,6 +57,50 @@ function plus14Days(dateStr) {
   return d.toISOString().slice(0, 10)
 }
 
+// ─── Bulk CSV import (e.g. an accounting-system invoice export) ──────────────
+// Handles quoted fields (a ContactName with an embedded comma, e.g.
+// `"Smith, John"`) since that's a real shape for company/trust names.
+function parseCsvLine(line) {
+  const cells = []
+  let cur = '', inQ = false
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i]
+    if (inQ) {
+      if (ch === '"') { if (line[i + 1] === '"') { cur += '"'; i++ } else inQ = false }
+      else cur += ch
+    } else {
+      if (ch === '"') inQ = true
+      else if (ch === ',') { cells.push(cur); cur = '' }
+      else cur += ch
+    }
+  }
+  cells.push(cur)
+  return cells.map(c => c.trim())
+}
+function parseCsv(text) {
+  const lines = text.split(/\r?\n/).filter(l => l.trim() !== '')
+  if (!lines.length) return []
+  const headers = parseCsvLine(lines[0])
+  return lines.slice(1).map(line => {
+    const cells = parseCsvLine(line)
+    const row = {}
+    headers.forEach((h, i) => { row[h] = cells[i] ?? '' })
+    return row
+  })
+}
+// "16-05-24" style dates → ISO. 2-digit years assumed 20xx (this app has no
+// data predating 2000).
+function parseAuDate(s) {
+  const m = /^(\d{1,2})-(\d{1,2})-(\d{2,4})$/.exec((s || '').trim())
+  if (!m) return null
+  let [, d, mo, y] = m
+  d = Number(d); mo = Number(mo); y = Number(y)
+  if (y < 100) y += 2000
+  const dt = new Date(y, mo - 1, d)
+  if (isNaN(dt)) return null
+  return dt.toISOString().slice(0, 10)
+}
+
 // Splits a single address string into "Number Street" / "Suburb State
 // Postcode", and separates out the country if there is one — dropping it
 // entirely when it's Australia, since that's the default and doesn't need
@@ -99,6 +143,7 @@ export default function DirectIncome() {
   const [suppliers, setSuppliers] = useState(() => loadLenderList())
   const [month, setMonth] = useState(currentMonthKey())
   const [view, setView] = useState('current') // 'current' | 'history'
+  const [importPreview, setImportPreview] = useState(null) // { parsed, skippedRows, fileName } | null
 
   useEffect(() => {
     syncDirectIncomeFromSupabase().then(cloud => {
@@ -157,6 +202,59 @@ export default function DirectIncome() {
     const amount = Math.round(qty * price * 100) / 100
     const taxAmount = Math.round(amount * taxRateFraction(next.taxRate) * 100) / 100
     updateRow(id, { ...patch, amount, taxAmount })
+  }
+
+  // Bulk import from a CSV export (ContactName, Description, InvoiceDate,
+  // PlannedDate, Total, TaxTotal, Invoice Amount) — e.g. an accounting
+  // system's invoice history. Every row becomes a Direct Income entry
+  // (regardless of whether its Description says "Mandate" or "Commission" —
+  // that word is kept as-is in the Description field so it's still visible),
+  // marked closed since it's finalized history, not something still open for
+  // this month. Total is GST-inclusive; the pre-tax amount is Total minus
+  // TaxTotal. Doesn't touch the live invoice-number sequence — these are
+  // backfilled records, not new invoices going out, so they get no
+  // INV-#### number (blank), leaving the counter to keep tracking real new
+  // invoices uninterrupted.
+  function handleImportFile(file) {
+    const reader = new FileReader()
+    reader.onload = () => {
+      let rows
+      try { rows = parseCsv(String(reader.result)) } catch { rows = [] }
+      const parsed = rows.map(r => {
+        const contact = r.ContactName || ''
+        const descRaw = (r.Description || '').trim()
+        const issueDate = parseAuDate(r.InvoiceDate)
+        const total = Number(r.Total) || 0
+        const taxTotal = Number(r.TaxTotal) || 0
+        const amount = Math.round((total - taxTotal) * 100) / 100
+        const monthKey = issueDate ? issueDate.slice(0, 7) : null
+        const item = /^mandate$/i.test(descRaw) ? 'Mandate' : 'Other'
+        const alreadyExists = !!monthKey && entries.some(e =>
+          e.month === monthKey && e.supplierName === contact && Math.abs((Number(e.amount) || 0) - amount) < 0.01)
+        return {
+          contact, descRaw, issueDate, monthKey, amount, taxAmount: taxTotal, total, item,
+          alreadyExists, valid: !!issueDate && !!contact,
+          include: !!issueDate && !!contact && !alreadyExists,
+        }
+      })
+      setImportPreview({ parsed, fileName: file.name })
+    }
+    reader.readAsText(file)
+  }
+  function toggleImportRow(idx) {
+    setImportPreview(prev => ({ ...prev, parsed: prev.parsed.map((p, i) => i === idx ? { ...p, include: !p.include } : p) }))
+  }
+  function cancelImport() { setImportPreview(null) }
+  function confirmImport() {
+    const toAdd = importPreview.parsed.filter(p => p.include && p.valid).map(p => ({
+      id: mkId(), month: p.monthKey, item: p.item, description: p.descRaw,
+      qty: 1, price: p.amount, account: DEFAULT_ACCOUNT, taxRate: 'GST on Income',
+      taxAmount: p.taxAmount, amount: p.amount,
+      issueDate: p.issueDate, dueDate: plus14Days(p.issueDate),
+      invoiceNumber: '', supplierName: p.contact, dealName: '', clientName: '', closed: true,
+    }))
+    persist([...entries, ...toAdd])
+    setImportPreview(null)
   }
 
   const monthTotal = monthEntries.reduce((s, e) => s + (Number(e.amount) || 0) + (Number(e.taxAmount) || 0), 0)
@@ -342,10 +440,65 @@ export default function DirectIncome() {
         )}
       </div>
 
-      <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
-        <button onClick={() => setView('current')} style={{ padding: '7px 16px', borderRadius: 7, border: `1px solid ${view === 'current' ? NAVY : '#e8eaed'}`, background: view === 'current' ? NAVY : '#fff', color: view === 'current' ? '#fff' : '#7A8090', fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>Current</button>
-        <button onClick={() => setView('history')} style={{ padding: '7px 16px', borderRadius: 7, border: `1px solid ${view === 'history' ? NAVY : '#e8eaed'}`, background: view === 'history' ? NAVY : '#fff', color: view === 'history' ? '#fff' : '#7A8090', fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>History</button>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 16, justifyContent: 'space-between', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button onClick={() => setView('current')} style={{ padding: '7px 16px', borderRadius: 7, border: `1px solid ${view === 'current' ? NAVY : '#e8eaed'}`, background: view === 'current' ? NAVY : '#fff', color: view === 'current' ? '#fff' : '#7A8090', fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>Current</button>
+          <button onClick={() => setView('history')} style={{ padding: '7px 16px', borderRadius: 7, border: `1px solid ${view === 'history' ? NAVY : '#e8eaed'}`, background: view === 'history' ? NAVY : '#fff', color: view === 'history' ? '#fff' : '#7A8090', fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>History</button>
+        </div>
+        <label style={{ padding: '7px 16px', borderRadius: 7, border: `1px solid ${NAVY}`, background: '#fff', color: NAVY, fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>
+          ⬆ Import CSV
+          <input type="file" accept=".csv,text/csv" style={{ display: 'none' }}
+            onChange={ev => { const f = ev.target.files?.[0]; if (f) handleImportFile(f); ev.target.value = '' }} />
+        </label>
       </div>
+
+      {importPreview && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(20,24,32,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20 }}>
+          <div style={{ background: '#fff', borderRadius: 12, maxWidth: 980, width: '100%', maxHeight: '85vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <div style={{ padding: '16px 20px', borderBottom: '0.5px solid #e8eaed' }}>
+              <div style={{ fontSize: 15, fontWeight: 700, color: '#2A3545' }}>Import Direct Income — {importPreview.fileName}</div>
+              <div style={{ fontSize: 11.5, color: '#7A8090', marginTop: 3 }}>
+                {importPreview.parsed.filter(p => p.include).length} of {importPreview.parsed.length} rows will be added, marked as historic/closed entries.
+                Rows already matching an existing entry (same month, contact and amount) are unticked automatically — tick them if you want a duplicate anyway.
+              </div>
+            </div>
+            <div style={{ overflow: 'auto', flex: 1 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11.5 }}>
+                <thead>
+                  <tr style={{ background: '#f8f9fa' }}>
+                    {['', 'Contact', 'Description', 'Issue Date', 'Amount', 'Tax', 'Total', ''].map((h, i) => (
+                      <th key={`${h}-${i}`} style={{ padding: '7px 8px', textAlign: 'left', fontSize: 10, color: '#7A8090', fontWeight: 700, textTransform: 'uppercase', borderBottom: '0.5px solid #e8eaed', whiteSpace: 'nowrap' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {importPreview.parsed.map((p, i) => (
+                    <tr key={i} style={{ borderBottom: '0.5px solid #f0f0f0', opacity: p.valid ? 1 : 0.5 }}>
+                      <td style={{ padding: '6px 8px' }}>
+                        <input type="checkbox" checked={p.include} disabled={!p.valid} onChange={() => toggleImportRow(i)} style={{ cursor: 'pointer' }} />
+                      </td>
+                      <td style={{ padding: '6px 8px' }}>{p.contact || '—'}</td>
+                      <td style={{ padding: '6px 8px' }}>{p.descRaw || '—'}</td>
+                      <td style={{ padding: '6px 8px' }}>{p.issueDate ? fmtDateAU(p.issueDate) : <span style={{ color: '#dc2626' }}>unparseable date</span>}</td>
+                      <td style={{ padding: '6px 8px', textAlign: 'right' }}>${fmt2(p.amount)}</td>
+                      <td style={{ padding: '6px 8px', textAlign: 'right' }}>${fmt2(p.taxAmount)}</td>
+                      <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 600 }}>${fmt2(p.total)}</td>
+                      <td style={{ padding: '6px 8px' }}>{p.alreadyExists && <span style={{ fontSize: 10, color: '#92600A', background: '#FEF9E7', padding: '2px 6px', borderRadius: 10 }}>already in Radar</span>}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div style={{ padding: '14px 20px', borderTop: '0.5px solid #e8eaed', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button onClick={cancelImport} style={{ padding: '8px 18px', borderRadius: 7, border: '1px solid #e8eaed', background: '#fff', color: '#7A8090', fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>Cancel</button>
+              <button onClick={confirmImport} disabled={!importPreview.parsed.some(p => p.include)}
+                style={{ padding: '8px 18px', borderRadius: 7, border: 'none', background: NAVY, color: '#fff', fontWeight: 600, fontSize: 12, cursor: 'pointer', opacity: importPreview.parsed.some(p => p.include) ? 1 : 0.5 }}>
+                Import {importPreview.parsed.filter(p => p.include).length} {importPreview.parsed.filter(p => p.include).length === 1 ? 'entry' : 'entries'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {view === 'current' && (
         <>
