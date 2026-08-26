@@ -7,6 +7,7 @@ import { fmtDate, dateCellStyle, loanFlag, effectiveRpmt, calcRepayment } from '
 import { Panel, PanelTitle, EditBtn, SaveBtn, CancelBtn, ActionBtn, FieldGroup, Pill, DateInput } from '../components/UI'
 import ReferrerPicker from '../components/ReferrerPicker'
 import NewOpportunityModal from '../components/NewOpportunityModal'
+import { downloadEmailNotePdf } from '../lib/emailNotePdf'
 
 const CONTACT_TYPES = ['Individual','Company','Trust','Partnership','Sole Trader']
 const CONTACT_TYPE_CODES = { Individual:'Ind', Company:'Co', Trust:'Tru', Partnership:'Par', 'Sole Trader':'Sol' }
@@ -313,6 +314,8 @@ export default function ClientDashboard({ clients, updateClient }) {
   const [editSection, setEditSection] = useState(null)
   const [draft, setDraft] = useState(null)
   const [noteText, setNoteText] = useState('')
+  const [viewingNote, setViewingNote] = useState(null)
+  const [pdfBusy, setPdfBusy] = useState(false)
   const [editReview, setEditReview] = useState(false)
   const [showNewOpp, setShowNewOpp] = useState(false)
   const [reviewDate, setReviewDate] = useState('')
@@ -831,6 +834,11 @@ export default function ClientDashboard({ clients, updateClient }) {
                     <div style={{fontSize:10,color:'var(--pk)',fontWeight:500,marginBottom:2}}>{fmtDate(n.date)}</div>
                     <div style={{fontSize:11,color:'var(--text-primary)',lineHeight:1.5}}>{n.text}</div>
                   </div>
+                  {n.html && (
+                    <button onClick={()=>setViewingNote(n)} style={{background:'none',border:'0.5px solid var(--pk)',borderRadius:5,cursor:'pointer',color:'var(--pk)',fontSize:9,fontWeight:600,padding:'2px 7px',flexShrink:0,whiteSpace:'nowrap'}}>
+                      View email
+                    </button>
+                  )}
                   <button onClick={()=>deleteNote(n.id||i)} style={{background:'none',border:'none',cursor:'pointer',color:'var(--text-tertiary)',fontSize:14,lineHeight:1,flexShrink:0}}
                     onMouseOver={e=>e.target.style.color='#c0392b'} onMouseOut={e=>e.target.style.color='var(--text-tertiary)'}>×</button>
                 </div>))
@@ -873,6 +881,35 @@ export default function ClientDashboard({ clients, updateClient }) {
           onClose={() => setShowNewOpp(false)}
           onCreated={(newDeal) => navigate(`/crm/deal/${encodeURIComponent(newDeal['Transaction Name'])}`)}
         />
+      )}
+      {viewingNote && (
+        <div onClick={()=>setViewingNote(null)} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center',padding:24}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:'#fff',borderRadius:10,width:'100%',maxWidth:680,maxHeight:'88vh',display:'flex',flexDirection:'column',overflow:'hidden',boxShadow:'0 8px 32px rgba(0,0,0,0.25)'}}>
+            <div style={{padding:'12px 16px',borderBottom:'0.5px solid #e2e8f0',display:'flex',alignItems:'center',justifyContent:'space-between',flexShrink:0}}>
+              <div style={{minWidth:0}}>
+                <div style={{fontSize:13,fontWeight:700,color:'#3D4F6B',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{viewingNote.subject || 'Sent email'}</div>
+                <div style={{fontSize:10,color:'#94a3b8',marginTop:2}}>{fmtDate(viewingNote.date)}</div>
+              </div>
+              <div style={{display:'flex',gap:8,alignItems:'center',flexShrink:0}}>
+                <button
+                  onClick={async ()=>{
+                    setPdfBusy(true)
+                    try { await downloadEmailNotePdf(viewingNote, client.name) }
+                    catch(e) { alert('Could not generate PDF: ' + e.message) }
+                    finally { setPdfBusy(false) }
+                  }}
+                  disabled={pdfBusy}
+                  style={{fontSize:11,padding:'5px 12px',borderRadius:6,border:'1px solid #3D4F6B',color:'#3D4F6B',background:'#fff',cursor:pdfBusy?'default':'pointer',fontWeight:600}}>
+                  {pdfBusy ? 'Generating…' : '⬇ Download PDF'}
+                </button>
+                <button onClick={()=>setViewingNote(null)} style={{background:'none',border:'none',cursor:'pointer',color:'#94a3b8',fontSize:18,lineHeight:1}}>×</button>
+              </div>
+            </div>
+            <div style={{flex:1,overflow:'auto',background:'#f1f5f9',padding:12}}>
+              <iframe srcDoc={viewingNote.html} title="sent-email" style={{width:'100%',height:'70vh',border:'none',background:'#fff',borderRadius:6}} />
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

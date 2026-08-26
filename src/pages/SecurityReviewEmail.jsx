@@ -43,13 +43,14 @@ export default function SecurityReviewEmail({ clients, updateClient }) {
   // This page received `updateClient` as a prop already but never actually
   // called it, so a sent Property Review email left no record on the
   // client's Contact Notes & History at all.
-  function logEmailNote(templateLabel, recipientList, method) {
+  function logEmailNote(templateLabel, recipientList, method, subject, html) {
     if (!updateClient || !client?.name) return
     const recipNames = recipientList || 'client'
     const note = {
       id: Date.now(),
       date: new Date().toISOString().slice(0, 10),
-      text: `📧 Email sent — ${templateLabel}. To: ${recipNames}. Method: ${method}.`
+      text: `📧 Email sent — ${templateLabel}. To: ${recipNames}. Method: ${method}.`,
+      subject, html,
     }
     updateClient(client.name, c => ({ ...c, notes: [note, ...(c.notes || [])] }))
   }
@@ -278,7 +279,7 @@ export default function SecurityReviewEmail({ clients, updateClient }) {
     if (payloadSize > LIMIT) {
       if (window.confirm(`Email size (${(payloadSize/1024/1024).toFixed(1)}MB) is too large. Download as .eml for Outlook instead?`)) {
         downloadEml(to, subject, html, attachments)
-        logEmailNote(templateLabel, to, '.eml download')
+        logEmailNote(templateLabel, to, '.eml download', subject, html)
       }
       return
     }
@@ -286,7 +287,7 @@ export default function SecurityReviewEmail({ clients, updateClient }) {
     try {
       await sendEmail(to, subject, html, brokerName, brokerEmail, attachments)
       setSending('sent')
-      logEmailNote(templateLabel, to, 'Direct send')
+      logEmailNote(templateLabel, to, 'Direct send', subject, html)
       setTimeout(() => setSending(null), 4000)
     } catch (err) {
       setSendError(err.message); setSending('error')
@@ -297,8 +298,9 @@ export default function SecurityReviewEmail({ clients, updateClient }) {
     const to = recipients.map(r => r.email).join(', ')
     const templateLabel = `Property Review — ${security?.address || client?.name}`
     const subject = `${templateLabel} — Rion Capital`
-    downloadEml(to, subject, buildHtml(), attachments)
-    logEmailNote(templateLabel, to, '.eml download')
+    const html = buildHtml()
+    downloadEml(to, subject, html, attachments)
+    logEmailNote(templateLabel, to, '.eml download', subject, html)
   }
 
   if (!client) return <div style={{ padding: 32, color: '#c0392b' }}>Client not found.</div>

@@ -313,7 +313,7 @@ function AnnualReview({ client, onBack, logNote }) {
       )
       if (proceed) {
         downloadEml(to, subject, html, attachments)
-        logNote?.('Annual Portfolio Review', recipients.map(r=>r.name||r.email).join(', '), '.eml download')
+        logNote?.('Annual Portfolio Review', recipients.map(r=>r.name||r.email).join(', '), '.eml download', subject, html)
       }
       return
     }
@@ -322,7 +322,7 @@ function AnnualReview({ client, onBack, logNote }) {
     try {
       await sendEmail(to, subject, html, brokerName, brokerEmail, attachments)
       setSending('sent')
-      logNote?.('Annual Portfolio Review', recipients.map(r=>r.name||r.email).join(', '), 'Direct send')
+      logNote?.('Annual Portfolio Review', recipients.map(r=>r.name||r.email).join(', '), 'Direct send', subject, html)
       setTimeout(() => setSending(null), 4000)
     } catch (err) {
       setSendError(err.message)
@@ -333,8 +333,9 @@ function AnnualReview({ client, onBack, logNote }) {
   function openOutlook() {
     const to = recipients.map(r => r.email).join(', ')
     const subject = `Annual Portfolio Review — ${client.name} · ${fmtDate(reviewDate)}`
-    downloadEml(to, subject, buildHtml())
-    logNote?.('Annual Portfolio Review', recipients.map(r=>r.name||r.email).join(', '), '.eml download')
+    const html = buildHtml()
+    downloadEml(to, subject, html)
+    logNote?.('Annual Portfolio Review', recipients.map(r=>r.name||r.email).join(', '), '.eml download', subject, html)
   }
 
   function copyHtml() {
@@ -631,8 +632,9 @@ function ExpiryEmail({ client, onBack, expiryType: initialExpiryType, logNote })
   function openOutlook() {
     const to = contacts.filter(c => c.email).map(c => c.email).join(', ')
     const subject = `${expiryLabel} — ${loan.lname || client.name} · ${fmtDate(expiryDate)}`
-    downloadEml(to, subject, buildHtml())
-    logNote?.(expiryLabel, to, '.eml download')
+    const html = buildHtml()
+    downloadEml(to, subject, html)
+    logNote?.(expiryLabel, to, '.eml download', subject, html)
   }
 
   return (
@@ -681,7 +683,7 @@ function ExpiryEmail({ client, onBack, expiryType: initialExpiryType, logNote })
           <div style={{ display: 'flex', gap: 8 }}>
             <button onClick={() => navigator.clipboard.writeText(buildHtml())} style={{ fontSize: 11, padding: '5px 14px', borderRadius: 6, border: `1px solid ${PINK}`, color: PINK, background: '#fff', cursor: 'pointer', fontWeight: 600 }}>Copy HTML</button>
             <button onClick={openOutlook} style={{ fontSize: 11, padding: '5px 12px', borderRadius: 6, border: `1px solid ${NAVY}`, color: NAVY, background: '#fff', cursor: 'pointer', fontWeight: 600 }}>↓ .eml</button>
-            <button onClick={async () => { const to = contacts.filter(c=>c.email).map(c=>c.email).join(', '); try { const subj = `${expiryLabel} — ${loan.lname || client.name} · ${fmtDate(expiryDate)}`; await sendEmail(to, subj, buildHtml()); logNote?.(subj, to, 'Direct send'); alert('Sent!') } catch(e) { alert('Error: ' + e.message) } }} style={{ fontSize: 11, padding: '5px 16px', borderRadius: 6, border: 'none', background: NAVY, color: '#fff', cursor: 'pointer', fontWeight: 600 }}>✉ Send Email</button>
+            <button onClick={async () => { const to = contacts.filter(c=>c.email).map(c=>c.email).join(', '); try { const subj = `${expiryLabel} — ${loan.lname || client.name} · ${fmtDate(expiryDate)}`; const html = buildHtml(); await sendEmail(to, subj, html); logNote?.(subj, to, 'Direct send', subj, html); alert('Sent!') } catch(e) { alert('Error: ' + e.message) } }} style={{ fontSize: 11, padding: '5px 16px', borderRadius: 6, border: 'none', background: NAVY, color: '#fff', cursor: 'pointer', fontWeight: 600 }}>✉ Send Email</button>
           </div>
         </div>
         <div style={{ flex: 1, overflowY: 'auto', padding: 20, background: '#f1f5f9' }}>
@@ -761,8 +763,9 @@ function MaturityEmail({ client, onBack, logNote }) {
   function openOutlook() {
     const to = contacts.filter(c => c.email).map(c => c.email).join(', ')
     const subject = `Loan Maturity — ${loan.lname || client.name} · ${fmtDate(loan.maturity)}`
-    downloadEml(to, subject, buildHtml())
-    logNote?.('Loan Maturity', to, '.eml download')
+    const html = buildHtml()
+    downloadEml(to, subject, html)
+    logNote?.('Loan Maturity', to, '.eml download', subject, html)
   }
 
   return (
@@ -789,7 +792,7 @@ function MaturityEmail({ client, onBack, logNote }) {
           <div style={{ display: 'flex', gap: 8 }}>
             <button onClick={() => navigator.clipboard.writeText(buildHtml())} style={{ fontSize: 11, padding: '5px 14px', borderRadius: 6, border: `1px solid ${PINK}`, color: PINK, background: '#fff', cursor: 'pointer', fontWeight: 600 }}>Copy HTML</button>
             <button onClick={openOutlook} style={{ fontSize: 11, padding: '5px 12px', borderRadius: 6, border: `1px solid ${NAVY}`, color: NAVY, background: '#fff', cursor: 'pointer', fontWeight: 600 }}>↓ .eml</button>
-            <button onClick={async () => { const to = contacts.filter(c=>c.email).map(c=>c.email).join(', '); try { const subj = buildSubject ? buildSubject() : 'Email from Rion Capital'; await sendEmail(to, subj, buildHtml()); logNote?.(subj, to, 'Direct send'); alert('Sent!') } catch(e) { alert('Error: ' + e.message) } }} style={{ fontSize: 11, padding: '5px 16px', borderRadius: 6, border: 'none', background: NAVY, color: '#fff', cursor: 'pointer', fontWeight: 600 }}>✉ Send Email</button>
+            <button onClick={async () => { const to = contacts.filter(c=>c.email).map(c=>c.email).join(', '); try { const subj = `Loan Maturity — ${loan.lname || client.name} · ${fmtDate(loan.maturity)}`; const html = buildHtml(); await sendEmail(to, subj, html); logNote?.('Loan Maturity', to, 'Direct send', subj, html); alert('Sent!') } catch(e) { alert('Error: ' + e.message) } }} style={{ fontSize: 11, padding: '5px 16px', borderRadius: 6, border: 'none', background: NAVY, color: '#fff', cursor: 'pointer', fontWeight: 600 }}>✉ Send Email</button>
           </div>
         </div>
         <div style={{ flex: 1, overflowY: 'auto', padding: 20, background: '#f1f5f9' }}>
@@ -832,8 +835,10 @@ function GeneralEmail({ client, onBack, logNote }) {
 
   function openOutlook() {
     const to = contacts.filter(c => c.email).map(c => c.email).join(', ')
-    downloadEml(to, subject || 'Message from Rion Capital', buildHtml())
-    logNote?.(subject || 'General Email', to, '.eml download')
+    const subj = subject || 'Message from Rion Capital'
+    const html = buildHtml()
+    downloadEml(to, subj, html)
+    logNote?.(subject || 'General Email', to, '.eml download', subj, html)
   }
 
   return (
@@ -857,7 +862,7 @@ function GeneralEmail({ client, onBack, logNote }) {
           <div style={{ display: 'flex', gap: 8 }}>
             <button onClick={() => navigator.clipboard.writeText(buildHtml())} style={{ fontSize: 11, padding: '5px 14px', borderRadius: 6, border: `1px solid ${PINK}`, color: PINK, background: '#fff', cursor: 'pointer', fontWeight: 600 }}>Copy HTML</button>
             <button onClick={openOutlook} style={{ fontSize: 11, padding: '5px 12px', borderRadius: 6, border: `1px solid ${NAVY}`, color: NAVY, background: '#fff', cursor: 'pointer', fontWeight: 600 }}>↓ .eml</button>
-            <button onClick={async () => { const to = contacts.filter(c=>c.email).map(c=>c.email).join(', '); try { const subj = buildSubject ? buildSubject() : 'Email from Rion Capital'; await sendEmail(to, subj, buildHtml()); logNote?.(subj, to, 'Direct send'); alert('Sent!') } catch(e) { alert('Error: ' + e.message) } }} style={{ fontSize: 11, padding: '5px 16px', borderRadius: 6, border: 'none', background: NAVY, color: '#fff', cursor: 'pointer', fontWeight: 600 }}>✉ Send Email</button>
+            <button onClick={async () => { const to = contacts.filter(c=>c.email).map(c=>c.email).join(', '); try { const subj = subject || 'Message from Rion Capital'; const html = buildHtml(); await sendEmail(to, subj, html); logNote?.(subject || 'General Email', to, 'Direct send', subj, html); alert('Sent!') } catch(e) { alert('Error: ' + e.message) } }} style={{ fontSize: 11, padding: '5px 16px', borderRadius: 6, border: 'none', background: NAVY, color: '#fff', cursor: 'pointer', fontWeight: 600 }}>✉ Send Email</button>
           </div>
         </div>
         <div style={{ flex: 1, overflowY: 'auto', padding: 20, background: '#f1f5f9' }}>
@@ -875,14 +880,17 @@ export default function EmailBuilder({ clients, updateClient }) {
   const client = clients?.find(c => c.name === decodeURIComponent(name)) || {}
   const [template, setTemplate] = useState(null)
 
-  // Log a note to the client's contact history after email is sent
-  function logEmailNote(templateLabel, recipientList, method) {
+  // Log a note to the client's contact history after email is sent.
+  // subject/html (when supplied) let the Contact Notes & History panel show
+  // the actual content of what was sent, not just a one-line summary.
+  function logEmailNote(templateLabel, recipientList, method, subject, html) {
     if (!updateClient || !client.name) return
     const recipNames = recipientList || 'client'
     const note = {
       id: Date.now(),
       date: new Date().toISOString().slice(0, 10),
-      text: `📧 Email sent — ${templateLabel}. To: ${recipNames}. Method: ${method}.`
+      text: `📧 Email sent — ${templateLabel}. To: ${recipNames}. Method: ${method}.`,
+      subject, html,
     }
     updateClient(client.name, c => ({ ...c, notes: [note, ...(c.notes || [])] }))
   }
