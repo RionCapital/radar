@@ -441,6 +441,34 @@ function daysUntil(dueDate) {
   return Math.round((due - today) / 86400000)
 }
 
+// A currency-style amount field — shows a thousands separator and 2
+// decimal places (e.g. "62,700.00") once the field isn't focused, but
+// drops back to a plain editable number while typing so the formatting
+// doesn't fight the cursor. Value is stored/emitted as a plain number.
+function AmountInput({ value, onChange, style }) {
+  const [editing, setEditing] = useState(false)
+  const [text, setText] = useState('')
+  const hasValue = value !== '' && value !== null && value !== undefined && !isNaN(value)
+  const display = editing ? text : (hasValue ? Number(value).toLocaleString('en-AU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '')
+  return (
+    <input
+      style={style}
+      type="text"
+      inputMode="decimal"
+      value={display}
+      placeholder="0.00"
+      onFocus={() => { setEditing(true); setText(hasValue ? String(value) : '') }}
+      onChange={e => setText(e.target.value)}
+      onBlur={() => {
+        setEditing(false)
+        const cleaned = String(text).replace(/[^0-9.-]/g, '')
+        const num = parseFloat(cleaned)
+        onChange(isNaN(num) ? '' : num)
+      }}
+    />
+  )
+}
+
 function ProgressParcelView({ parcel: p, updateParcel, inputStyle }) {
   const drawn = progressDrawn(p)
   const remaining = progressRemaining(p)
@@ -573,8 +601,8 @@ function ProgressParcelView({ parcel: p, updateParcel, inputStyle }) {
                           <td style={{ padding: '5px 6px', borderBottom: '0.5px solid var(--border-light)' }}>
                             <DateInput value={inv.dueDate || ''} onChange={v => updateInvoice(g.id, inv.id, { dueDate: v })} style={{ ...cellIn, width: 108 }} />
                           </td>
-                          <td style={{ padding: '5px 6px', borderBottom: '0.5px solid var(--border-light)' }}>
-                            <input style={{ ...cellIn, width: 90, textAlign: 'right' }} type="number" value={inv.amount} onChange={e => updateInvoice(g.id, inv.id, { amount: e.target.value })} />
+                          <td style={{ padding: '5px 6px', borderBottom: '0.5px solid var(--border-light)', textAlign: 'right' }}>
+                            <AmountInput style={{ ...cellIn, width: 100, textAlign: 'right' }} value={inv.amount} onChange={val => updateInvoice(g.id, inv.id, { amount: val })} />
                           </td>
                           <td style={{ padding: '5px 6px', borderBottom: '0.5px solid var(--border-light)' }}>
                             <select style={{ ...cellIn, width: 84 }} value={inv.payingTo || 'Supplier'} onChange={e => updateInvoice(g.id, inv.id, { payingTo: e.target.value })}>
