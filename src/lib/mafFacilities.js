@@ -125,6 +125,27 @@ export function progressDrawn(parcel) {
   return (parcel.payments || []).reduce((s, p) => s + (Number(p.amount) || 0), 0)
 }
 
+// Rolls a Progress facility's invoice lines up by supplier — so when a
+// claim bundles several suppliers' invoices together, Cameron can see at a
+// glance how much each supplier is owed in total, how much of that has
+// already been paid, and what's still outstanding, without having to
+// mentally add up rows scattered through the full invoice list. Sorted by
+// total invoiced (largest first).
+export function progressSupplierSummary(parcel) {
+  const bySupplier = {}
+  ;(parcel.payments || []).forEach(pay => {
+    const key = pay.supplier || '(No supplier)'
+    if (!bySupplier[key]) bySupplier[key] = { supplier: key, count: 0, total: 0, paid: 0, outstanding: 0 }
+    const amt = Number(pay.amount) || 0
+    const row = bySupplier[key]
+    row.count += 1
+    row.total += amt
+    if (pay.paid) row.paid += amt
+    else row.outstanding += amt
+  })
+  return Object.values(bySupplier).sort((a, b) => b.total - a.total)
+}
+
 export function progressRemaining(parcel) {
   return (Number(parcel.approvedLimit) || 0) - progressDrawn(parcel)
 }

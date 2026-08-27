@@ -6,7 +6,7 @@ import { Panel, PanelTitle, EditBtn, SaveBtn, CancelBtn, FieldGroup, DateInput }
 import {
   assetFinanceBalanceHistory, assetFinanceCurrentBalance, assetFinanceMonthlyRepayment,
   assetFinanceTotalMonthlyCost, progressDrawn, progressRemaining, mkProgressPayment,
-  PROGRESS_PAYMENT_STATUSES,
+  PROGRESS_PAYMENT_STATUSES, progressSupplierSummary,
 } from '../lib/mafFacilities'
 
 const NAVY = '#3D4F6B'
@@ -55,7 +55,11 @@ export default function MafParcel({ clients, updateClient }) {
   const label = txt => <div style={{ fontSize: 10, color: '#7A8090', fontWeight: 600, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{txt}</div>
 
   return (
-    <div style={{ padding: '24px 32px', maxWidth: 1100, margin: '0 auto', fontFamily: 'Montserrat, sans-serif' }}>
+    // No maxWidth/centering here — matches LoanAccount.jsx's full-width
+    // wrapper so an Asset Finance parcel's page (and a Progress facility's)
+    // uses the whole screen exactly like a normal loan account page does,
+    // rather than sitting narrower in a centered column.
+    <div style={{ padding: '16px 24px', fontFamily: 'Montserrat, sans-serif' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
         <button onClick={() => navigate(backHref)} style={{ background: 'none', border: 'none', color: PINK, fontSize: 12, cursor: 'pointer', padding: 0 }}>
           ← Back to {facility.bank || 'MAF Facility'}
@@ -426,6 +430,7 @@ function ProgressParcelView({ parcel: p, updateParcel, inputStyle, label }) {
   const drawn = progressDrawn(p)
   const remaining = progressRemaining(p)
   const payments = p.payments || []
+  const supplierRows = progressSupplierSummary(p)
 
   function addPayment() {
     updateParcel({ payments: [...payments, mkProgressPayment()] })
@@ -487,6 +492,44 @@ function ProgressParcelView({ parcel: p, updateParcel, inputStyle, label }) {
           </div>
         </div>
       </Panel>
+
+      {supplierRows.length > 0 && (
+        <Panel style={{ marginBottom: 16 }}>
+          <PanelTitle>By supplier</PanelTitle>
+          <div style={{ fontSize: 10.5, color: '#94a3b8', marginBottom: 10, lineHeight: 1.5 }}>
+            Rolls up the invoice lines below by supplier, so you can see at a glance how much each one is owed in total when a claim bundles several of them together.
+          </div>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11.5 }}>
+              <thead><tr>
+                {['Supplier', 'Invoices', 'Total invoiced', 'Paid', 'Outstanding'].map((h, i) => (
+                  <th key={h} style={{ padding: '6px 8px', background: '#3D5570', color: '#fff', fontSize: 10, textAlign: i === 0 ? 'left' : i === 1 ? 'center' : 'right' }}>{h}</th>
+                ))}
+              </tr></thead>
+              <tbody>
+                {supplierRows.map(row => (
+                  <tr key={row.supplier}>
+                    <td style={{ padding: '6px 8px', borderBottom: '0.5px solid var(--border-light)', fontWeight: 500 }}>{row.supplier}</td>
+                    <td style={{ padding: '6px 8px', borderBottom: '0.5px solid var(--border-light)', textAlign: 'center', color: 'var(--text-secondary)' }}>{row.count}</td>
+                    <td style={{ padding: '6px 8px', borderBottom: '0.5px solid var(--border-light)', textAlign: 'right', fontWeight: 600 }}>{fmt(row.total)}</td>
+                    <td style={{ padding: '6px 8px', borderBottom: '0.5px solid var(--border-light)', textAlign: 'right', color: '#166534' }}>{fmt(row.paid)}</td>
+                    <td style={{ padding: '6px 8px', borderBottom: '0.5px solid var(--border-light)', textAlign: 'right', color: row.outstanding > 0 ? '#c0392b' : 'var(--text-secondary)', fontWeight: row.outstanding > 0 ? 600 : 400 }}>{fmt(row.outstanding)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr style={{ background: '#f0f4f8' }}>
+                  <td style={{ padding: '6px 8px', fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)' }}>All suppliers</td>
+                  <td style={{ padding: '6px 8px', textAlign: 'center', fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)' }}>{payments.length}</td>
+                  <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 700, color: '#2A3545', fontSize: 11.5 }}>{fmt(drawn)}</td>
+                  <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 700, color: '#166534', fontSize: 11.5 }}>{fmt(supplierRows.reduce((s, r) => s + r.paid, 0))}</td>
+                  <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 700, color: '#c0392b', fontSize: 11.5 }}>{fmt(supplierRows.reduce((s, r) => s + r.outstanding, 0))}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </Panel>
+      )}
 
       <Panel>
         <PanelTitle action={
