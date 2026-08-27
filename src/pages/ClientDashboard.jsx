@@ -684,7 +684,7 @@ export default function ClientDashboard({ clients, updateClient }) {
                       </div>
                     </td>
                     <td style={tdStyle()}><select value={ld.type||''} onChange={e=>setLoanDraft({...loanDraft,type:e.target.value})} style={{width:110,fontSize:10,padding:'2px 4px',borderRadius:4,border:'0.5px solid var(--border)',background:'var(--bg)'}}>
-                      {['Home Loan (OO)','Home Loan (Inv)','SMSF','Commercial Property','Lease Doc','Term','Asset Finance','Trade Finance','Business Loan','Other'].map(t=><option key={t}>{t}</option>)}
+                      {LOAN_TYPES.map(t=><option key={t}>{t}</option>)}
                     </select></td>
                     <td style={tdStyle()}><input value={ld.bank||''} onChange={e=>setLoanDraft({...loanDraft,bank:e.target.value})} style={{width:50,fontSize:10,padding:'2px 4px',borderRadius:4,border:'0.5px solid var(--border)',background:'var(--bg)'}}/></td>
                     <td style={tdStyle()}><input value={ld.assetDesc||''} onChange={e=>setLoanDraft({...loanDraft,assetDesc:e.target.value})} style={{width:120,fontSize:10,padding:'2px 4px',borderRadius:4,border:'0.5px solid var(--border)',background:'var(--bg)'}}/></td>
