@@ -160,8 +160,12 @@ export function assetFinanceTotalMonthlyCost(parcel) {
   return assetFinanceMonthlyRepayment(parcel) + (Number(parcel.monthlyFee) || 0)
 }
 
+// The actual drawdown against a Progress facility's sub-limit — only
+// invoices that have been marked Paid count, not everything that's been
+// invoiced. An invoice sitting unpaid hasn't drawn on the facility yet,
+// so it shouldn't reduce the "remaining" figure or count as utilised.
 export function progressDrawn(parcel) {
-  return getSupplierGroups(parcel).reduce((s, g) => s + groupSubtotal(g.invoices).total, 0)
+  return getSupplierGroups(parcel).reduce((s, g) => s + groupSubtotal(g.invoices).paid, 0)
 }
 
 export function progressRemaining(parcel) {

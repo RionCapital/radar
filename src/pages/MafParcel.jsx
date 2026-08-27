@@ -446,6 +446,7 @@ function ProgressParcelView({ parcel: p, updateParcel, inputStyle }) {
   const remaining = progressRemaining(p)
   const groups = getSupplierGroups(p)
   const totalInvoiceCount = groups.reduce((s, g) => s + (g.invoices || []).length, 0)
+  const totalInvoicedAll = groups.reduce((s, g) => s + groupSubtotal(g.invoices).total, 0)
   const totalPaid = groups.reduce((s, g) => s + groupSubtotal(g.invoices).paid, 0)
   const totalOutstanding = groups.reduce((s, g) => s + groupSubtotal(g.invoices).outstanding, 0)
 
@@ -511,7 +512,7 @@ function ProgressParcelView({ parcel: p, updateParcel, inputStyle }) {
             <div style={{ fontSize: 17, fontWeight: 700, color: '#2A3545' }}>{fmt(Number(p.approvedLimit) || 0)}</div>
           </div>
           <div style={{ background: '#F4F6FA', borderRadius: 8, padding: '10px 16px', flex: '1 1 160px' }}>
-            <div style={{ fontSize: 10, color: '#7A8090', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Total invoiced to date</div>
+            <div style={{ fontSize: 10, color: '#7A8090', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Total drawdown</div>
             <div style={{ fontSize: 17, fontWeight: 700, color: '#2A3545' }}>{fmt(drawn)}</div>
           </div>
           <div style={{ background: remaining < 0 ? '#fef2f2' : '#eefaf2', borderRadius: 8, padding: '10px 16px', flex: '1 1 160px' }}>
@@ -625,11 +626,11 @@ function ProgressParcelView({ parcel: p, updateParcel, inputStyle }) {
         <Panel>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
             <div style={{ background: '#F4F6FA', borderRadius: 8, padding: '10px 16px', flex: '1 1 160px' }}>
-              <div style={{ fontSize: 10, color: '#7A8090', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Total across all suppliers ({totalInvoiceCount} invoice{totalInvoiceCount !== 1 ? 's' : ''})</div>
-              <div style={{ fontSize: 17, fontWeight: 700, color: '#2A3545' }}>{fmt(drawn)}</div>
+              <div style={{ fontSize: 10, color: '#7A8090', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Total invoiced — all suppliers ({totalInvoiceCount} invoice{totalInvoiceCount !== 1 ? 's' : ''})</div>
+              <div style={{ fontSize: 17, fontWeight: 700, color: '#2A3545' }}>{fmt(totalInvoicedAll)}</div>
             </div>
             <div style={{ background: '#F4F6FA', borderRadius: 8, padding: '10px 16px', flex: '1 1 160px' }}>
-              <div style={{ fontSize: 10, color: '#7A8090', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Paid</div>
+              <div style={{ fontSize: 10, color: '#7A8090', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Paid (drawdown)</div>
               <div style={{ fontSize: 17, fontWeight: 700, color: '#166534' }}>{fmt(totalPaid)}</div>
             </div>
             <div style={{ background: '#F4F6FA', borderRadius: 8, padding: '10px 16px', flex: '1 1 160px' }}>
