@@ -25,6 +25,17 @@ export default function LoanAccount({ clients, updateClient }) {
     const estInterest = loan.rate?Math.round(prevBal*loan.rate/100/12):0
     return {date:h.month,balance:h.balance,interest:estInterest,isPast:true}
   })
+
+  // Asset Finance loans don't get commission statements, so there's no real
+  // balance data to show — the whole balance curve (settlement → maturity)
+  // is calculated from the loan terms instead, same amortisation math used
+  // for MAF parcels elsewhere in Radar (buildBalanceHistory). Both the
+  // "historic" and "predicted" portions come from this one calculated
+  // series rather than the statement+forward-projection split every other
+  // loan type uses.
+  const isAssetFinance = loan.type === 'Asset Finance'
+  const todayY = new Date().getFullYear()
+  function parseAfMonth(s) { const [mo,yr] = (s||'').split('/').map(Number); return new Date(yr||todayY, (mo||1)-1, 15) }
   // Find primary security + all crossed securities
   const security = (client.securities||[]).find(s=>String(s.num)===String(loan.security))
   const crossedNums = loan.crossed&&loan.crossed.trim() ? loan.crossed.split(',').map(x=>x.trim()) : []
@@ -133,8 +144,21 @@ export default function LoanAccount({ clients, updateClient }) {
   const projExtra = useMemo(() => extraMonthly>0 ? buildProjection(loan.balance, loan.rate, remainMonths, ioMonthsLeft, extraMonthly, balloon) : [],
     [loan.balance, loan.rate, remainMonths, ioMonthsLeft, extraMonthly, balloon])
 
+  // Asset Finance's full calculated balance curve — buildBalanceHistory()
+  // already walks settlement → term end (+24mo), marking each month
+  // isPast or not, so this one array covers both "historic" and
+  // "predicted" without needing the statement+buildProjection split above.
+  const afHistory = useMemo(() => isAssetFinance ? buildBalanceHistory(loan) : [],
+    [isAssetFinance, loan.amount, loan.rate, loan.rpmt, loan.term, loan.settled])
+  const afPast = afHistory.filter(h => h.isPast)
+  const afFuture = afHistory.filter(h => !h.isPast)
+  const afCurrentBalance = afPast.length ? afPast[afPast.length-1].balance : (loan.amount || 0)
+  const afMonthlyFee = Number(loan.monthlyFee) || 0
+  const afMonthlyRepayment = afHistory.length ? afHistory[0].repayment : 0
+  const afTotalMonthlyCost = afMonthlyRepayment + afMonthlyFee
+
   const histInterest = history.reduce((s,r)=>s+r.interest,0)
-  const stdFutureInt = projection.reduce((s,r)=>s+r.interest,0)
+  const stdFutureInt = isAssetFinance ? afFuture.reduce((s,h)=>s+h.interest,0) : projection.reduce((s,r)=>s+r.interest,0)
   const extraFutureInt = projExtra.length>0 ? projExtra.reduce((s,r)=>s+r.interest,0) : stdFutureInt
   const totalIntStd = histInterest + stdFutureInt
   const totalIntExtra = histInterest + extraFutureInt
@@ -142,8 +166,17 @@ export default function LoanAccount({ clients, updateClient }) {
   const monthsSaved = projection.length - (projExtra.length>0?projExtra.length:projection.length)
 
   // ── Time-based Chart ────────────────────────────────────────────────────────
-  const chartStartD = loan.settled ? new Date(loan.settled) : new Date(todayP.getFullYear()-3, 0, 1)
-  const chartEndD = matDateP || new Date(todayP.getFullYear() + Math.ceil(remainMonths/12), todayP.getMonth(), 1)
+  // Asset Finance sources its chart/table from the calculated afHistory
+  // (settlement → term end) instead of real statement data + a manually
+  // tracked current balance — everything downstream (stmtPts, allLinePts,
+  // projLinePts, tableHistRows, tableProjRows) is branched at the source so
+  // the shared chart/table JSX below doesn't need to know which case it's in.
+  const chartStartD = isAssetFinance
+    ? (loan.settled ? new Date(loan.settled) : todayP)
+    : (loan.settled ? new Date(loan.settled) : new Date(todayP.getFullYear()-3, 0, 1))
+  const chartEndD = isAssetFinance
+    ? (afHistory.length ? parseAfMonth(afHistory[afHistory.length-1].date) : todayP)
+    : (matDateP || new Date(todayP.getFullYear() + Math.ceil(remainMonths/12), todayP.getMonth(), 1))
   const totalChartMs = Math.max(1, chartEndD - chartStartD)
   const gW=560,gH=175,gP={l:52,r:10,t:12,b:28}
   const gPW=gW-gP.l-gP.r, gPH=gH-gP.t-gP.b
@@ -151,17 +184,24 @@ export default function LoanAccount({ clients, updateClient }) {
   const todayX = dateToX(todayP)
   const histEndX = todayX
 
-  // Real commission statement data ONLY — historic line only appears once statements are imported
-  const stmtPts = (loan.balanceHistory||[]).map(h => ({ d: new Date(h.month+'-15'), bal: h.balance }))
-    .sort((a,b) => a.d - b.d)
+  // Real commission statement data (or, for Asset Finance, the calculated
+  // "past" portion of afHistory) — historic line only appears once there's
+  // something to show.
+  const stmtPts = isAssetFinance
+    ? afPast.map(h => ({ d: parseAfMonth(h.date), bal: h.balance })).sort((a,b) => a.d - b.d)
+    : (loan.balanceHistory||[]).map(h => ({ d: new Date(h.month+'-15'), bal: h.balance })).sort((a,b) => a.d - b.d)
 
-  const projEndBal = projection.length > 0 ? projection[projection.length-1].closingBal : 0
-  const allLinePts = [
-    ...stmtPts,
-    { d: todayP, bal: loan.balance },
-    ...projection.map(p => ({ d: p.date, bal: p.openingBal })),
-    ...(projection.length > 0 ? [{ d: projection[projection.length-1].date, bal: projEndBal }] : [])
-  ]
+  const projEndBal = isAssetFinance
+    ? (afFuture.length ? afFuture[afFuture.length-1].balance : afCurrentBalance)
+    : (projection.length > 0 ? projection[projection.length-1].closingBal : 0)
+  const allLinePts = isAssetFinance
+    ? afHistory.map(h => ({ d: parseAfMonth(h.date), bal: h.balance }))
+    : [
+        ...stmtPts,
+        { d: todayP, bal: loan.balance },
+        ...projection.map(p => ({ d: p.date, bal: p.openingBal })),
+        ...(projection.length > 0 ? [{ d: projection[projection.length-1].date, bal: projEndBal }] : [])
+      ]
 
   const maxChartBal = Math.max(loan.amount||0, ...allLinePts.map(p=>p.bal)) * 1.06 || 1
   const toY = v => gP.t + gPH - (Math.max(0,v)/maxChartBal)*gPH
@@ -174,11 +214,16 @@ export default function LoanAccount({ clients, updateClient }) {
     : null
 
   // Projected path — starts at today regardless of statement data
-  const projLinePts = [
-    { d: todayP, bal: loan.balance },
-    ...projection.map(p => ({ d: p.date, bal: p.openingBal })),
-    ...(projection.length > 0 ? [{ d: projection[projection.length-1].date, bal: projEndBal }] : [])
-  ]
+  const projLinePts = isAssetFinance
+    ? [
+        { d: todayP, bal: afCurrentBalance },
+        ...afFuture.map(h => ({ d: parseAfMonth(h.date), bal: h.balance })),
+      ]
+    : [
+        { d: todayP, bal: loan.balance },
+        ...projection.map(p => ({ d: p.date, bal: p.openingBal })),
+        ...(projection.length > 0 ? [{ d: projection[projection.length-1].date, bal: projEndBal }] : [])
+      ]
   const projPath = projLinePts.length > 1
     ? projLinePts.map((p,i) => `${i===0?'M':'L'}${dateToX(p.d).toFixed(1)},${toY(p.bal).toFixed(1)}`).join(' ')
     : null
@@ -211,8 +256,18 @@ export default function LoanAccount({ clients, updateClient }) {
     if (d > chartStartD && d < chartEndD) xLabels.push({ x: dateToX(d), label: y })
   }
 
-  // Amortisation table rows — historic from real statements only, no estimates
-  const tableHistRows = (loan.balanceHistory||[]).length > 0
+  // Amortisation table rows — historic from real statements only, no
+  // estimates (except for Asset Finance, which has no statements at all —
+  // every row there, past and future, comes from the calculated afHistory).
+  const afRowType = loan.rpmt === 'IO' ? 'IO' : 'P&I'
+  const tableHistRows = isAssetFinance
+    ? (tableView==='monthly' ? afPast : afPast.filter((_,i)=>i%3===0||i===afPast.length-1)).map((h,i,arr) => {
+        const d = parseAfMonth(h.date)
+        const label = `${MO[d.getMonth()]}-${String(d.getFullYear()).slice(2)}`
+        const movement = i>0 ? Math.max(0, Math.round(arr[i-1].balance - h.balance)) : Math.max(0, Math.round((loan.amount||h.balance) - h.balance))
+        return { date: label, balance: h.balance, movement, interest: h.interest, type:'Estimated' }
+      })
+    : (loan.balanceHistory||[]).length > 0
     ? (loan.balanceHistory||[]).sort((a,b)=>a.month.localeCompare(b.month)).map((h,i,arr) => {
         const prevBal = i>0 ? arr[i-1].balance : (loan.amount||h.balance)
         const d = new Date(h.month+'-15')
@@ -220,8 +275,14 @@ export default function LoanAccount({ clients, updateClient }) {
         return { date: label, balance: h.balance, movement: Math.max(0, Math.round(prevBal - h.balance)), interest: loan.rate ? Math.round(prevBal*loan.rate/100/12) : 0, type:'Statement' }
       })
     : []
-  const tableProjRows = (tableView==='monthly' ? projection : projection.filter((_,i)=>i%3===0||i===projection.length-1))
-    .map(r => ({ date:r.dateStr, balance:r.openingBal, movement:r.principal, interest:r.interest, type:r.isIO?'IO':r.isBalloonClear?'Balloon':'P&I' }))
+  const tableProjRows = isAssetFinance
+    ? (tableView==='monthly' ? afFuture : afFuture.filter((_,i)=>i%3===0||i===afFuture.length-1)).map(h => {
+        const d = parseAfMonth(h.date)
+        const label = `${MO[d.getMonth()]}-${String(d.getFullYear()).slice(2)}`
+        return { date: label, balance: h.balance, movement: Math.max(0, Math.round((h.repayment||0) - h.interest)), interest: h.interest, type: afRowType }
+      })
+    : (tableView==='monthly' ? projection : projection.filter((_,i)=>i%3===0||i===projection.length-1))
+        .map(r => ({ date:r.dateStr, balance:r.openingBal, movement:r.principal, interest:r.interest, type:r.isIO?'IO':r.isBalloonClear?'Balloon':'P&I' }))
 
   return (
     <div style={{padding:'16px 24px'}}>
@@ -255,11 +316,11 @@ export default function LoanAccount({ clients, updateClient }) {
         <div style={{display:'grid',gridTemplateColumns:'repeat(6,1fr)',gap:8}}>
           {[
             ['Original limit',fmt(loan.amount),'#fff'],
-            ['Current balance',fmt(loan.balance),'#fff'],
+            ['Current balance',isAssetFinance?fmt(afCurrentBalance):fmt(loan.balance),'#fff'],
             ['Interest rate',loan.rate>0?loan.rate.toFixed(2)+'%':'—','#fff'],
             ['Rate type',loan.rateType||'Var',loan.rateType==='Fix'?'#EB99C2':'var(--sbl)'],
             ['Repayment',eRpmt,eRpmt==='P&I*'?'#EB99C2':'var(--sbl)'],
-            ['Est. monthly',estRepayment?'$'+estRepayment.toLocaleString()+'/mo':'—','#27ae60'],
+            [isAssetFinance?'Est. total monthly':'Est. monthly',isAssetFinance?(afTotalMonthlyCost?'$'+Math.round(afTotalMonthlyCost).toLocaleString()+'/mo':'—'):(estRepayment?'$'+estRepayment.toLocaleString()+'/mo':'—'),'#27ae60'],
           ].map(([label,val,color])=>(
             <div key={label} style={{background:'rgba(255,255,255,0.08)',borderRadius:8,padding:'9px 12px'}}>
               <div style={{fontSize:10,color:'var(--sbl)',marginBottom:2}}>{label}</div>
@@ -392,6 +453,7 @@ export default function LoanAccount({ clients, updateClient }) {
                   {l.balloon>0&&<div style={{fontSize:10,color:'var(--text-secondary)',marginTop:3}}>Est. repayment adjusts for balloon</div>}
                 </FieldGroup>
                 <FieldGroup label="Est. repayment override ($)"><input style={inp} type="number" value={l.estRepayment||''} placeholder="Auto-calculated" onChange={e=>set('estRepayment',e.target.value?+e.target.value:null)}/></FieldGroup>
+                <FieldGroup label="Monthly ongoing fee ($, optional)"><input style={inp} type="number" value={l.monthlyFee||''} placeholder="e.g. 15" onChange={e=>set('monthlyFee',e.target.value)}/></FieldGroup>
                 <FieldGroup label="Asset description"><input style={inp} value={l.assetDesc||''} onChange={e=>set('assetDesc',e.target.value)}/></FieldGroup>
                 <FieldGroup label="Borrowing entity">
                   <select style={{...inp, appearance:'none', cursor:'pointer'}} value={l.borrowingEntity||''} onChange={e=>set('borrowingEntity',e.target.value)}>
@@ -415,7 +477,7 @@ export default function LoanAccount({ clients, updateClient }) {
                   ['Asset / property', allSecurities.length>1 ? allSecurities.map(s=>`#${s.num} — ${s.address}`).join('|||') : (security?.address||loan.assetDesc||'—')],
                   ['Borrowing entity',loan.borrowingEntity||'—'],
                   ['Original limit',fmt(loan.amount)],
-                  ['Current balance',fmt(loan.balance)],
+                  ['Current balance',isAssetFinance?fmt(afCurrentBalance):fmt(loan.balance)],
                   ['_offset_note',''],
                   ['Interest rate',loan.rate>0?loan.rate.toFixed(2)+'%':'—'],
                   ['Rate type',loan.rateType||'Variable'],
@@ -425,13 +487,19 @@ export default function LoanAccount({ clients, updateClient }) {
                     if (loan.io&&loan.settled) { const mo=Math.round((new Date(loan.io)-new Date(loan.settled))/(30.44*86400000)); if(mo>0) return mo>=12?(mo/12).toFixed(1).replace('.0','')+'y':mo+'mo' }
                     return '—'
                   })()],
-                  ['Est. monthly repayment',estRepayment?'$'+estRepayment.toLocaleString():loan.rate?'—':'Rate not set'],
+                  ['Est. monthly repayment',isAssetFinance?(afMonthlyRepayment?'$'+Math.round(afMonthlyRepayment).toLocaleString():'—'):(estRepayment?'$'+estRepayment.toLocaleString():loan.rate?'—':'Rate not set')],
+                  ...(isAssetFinance&&afMonthlyFee>0?[['Monthly ongoing fee','$'+afMonthlyFee.toLocaleString()]]:[]),
+                  ...(isAssetFinance&&afMonthlyFee>0?[['Est. total monthly cost','$'+Math.round(afTotalMonthlyCost).toLocaleString()]]:[]),
                   ...(loan.balloon>0?[['Balloon / residual','$'+Number(loan.balloon).toLocaleString()]]:[]),
                 ].map(([label,val])=>(
                   label === '_offset_note'
-                  ? <div key="offset-note" style={{fontSize:10,color:'#94a3b8',fontStyle:'italic',padding:'3px 0 5px',borderBottom:'0.5px solid var(--border-light)'}}>
-                      Balance may reflect the benefit of any offset account held against this facility.
-                    </div>
+                  ? (isAssetFinance
+                    ? <div key="offset-note" style={{fontSize:10,color:'#94a3b8',fontStyle:'italic',padding:'3px 0 5px',borderBottom:'0.5px solid var(--border-light)'}}>
+                        Balance is estimated from the loan terms and time elapsed since settlement — there's no commission statement updating it, so it recalculates automatically every time this page opens.
+                      </div>
+                    : <div key="offset-note" style={{fontSize:10,color:'#94a3b8',fontStyle:'italic',padding:'3px 0 5px',borderBottom:'0.5px solid var(--border-light)'}}>
+                        Balance may reflect the benefit of any offset account held against this facility.
+                      </div>)
                   : <div key={label} style={{display:'flex',justifyContent:'space-between',padding:'5px 0',borderBottom:'0.5px solid var(--border-light)',gap:8}}>
                     <span style={{fontSize:11,color:'var(--text-secondary)',flexShrink:0}}>{label}</span>
                     <span style={{fontSize:11,fontWeight:500,color:'var(--text-primary)',textAlign:'right'}}>
@@ -477,10 +545,11 @@ export default function LoanAccount({ clients, updateClient }) {
             <div style={{marginTop:10}}>
               <div style={{fontSize:10,fontWeight:500,color:'var(--text-secondary)',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:8}}>Repayment summary</div>
               {[
-                ['Repayment type',eRpmt+(eRpmt==='P&I*'?' (auto-switched from IO)':'')],
-                ['Est. monthly repayment',estRepayment?'$'+estRepayment.toLocaleString():loan.rate?'—':'Rate not set'],
-                ['Est. annual repayment',estRepayment?'$'+(estRepayment*12).toLocaleString():'—'],
-                ...(loan.balloon>0?[['Balloon adjusted','Yes — P&I reduced for residual']]:[]),
+                ['Repayment type',isAssetFinance?(loan.rpmt||'P&I'):eRpmt+(eRpmt==='P&I*'?' (auto-switched from IO)':'')],
+                ['Est. monthly repayment',isAssetFinance?(afMonthlyRepayment?'$'+Math.round(afMonthlyRepayment).toLocaleString():'—'):(estRepayment?'$'+estRepayment.toLocaleString():loan.rate?'—':'Rate not set')],
+                ['Est. annual repayment',isAssetFinance?(afMonthlyRepayment?'$'+Math.round(afMonthlyRepayment*12).toLocaleString():'—'):(estRepayment?'$'+(estRepayment*12).toLocaleString():'—')],
+                ...(isAssetFinance&&afMonthlyFee>0?[['Monthly ongoing fee','$'+afMonthlyFee.toLocaleString()]]:[]),
+                ...(loan.balloon>0&&!isAssetFinance?[['Balloon adjusted','Yes — P&I reduced for residual']]:[]),
               ].map(([label,val])=>(
                 <div key={label} style={{display:'flex',justifyContent:'space-between',padding:'5px 0',borderBottom:'0.5px solid var(--border-light)'}}>
                   <span style={{fontSize:11,color:'var(--text-secondary)'}}>{label}</span>
@@ -517,9 +586,9 @@ export default function LoanAccount({ clients, updateClient }) {
           {/* Balance — Historic & Predicted */}
           <Panel>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
-              <div style={{fontSize:10,fontWeight:600,color:'var(--text-secondary)',textTransform:'uppercase',letterSpacing:'0.06em'}}>Balance — Historic &amp; Predicted</div>
+              <div style={{fontSize:10,fontWeight:600,color:'var(--text-secondary)',textTransform:'uppercase',letterSpacing:'0.06em'}}>Balance — {isAssetFinance?'Estimated (Historic & Predicted)':'Historic & Predicted'}</div>
               <div style={{display:'flex',gap:12,fontSize:10,color:'var(--text-secondary)',alignItems:'center',flexWrap:'wrap'}}>
-                {stmtPts.length>0&&<div style={{display:'flex',alignItems:'center',gap:4}}><div style={{width:8,height:8,borderRadius:'50%',background:'#EB99C2'}}/> Statement data</div>}
+                {stmtPts.length>0&&<div style={{display:'flex',alignItems:'center',gap:4}}><div style={{width:8,height:8,borderRadius:'50%',background:'#EB99C2'}}/> {isAssetFinance?'Estimated':'Statement data'}</div>}
                 <div style={{display:'flex',alignItems:'center',gap:4}}><div style={{width:14,height:2,background:'#3D5570'}}/> Predicted</div>
                 {extraMonthly>0&&<div style={{display:'flex',alignItems:'center',gap:4}}><div style={{width:14,height:0,borderTop:'2px dashed #EB99C2'}}/> With extra</div>}
                 <div style={{display:'flex',alignItems:'center',gap:4}}><div style={{width:10,height:10,background:'rgba(235,153,194,0.28)',border:'0.5px solid rgba(235,153,194,0.5)',borderRadius:2}}/> Historic period</div>
@@ -563,7 +632,31 @@ export default function LoanAccount({ clients, updateClient }) {
             </div>
           </Panel>
 
-{/* Extra repayment calculator */}
+{/* Extra repayment calculator (standard loans) / Asset Finance summary */}
+          {isAssetFinance ? (
+            <Panel>
+              <PanelTitle>Asset Finance summary</PanelTitle>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+                {[
+                  {label:'Remaining term',val:afFuture.length?`${Math.floor(afFuture.length/12)}y ${afFuture.length%12}m`:'—',sub:'Estimated'},
+                  {label:'Est. payoff date',val:afFuture.length?afFuture[afFuture.length-1].date:(afPast.length?afPast[afPast.length-1].date:'—'),sub:'Estimated'},
+                  {label:'Est. repayment / mo',val:afMonthlyRepayment?'$'+Math.round(afMonthlyRepayment).toLocaleString():'—',sub:'P&I or IO per loan terms'},
+                  {label:'Est. total monthly cost',val:afTotalMonthlyCost?'$'+Math.round(afTotalMonthlyCost).toLocaleString():'—',
+                   sub:afMonthlyFee>0?`incl. $${afMonthlyFee.toLocaleString()} fee`:'No ongoing fee set',color:'#27ae60'},
+                  {label:'Est. total interest (remaining)',val:'$'+stdFutureInt.toLocaleString(),sub:'Future interest only',color:'#c0392b'},
+                ].map((s,i)=>(
+                  <div key={i} style={{background:'var(--bg)',borderRadius:7,padding:'9px 12px',border:'0.5px solid var(--border-light)'}}>
+                    <div style={{fontSize:9,color:'var(--text-secondary)',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:3}}>{s.label}</div>
+                    <div style={{fontSize:14,fontWeight:600,color:s.color||'var(--text-primary)'}}>{s.val}</div>
+                    <div style={{fontSize:9,color:'var(--text-secondary)',marginTop:2}}>{s.sub}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{marginTop:10,fontSize:10.5,color:'#94a3b8'}}>
+                There's no commission statement to update this facility's balance, so it's calculated from the amount, rate, term and settlement date instead — it recalculates automatically every time this page opens.
+              </div>
+            </Panel>
+          ) : (
           <Panel>
             <PanelTitle>Extra repayment calculator</PanelTitle>
             <div style={{display:'grid',gridTemplateColumns:'1fr auto auto',gap:8,alignItems:'end',marginBottom:12}}>
@@ -603,6 +696,7 @@ export default function LoanAccount({ clients, updateClient }) {
               </div>
             )}
           </Panel>
+          )}
 
                     {/* Amortisation table */}
           <Panel>
@@ -625,7 +719,7 @@ export default function LoanAccount({ clients, updateClient }) {
                 <tbody>
                   {tableHistRows.length === 0 && (
                     <tr><td colSpan={5} style={{padding:'10px 8px',fontSize:10,color:'#9ca3af',textAlign:'center',background:'rgba(235,153,194,0.04)',fontStyle:'italic'}}>
-                      No statement data yet — import your first commission statement to populate this section
+                      {isAssetFinance ? 'No estimated history yet — set the amount, rate, term and settlement date to calculate it' : 'No statement data yet — import your first commission statement to populate this section'}
                     </td></tr>
                   )}
                   {tableHistRows.map((row,i)=>(
@@ -635,7 +729,7 @@ export default function LoanAccount({ clients, updateClient }) {
                       <td style={td({textAlign:'right',color:'#166534'})}>${(row.movement||0).toLocaleString()}</td>
                       <td style={td({textAlign:'right',color:'#c0392b'})}>{row.interest?'$'+row.interest.toLocaleString():'—'}</td>
                       <td style={td({fontSize:9})}>
-                        <span style={{background:row.type==='Statement'?'rgba(235,153,194,0.2)':'#f3f4f6',color:row.type==='Statement'?'#9b2c6e':'#5a6370',padding:'1px 6px',borderRadius:10,fontSize:9}}>{row.type}</span>
+                        <span style={{background:(row.type==='Statement'||row.type==='Estimated')?'rgba(235,153,194,0.2)':'#f3f4f6',color:(row.type==='Statement'||row.type==='Estimated')?'#9b2c6e':'#5a6370',padding:'1px 6px',borderRadius:10,fontSize:9}}>{row.type}</span>
                       </td>
                     </tr>
                   ))}

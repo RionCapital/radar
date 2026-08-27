@@ -152,7 +152,7 @@ export async function syncFromSupabase() {
   return null;
 }
 
-export const LOAN_TYPES = ['Home Loan (OO)','Home Loan (Inv)','SMSF','Commercial Property','Lease Doc','Term','Asset Finance','Trade Finance','Business Loan','Invoice Finance','Other'];
+export const LOAN_TYPES = ['Home Loan (OO)','Home Loan (Inv)','SMSF','Commercial Property','Lease Doc','Term','Asset Finance','MAF','Trade Finance','Business Loan','Invoice Finance','Other'];
 export const BANKS = ['ANZ','CBA','NAB','WBC','MAC','HSL','BWS','CHLS','CHLAB','CHLA','TMB','SGB','RES','CHHR','TNT','GRNYT','WPC','864H','Selfco','Dynamoney','Other'];
 
 // Rradar client contacts use a compact shape ({type:'Ind'|'Co'|..., first,

@@ -12,40 +12,40 @@ const NAVY = '#3D4F6B'
 const PINK = '#EB99C2'
 
 export default function MafParcel({ clients, updateClient }) {
-  const { name, facilityIdx, parcelIdx } = useParams()
+  const { name, loanIdx, parcelIdx } = useParams()
   const navigate = useNavigate()
   const client = clients.find(c => c.name === decodeURIComponent(name))
-  const fIdx = parseInt(facilityIdx)
+  const fIdx = parseInt(loanIdx)
   const pIdx = parseInt(parcelIdx)
 
   if (!client) return <div style={{ padding: 24 }}>Client not found.</div>
-  const facility = (client.mafFacilities || [])[fIdx]
-  if (!facility) return <div style={{ padding: 24 }}>MAF facility not found.</div>
+  const facility = client.loans[fIdx]
+  if (!facility) return <div style={{ padding: 24 }}>Loan not found.</div>
   const parcel = (facility.parcels || [])[pIdx]
   if (!parcel) return <div style={{ padding: 24 }}>Parcel not found.</div>
 
-  const backHref = `/radar/clients/${encodeURIComponent(client.name)}/maf/${fIdx}`
+  const backHref = `/radar/clients/${encodeURIComponent(client.name)}/loan/${fIdx}/maf`
 
   function updateParcel(patch) {
     updateClient(client.name, c => {
-      const mafFacilities = [...(c.mafFacilities || [])]
-      const fac = { ...mafFacilities[fIdx] }
+      const loans = [...c.loans]
+      const fac = { ...loans[fIdx] }
       const parcels = [...fac.parcels]
       parcels[pIdx] = { ...parcels[pIdx], ...patch }
       fac.parcels = parcels
-      mafFacilities[fIdx] = fac
-      return { ...c, mafFacilities }
+      loans[fIdx] = fac
+      return { ...c, loans }
     })
   }
 
   function deleteParcel() {
     if (!window.confirm(`Delete this parcel? This can't be undone.`)) return
     updateClient(client.name, c => {
-      const mafFacilities = [...(c.mafFacilities || [])]
-      const fac = { ...mafFacilities[fIdx] }
+      const loans = [...c.loans]
+      const fac = { ...loans[fIdx] }
       fac.parcels = fac.parcels.filter((_, i) => i !== pIdx)
-      mafFacilities[fIdx] = fac
-      return { ...c, mafFacilities }
+      loans[fIdx] = fac
+      return { ...c, loans }
     })
     navigate(backHref)
   }
@@ -56,7 +56,7 @@ export default function MafParcel({ clients, updateClient }) {
   return (
     <div style={{ padding: '24px 32px', maxWidth: 1000, margin: '0 auto', fontFamily: 'Montserrat, sans-serif' }}>
       <button onClick={() => navigate(backHref)} style={{ background: 'none', border: 'none', color: PINK, fontSize: 12, cursor: 'pointer', padding: 0, marginBottom: 10 }}>
-        ← Back to {facility.lender || 'MAF Facility'}
+        ← Back to {facility.bank || 'MAF Facility'}
       </button>
 
       {parcel.kind === 'progress'

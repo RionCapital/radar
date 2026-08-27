@@ -8,7 +8,7 @@ import { Panel, PanelTitle, EditBtn, SaveBtn, CancelBtn, ActionBtn, FieldGroup, 
 import ReferrerPicker from '../components/ReferrerPicker'
 import NewOpportunityModal from '../components/NewOpportunityModal'
 import { downloadEmailNotePdf } from '../lib/emailNotePdf'
-import { blankMafFacility, facilityUtilized, facilityHeadroom } from '../lib/mafFacilities'
+import { facilityUtilized } from '../lib/mafFacilities'
 
 const CONTACT_TYPES = ['Individual','Company','Trust','Partnership','Sole Trader']
 const CONTACT_TYPE_CODES = { Individual:'Ind', Company:'Co', Trust:'Tru', Partnership:'Par', 'Sole Trader':'Sol' }
@@ -755,7 +755,7 @@ export default function ClientDashboard({ clients, updateClient }) {
                   <tr key={i} style={{cursor:'pointer',opacity:l.closed?0.6:1}}
                     onMouseOver={e=>e.currentTarget.style.background='#fdf0f6'}
                     onMouseOut={e=>e.currentTarget.style.background='transparent'}
-                    onClick={()=>navigate(`/radar/clients/${encodeURIComponent(client.name)}/loan/${i}`)}>
+                    onClick={()=>navigate(l.type==='MAF' ? `/radar/clients/${encodeURIComponent(client.name)}/loan/${i}/maf` : `/radar/clients/${encodeURIComponent(client.name)}/loan/${i}`)}>
                     <td style={tdStyle({color:'var(--pk)',fontWeight:500})}>{i+1}</td>
                     <td style={tdStyle()}><span style={{fontFamily:'DM Mono,monospace',fontSize:9,color:'var(--text-secondary)'}}>{l.acc&&l.acc!=='nan'?l.acc:'—'}</span></td>
                     <td style={{...tdStyle(),maxWidth:140,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{l.lname||'—'}</td>
@@ -791,7 +791,7 @@ export default function ClientDashboard({ clients, updateClient }) {
                         : <span>{l.security||'—'}</span>}
                     </td>
                     <td style={tdStyle({textAlign:'right'})}>{fmt(l.amount)}</td>
-                    <td style={tdStyle({textAlign:'right',color:'var(--pk)',fontWeight:500})}>{fmt(l.balance)}</td>
+                    <td style={tdStyle({textAlign:'right',color:'var(--pk)',fontWeight:500})}>{l.type==='MAF' ? fmt(facilityUtilized(l)) : fmt(l.balance)}</td>
                     <td style={tdStyle({textAlign:'right'})}>{l.rate>0?l.rate.toFixed(2)+'%':'—'}</td>
                     <td style={tdStyle()}><span style={{padding:'2px 5px',borderRadius:4,background:l.rateType==='Fix'?'#fdf0f6':'#eef1f5',color:l.rateType==='Fix'?'var(--pk)':'#2A3D54',fontSize:9,fontWeight:500}}>{l.rateType||'Var'}</span></td>
                     <td style={tdStyle()}><Pill label={eRpmt} variant={eRpmt==='P&I*'?'flag':eRpmt==='IO'?'io':'pi'}/></td>
@@ -821,54 +821,6 @@ export default function ClientDashboard({ clients, updateClient }) {
         <div style={{fontSize:10,color:'var(--text-tertiary)',marginTop:8,paddingTop:8,borderTop:'0.5px solid var(--border-light)'}}>
           Click any row to open the full loan account details
         </div>
-      </Panel>
-
-      {/* MAF (Master Asset Finance) facility limits */}
-      <Panel style={{marginBottom:14}}>
-        <PanelTitle action={
-          <button onClick={()=>{
-            const facility = blankMafFacility()
-            // updateClient's setState updater runs asynchronously, so the new
-            // facility's index can't be read back out of it — it's just the
-            // current facility count, computed here beforehand.
-            const newIdx = (client.mafFacilities||[]).length
-            updateClient(client.name,c=>({...c,mafFacilities:[...(c.mafFacilities||[]),facility]}))
-            navigate(`/radar/clients/${encodeURIComponent(client.name)}/maf/${newIdx}`)
-          }} style={{fontSize:10,padding:'3px 10px',borderRadius:6,border:'0.5px solid var(--pk)',background:'transparent',color:'var(--pk)',cursor:'pointer'}}>+ Add MAF facility</button>
-        }>MAF facility limits</PanelTitle>
-        {!(client.mafFacilities||[]).length ? (
-          <div style={{fontSize:12,color:'var(--text-tertiary)',padding:'14px 0',textAlign:'center'}}>No MAF facilities recorded — use "+ Add MAF facility" to set one up (e.g. a $5.5m master limit with a lender).</div>
-        ) : (
-          <div style={{overflowX:'auto'}}>
-            <table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
-              <thead><tr>
-                <th style={thStyle()}>Lender</th>
-                <th style={thStyle({textAlign:'right'})}>MAF Limit</th>
-                <th style={thStyle({textAlign:'right'})}>Utilized</th>
-                <th style={thStyle({textAlign:'right'})}>Headroom</th>
-                <th style={thStyle()}>Parcels</th>
-                <th style={thStyle()}>Status</th>
-              </tr></thead>
-              <tbody>
-                {(client.mafFacilities||[]).map((f,i)=>{
-                  const utilized = facilityUtilized(f)
-                  const headroom = facilityHeadroom(f)
-                  return (
-                    <tr key={f.id||i} onClick={()=>navigate(`/radar/clients/${encodeURIComponent(client.name)}/maf/${i}`)} style={{cursor:'pointer'}}
-                      onMouseOver={e=>e.currentTarget.style.background='#fdf0f6'} onMouseOut={e=>e.currentTarget.style.background='transparent'}>
-                      <td style={tdStyle({fontWeight:500})}>{f.lender||'—'}</td>
-                      <td style={tdStyle({textAlign:'right'})}>{fmt(Number(f.limit)||0)}</td>
-                      <td style={tdStyle({textAlign:'right'})}>{fmt(utilized)}</td>
-                      <td style={tdStyle({textAlign:'right',color:headroom<0?'#c0392b':'#2e7d32',fontWeight:500})}>{fmt(headroom)}</td>
-                      <td style={tdStyle()}>{(f.parcels||[]).length}</td>
-                      <td style={tdStyle()}>{f.closed?'Closed':'Active'}</td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
       </Panel>
 
       {/* Notes + Referral Partners */}

@@ -1,30 +1,22 @@
-// Master Asset Finance (MAF) facility limits — a per-client parent limit
-// (e.g. "$5.5m MAF with CBA") that individual parcels are drawn against:
-// either Asset Finance loans (a fixed-term, fully-amortising facility for
-// one asset) or Progress facilities (an approved sub-limit drawn down in
-// stages via progress payments, e.g. for a construction/fitout).
+// Master Asset Finance (MAF) facility limits and standalone Asset Finance
+// loans — both share the same math, so it lives in one place.
 //
-// Stored directly on the client record (client.mafFacilities), the same
-// way client.loans/client.securities/client.notes already are — so it
-// rides along on the existing client save/sync path with no new Supabase
-// row or separate store to keep in sync.
+// A MAF is just a normal entry in client.loans (type: 'MAF') like any other
+// loan — its "limit" is the loan's own `amount` field, same as every other
+// loan type's original limit. What makes it a MAF is that it also carries a
+// `parcels` array: the individual Asset Finance loans and Progress
+// facilities drawn against that master limit. There's no separate top-level
+// store — it rides along on the existing client save/sync path exactly the
+// way client.loans/client.securities/client.notes already do.
+//
+// A standalone Asset Finance loan (type: 'Asset Finance', not sitting under
+// a MAF) uses these same helpers directly on the loan record itself — its
+// field names (amount, rate, rpmt, term, settled, monthlyFee) already match
+// what a "parcel" below expects, so no adapting is needed either way.
 import { buildBalanceHistory } from './dateUtils'
 
 export function mkId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
-}
-
-export function blankMafFacility() {
-  return {
-    id: mkId(),
-    lender: '',
-    limit: '',
-    startDate: new Date().toISOString().slice(0, 10),
-    reviewDate: '',
-    notes: '',
-    closed: false,
-    parcels: [],
-  }
 }
 
 // Asset Finance parcels reuse the exact field names lib/dateUtils.js's
@@ -138,6 +130,8 @@ export function facilityUtilized(facility) {
   return (facility.parcels || []).reduce((s, p) => s + parcelCurrentValue(p), 0)
 }
 
+// `facility` here is a normal client.loans[] record of type 'MAF' — its
+// limit is that loan's own `amount` field, same as any other loan type.
 export function facilityHeadroom(facility) {
-  return (Number(facility.limit) || 0) - facilityUtilized(facility)
+  return (Number(facility.amount) || 0) - facilityUtilized(facility)
 }
