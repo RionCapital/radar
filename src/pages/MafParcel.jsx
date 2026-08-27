@@ -5,7 +5,7 @@ import { fmtDate } from '../lib/dateUtils'
 import { Panel, PanelTitle, FieldGroup, DateInput } from '../components/UI'
 import {
   assetFinanceBalanceHistory, assetFinanceCurrentBalance, assetFinanceMonthlyRepayment,
-  progressDrawn, progressRemaining, mkProgressPayment,
+  assetFinanceTotalMonthlyCost, progressDrawn, progressRemaining, mkProgressPayment,
 } from '../lib/mafFacilities'
 
 const NAVY = '#3D4F6B'
@@ -81,6 +81,8 @@ function Header({ title, sub, onDelete }) {
 function AssetFinanceParcelView({ parcel: p, updateParcel, deleteParcel, inputStyle, label }) {
   const balance = assetFinanceCurrentBalance(p)
   const monthly = assetFinanceMonthlyRepayment(p)
+  const monthlyFee = Number(p.monthlyFee) || 0
+  const totalMonthly = assetFinanceTotalMonthlyCost(p)
   const history = assetFinanceBalanceHistory(p)
   // Yearly snapshots (every 12th month) for a compact projection, rather
   // than a 300+ row monthly table.
@@ -117,8 +119,11 @@ function AssetFinanceParcelView({ parcel: p, updateParcel, deleteParcel, inputSt
           <FieldGroup label="Balloon / residual ($, optional)">
             <input style={inputStyle} type="number" value={p.balloon} onChange={e => updateParcel({ balloon: e.target.value })} />
           </FieldGroup>
-          <FieldGroup label="Fees (optional)">
+          <FieldGroup label="One-off fees (optional)">
             <input style={inputStyle} value={p.fees || ''} onChange={e => updateParcel({ fees: e.target.value })} placeholder="e.g. $450 establishment" />
+          </FieldGroup>
+          <FieldGroup label="Monthly ongoing fee ($, optional)">
+            <input style={inputStyle} type="number" value={p.monthlyFee} onChange={e => updateParcel({ monthlyFee: e.target.value })} placeholder="e.g. 15" />
           </FieldGroup>
           <FieldGroup label="Settlement date">
             <DateInput value={p.settled} onChange={v => updateParcel({ settled: v })} style={inputStyle} />
@@ -142,12 +147,15 @@ function AssetFinanceParcelView({ parcel: p, updateParcel, deleteParcel, inputSt
             <div style={{ fontSize: 17, fontWeight: 700, color: '#2A3545' }}>{fmt(balance)}</div>
           </div>
           <div style={{ background: '#F4F6FA', borderRadius: 8, padding: '10px 16px', flex: '1 1 160px' }}>
-            <div style={{ fontSize: 10, color: '#7A8090', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Est. repayment / mo</div>
-            <div style={{ fontSize: 17, fontWeight: 700, color: '#2A3545' }}>{monthly ? fmt(monthly) : '—'}</div>
+            <div style={{ fontSize: 10, color: '#7A8090', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Est. total monthly cost</div>
+            <div style={{ fontSize: 17, fontWeight: 700, color: '#2A3545' }}>{totalMonthly ? fmt(totalMonthly) : '—'}</div>
+            {monthlyFee > 0 && monthly > 0 && (
+              <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 2 }}>{fmt(monthly)} repayment + {fmt(monthlyFee)} fee</div>
+            )}
           </div>
         </div>
         <div style={{ fontSize: 10.5, color: '#94a3b8', marginTop: 10 }}>
-          Balance is estimated from the loan terms and time elapsed since settlement — there's no commission statement updating it, so it recalculates automatically every time you open this page.
+          Balance is estimated from the loan terms and time elapsed since settlement — there's no commission statement updating it, so it recalculates automatically every time you open this page. The monthly ongoing fee doesn't reduce the balance (it's not applied to principal) but is included in the total monthly cost above and in the projection below.
         </div>
       </Panel>
 
@@ -159,6 +167,7 @@ function AssetFinanceParcelView({ parcel: p, updateParcel, deleteParcel, inputSt
               <thead><tr>
                 <th style={{ padding: '6px 8px', background: '#3D5570', color: '#fff', fontSize: 10, textAlign: 'left' }}>Month</th>
                 <th style={{ padding: '6px 8px', background: '#3D5570', color: '#fff', fontSize: 10, textAlign: 'right' }}>Balance</th>
+                <th style={{ padding: '6px 8px', background: '#3D5570', color: '#fff', fontSize: 10, textAlign: 'right' }}>Monthly cost (incl. fee)</th>
                 <th style={{ padding: '6px 8px', background: '#3D5570', color: '#fff', fontSize: 10, textAlign: 'left' }}></th>
               </tr></thead>
               <tbody>
@@ -166,6 +175,7 @@ function AssetFinanceParcelView({ parcel: p, updateParcel, deleteParcel, inputSt
                   <tr key={i}>
                     <td style={{ padding: '6px 8px', borderBottom: '0.5px solid var(--border-light)' }}>{h.date}</td>
                     <td style={{ padding: '6px 8px', borderBottom: '0.5px solid var(--border-light)', textAlign: 'right' }}>{fmt(h.balance)}</td>
+                    <td style={{ padding: '6px 8px', borderBottom: '0.5px solid var(--border-light)', textAlign: 'right' }}>{fmt(h.repayment + monthlyFee)}</td>
                     <td style={{ padding: '6px 8px', borderBottom: '0.5px solid var(--border-light)', color: h.isPast ? '#94a3b8' : '#22c55e', fontSize: 10 }}>{h.isPast ? '' : 'projected'}</td>
                   </tr>
                 ))}

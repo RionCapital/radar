@@ -44,7 +44,8 @@ export function blankAssetFinanceParcel() {
     rpmt: 'P&I',
     term: 5,
     balloon: '',
-    fees: '',
+    fees: '', // one-off fees (establishment etc.) — free text, informational only
+    monthlyFee: '', // ongoing account-keeping fee — doesn't reduce principal, but is added on top of the P&I repayment for the real monthly cost
     settled: new Date().toISOString().slice(0, 10),
     notes: '',
     closed: false,
@@ -95,6 +96,14 @@ export function assetFinanceCurrentBalance(parcel) {
 export function assetFinanceMonthlyRepayment(parcel) {
   const history = assetFinanceBalanceHistory(parcel)
   return history.length ? history[0].repayment : 0
+}
+
+// The ongoing monthly fee doesn't amortise the loan (it's not applied to
+// principal), so it never changes the balance projection itself — but it's
+// real money going out every month alongside the P&I repayment, so the
+// "total monthly cost" figure shown to Cameron needs to include it.
+export function assetFinanceTotalMonthlyCost(parcel) {
+  return assetFinanceMonthlyRepayment(parcel) + (Number(parcel.monthlyFee) || 0)
 }
 
 export function progressDrawn(parcel) {
