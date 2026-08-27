@@ -35,6 +35,8 @@ import Marketing from './pages/Marketing'
 import Planner from './pages/Planner'
 import DirectIncome from './pages/DirectIncome'
 import DirectIncomeInvoice from './pages/DirectIncomeInvoice'
+import MafFacility from './pages/MafFacility'
+import MafParcel from './pages/MafParcel'
 
 // Top-level error boundary — prevents one broken page crashing the whole app
 class AppErrorBoundary extends React.Component {
@@ -375,6 +377,8 @@ export default function App() {
           <Route path="/radar/clients/add" element={<RequireAuth><AddClient clients={clients} onSave={addClient} onClose={() => window.history.back()} /></RequireAuth>} />
           <Route path="/radar/clients/:name" element={<RequireAuth><ClientDashboard clients={clients} updateClient={updateClient} /></RequireAuth>} />
           <Route path="/radar/clients/:name/loan/:loanIdx" element={<RequireAuth><LoanAccount clients={clients} updateClient={updateClient} /></RequireAuth>} />
+          <Route path="/radar/clients/:name/maf/:facilityIdx" element={<RequireAuth><MafFacility clients={clients} updateClient={updateClient} /></RequireAuth>} />
+          <Route path="/radar/clients/:name/maf/:facilityIdx/parcel/:parcelIdx" element={<RequireAuth><MafParcel clients={clients} updateClient={updateClient} /></RequireAuth>} />
           <Route path="/crm/settings" element={<RequireAuth><AdminSettings clients={clients} onUpdateClients={updateAllClients} /></RequireAuth>} />
           <Route path="/settings" element={<RequireAuth><AdminSettings clients={clients} onUpdateClients={updateAllClients} /></RequireAuth>} />
           <Route path="/crm/deal/:dealName" element={<RequireAuth><DealPage onUpdateDeals={updateCrmDeals} clients={clients} onUpdateClients={updateAllClients} /></RequireAuth>} />

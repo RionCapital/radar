@@ -52,7 +52,13 @@ function saveDeals(deals) {
   libSaveDeals(deals)
 }
 
-export default function NewOpportunityModal({ onClose, onCreated, prefillClientName = '' }) {
+export default function NewOpportunityModal({
+  onClose, onCreated, prefillClientName = '',
+  // Used when a MAF facility spins up a new opportunity from its available
+  // headroom — pre-fills the fields that would otherwise need re-typing,
+  // everything else behaves exactly like opening the modal normally.
+  prefillLender = '', prefillCategory = '', prefillAmount = '', prefillDealSuffix = '',
+}) {
   const [clients] = useState(() => loadClients())
   // Stage names/order come from Settings > CRM > Stages — read fresh each
   // time the modal opens rather than hardcoded, so a new deal always
@@ -68,16 +74,16 @@ export default function NewOpportunityModal({ onClose, onCreated, prefillClientN
   const searchRef = useRef()
 
   // Deal fields
-  const [dealSuffix, setDealSuffix]       = useState('') // appended to client name to make unique transaction name
+  const [dealSuffix, setDealSuffix]       = useState(prefillDealSuffix) // appended to client name to make unique transaction name
   const [dealNumber, setDealNumber]       = useState('')   // e.g. "3" → auto-names "ClientName (3)"
   const [dealNameOverride, setDealNameOverride] = useState('')  // manual override of transaction name
   const [nameOverrideActive, setNameOverrideActive] = useState(false)
   const [status, setStatus] = useState(() => getDealStages(loadSettings()).map(s => s.display)[0])
-  const [amount, setAmount] = useState('')
-  const [category, setCategory] = useState('')
+  const [amount, setAmount] = useState(prefillAmount ? String(prefillAmount) : '')
+  const [category, setCategory] = useState(prefillCategory)
   const [transType, setTransType] = useState('')
   const [leadSource, setLeadSource] = useState('')
-  const [lender, setLender] = useState('')
+  const [lender, setLender] = useState(prefillLender)
   const [financeDue, setFinanceDue] = useState('')
   const [notes, setNotes] = useState('')
   const [error, setError] = useState('')
