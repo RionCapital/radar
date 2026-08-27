@@ -60,9 +60,32 @@ export function blankProgressParcel() {
   }
 }
 
+// A single invoice/claim line under a Progress facility. Renamed from the
+// original {id,date,amount,description} shape to this richer one so a
+// bundled progress claim (several supplier invoices submitted together)
+// can be broken down into its individual invoices — each with its own
+// due date, supplier, paid/status tracking and payment date — instead of
+// only being trackable as one combined amount. `dueDate` replaces the old
+// `date` field; existing records are read with a `dueDate||date` fallback
+// wherever this is displayed, so nothing already saved breaks.
 export function mkProgressPayment() {
-  return { id: mkId(), date: new Date().toISOString().slice(0, 10), amount: '', description: '' }
+  return {
+    id: mkId(),
+    invoiceRef: '',
+    supplier: '',
+    description: '',
+    dueDate: new Date().toISOString().slice(0, 10),
+    amount: '',
+    payingTo: 'Supplier',
+    status: 'Pending',
+    paid: false,
+    paymentDate: '',
+    notes: '',
+    bridgingRate: '',
+  }
 }
+
+export const PROGRESS_PAYMENT_STATUSES = ['Pending', 'Approved For Funding', 'Submitted for Payment', 'Completed']
 
 // Full month-by-month balance projection for an Asset Finance parcel,
 // straight from the same buildBalanceHistory() used on the Loans tab —
