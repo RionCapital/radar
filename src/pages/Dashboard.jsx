@@ -3,7 +3,7 @@ import { totalBal, fmt, liveOppTotal } from '../lib/data'
 import { fmtDate, rollingYTD, quarterlyIncome, expiryBadge, daysUntil } from '../lib/dateUtils'
 import { Panel, PanelTitle, DayBadge } from '../components/UI'
 import { sbSaveTicked, sbLoadTicked } from '../lib/supabase'
-import { loadDirectIncomeLocal, syncDirectIncomeFromSupabase } from '../lib/directIncome'
+import { loadDirectIncomeLocal, syncDirectIncomeFromSupabase, invoiceTotals } from '../lib/directIncome'
 import { useNavigate } from 'react-router-dom'
 
 const COMMISSION = [
@@ -465,7 +465,7 @@ export default function Dashboard({ clients, onImport, onUpdateClients }) {
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const directByMonth = directEntries.reduce((acc, e) => {
-    acc[e.month] = (acc[e.month] || 0) + (Number(e.amount) || 0) + (Number(e.taxAmount) || 0)
+    acc[e.month] = (acc[e.month] || 0) + invoiceTotals(e).total
     return acc
   }, {})
 

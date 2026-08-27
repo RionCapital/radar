@@ -70,5 +70,92 @@ export async function closeDirectIncomeMonth(month) {
 export function directIncomeTotalForMonth(entries, month) {
   return (entries || [])
     .filter(e => e.month === month)
-    .reduce((s, e) => s + (Number(e.amount) || 0) + (Number(e.taxAmount) || 0), 0)
+    .reduce((s, e) => s + invoiceTotals(e).total, 0)
+}
+
+// ─── Multi-line invoice shape ─────────────────────────────────────────────
+// Going forward an entry can carry an `items` array — one invoice, several
+// line items (e.g. a commission line + a doc fee line on the same Asset
+// Finance invoice). Entries created before this existed have no `items` —
+// the entry itself IS the one and only line item. These three helpers let
+// every consumer (the list page, the invoice detail page, PDF generation,
+// Dashboard's monthly totals) treat both shapes identically, so old records
+// never need to be rewritten.
+export function invoiceItems(entry) {
+  if (Array.isArray(entry.items) && entry.items.length) return entry.items
+  return [{
+    id: entry.id, item: entry.item, description: entry.description,
+    qty: entry.qty, price: entry.price, account: entry.account,
+    taxRate: entry.taxRate, taxAmount: entry.taxAmount, amount: entry.amount,
+  }]
+}
+
+export function invoiceTotals(entry) {
+  const items = invoiceItems(entry)
+  const amount = items.reduce((s, it) => s + (Number(it.amount) || 0), 0)
+  const taxAmount = items.reduce((s, it) => s + (Number(it.taxAmount) || 0), 0)
+  return {
+    amount: Math.round(amount * 100) / 100,
+    taxAmount: Math.round(taxAmount * 100) / 100,
+    total: Math.round((amount + taxAmount) * 100) / 100,
+  }
+}
+
+// One-line summary for the invoice list — a single item shows its own
+// description (or item type if no description), multiple items are
+// summarised as a count + the item types involved.
+export function invoiceSummaryDescription(entry) {
+  const items = invoiceItems(entry)
+  if (items.length === 1) return items[0].description || items[0].item || ''
+  const types = [...new Set(items.map(it => it.item).filter(Boolean))]
+  return `${items.length} line items${types.length ? ' — ' + types.join(', ') : ''}`
+}
+
+export function mkLineItem() {
+  return {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    item: 'Direct Upfront', description: '', qty: 1, price: '',
+    account: DEFAULT_ACCOUNT, taxRate: 'GST on Income', taxAmount: '', amount: '',
+  }
+}
+
+// Recomputes amount/taxAmount for one line item from qty × price and its
+// tax rate — used by the invoice detail page whenever qty/price/taxRate
+// change on a row.
+export function recalcLineItem(item) {
+  const qty = Number(item.qty) || 0
+  const price = Number(item.price) || 0
+  const amount = Math.round(qty * price * 100) / 100
+  const taxAmount = Math.round(amount * taxRateFraction(item.taxRate) * 100) / 100
+  return { ...item, amount, taxAmount }
+}
+
+// ─── Payee picker data source ─────────────────────────────────────────────
+// Marketing's three non-client contact lists (Referral Partners, Lenders,
+// Others) — each contact carries name/company/abn/address when set, which
+// is exactly what the tax invoice PDF needs for the "bill to" block.
+// Client households come from lib/data.js's loadClients() instead (passed
+// in by the caller) so this file doesn't need to import the client-book
+// loader just for this.
+function readMarketingList(key) {
+  try { const s = localStorage.getItem(key); return s ? JSON.parse(s) : [] } catch { return [] }
+}
+export function loadMarketingContacts() {
+  return {
+    referrers: readMarketingList('rion-marketing-referrers').map(c => ({ ...c, category: 'Referral Partners' })),
+    lenders:   readMarketingList('rion-marketing-lenders').map(c => ({ ...c, category: 'Lenders' })),
+    others:    readMarketingList('rion-marketing-others').map(c => ({ ...c, category: 'Others' })),
+  }
+}
+
+// Combines Marketing's contacts with the real client book into one flat,
+// de-duped list for the Supplier/Lender payee picker — grouped by category
+// so the dropdown can show "Clients", "Referral Partners", "Lenders",
+// "Others" the same way Marketing itself does.
+export function loadPayeeOptions(clients) {
+  const { referrers, lenders, others } = loadMarketingContacts()
+  const clientOpts = (clients || [])
+    .filter(c => c.name)
+    .map(c => ({ name: c.name, category: 'Clients' }))
+  return [...clientOpts, ...referrers, ...lenders, ...others].filter(c => c.name)
 }
