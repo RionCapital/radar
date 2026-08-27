@@ -60,19 +60,22 @@ export function blankProgressParcel() {
   }
 }
 
-// A single invoice/claim line under a Progress facility. Renamed from the
-// original {id,date,amount,description} shape to this richer one so a
-// bundled progress claim (several supplier invoices submitted together)
-// can be broken down into its individual invoices — each with its own
-// due date, supplier, paid/status tracking and payment date — instead of
-// only being trackable as one combined amount. `dueDate` replaces the old
-// `date` field; existing records are read with a `dueDate||date` fallback
-// wherever this is displayed, so nothing already saved breaks.
-export function mkProgressPayment() {
+// A Progress facility's invoices are organised into supplier groups — one
+// table per supplier, each with its own invoice lines and subtotal, mirroring
+// how Cameron already tracks these in his own spreadsheet (a dark section
+// band per supplier, invoices underneath, a subtotal row). `parcel.supplierGroups`
+// is the live shape; see getSupplierGroups() below for the read path.
+export function mkSupplierGroup(supplierName = '') {
+  return { id: mkId(), supplier: supplierName, invoices: [] }
+}
+
+// A single invoice line within a supplier group. The supplier name itself
+// lives on the group, not the invoice, since every invoice in a group
+// belongs to that one supplier.
+export function mkProgressInvoice() {
   return {
     id: mkId(),
     invoiceRef: '',
-    supplier: '',
     description: '',
     dueDate: new Date().toISOString().slice(0, 10),
     amount: '',
@@ -87,11 +90,47 @@ export function mkProgressPayment() {
 
 export const PROGRESS_PAYMENT_STATUSES = ['Pending', 'Approved For Funding', 'Submitted for Payment', 'Completed']
 
+// Reads a Progress facility's invoices as supplier groups. If the parcel
+// already has `supplierGroups` (saved from this page), that's returned
+// directly. Otherwise this falls back to grouping the older flat
+// `payments` array (from before per-supplier tables shipped) by its
+// `supplier` field, so nothing entered before this update disappears —
+// it just displays grouped until the parcel is next saved, at which point
+// the grouped shape is what gets written back.
+export function getSupplierGroups(parcel) {
+  if (parcel.supplierGroups) return parcel.supplierGroups
+  const payments = parcel.payments || []
+  if (!payments.length) return []
+  const bySupplier = {}
+  const order = []
+  payments.forEach(pay => {
+    const key = pay.supplier || ''
+    if (!bySupplier[key]) { bySupplier[key] = []; order.push(key) }
+    const { supplier, date, ...rest } = pay
+    bySupplier[key].push({ ...rest, dueDate: rest.dueDate || date || '' })
+  })
+  return order.map(key => ({ id: mkId(), supplier: key, invoices: bySupplier[key] }))
+}
+
+// Rolls up one supplier group's invoice lines — count, total, paid,
+// outstanding — for that group's subtotal row.
+export function groupSubtotal(invoices) {
+  return (invoices || []).reduce((acc, inv) => {
+    const amt = Number(inv.amount) || 0
+    acc.count += 1
+    acc.total += amt
+    if (inv.paid) acc.paid += amt
+    else acc.outstanding += amt
+    return acc
+  }, { count: 0, total: 0, paid: 0, outstanding: 0 })
+}
+
 // Full month-by-month balance projection for an Asset Finance parcel,
 // straight from the same buildBalanceHistory() used on the Loans tab —
 // keeps the estimate consistent with how the rest of Radar already
-// amortises a loan (standard P&I/IO to zero over the term; like the
-// existing Loan Predictor, this doesn't special-case a balloon amount).
+// amortises a loan (P&I/IO over the full settlement-to-maturity term,
+// amortising down to a balloon/residual by the final month if one is set,
+// same as the standard loan projection does).
 export function assetFinanceBalanceHistory(parcel) {
   return buildBalanceHistory(parcel)
 }
@@ -122,28 +161,7 @@ export function assetFinanceTotalMonthlyCost(parcel) {
 }
 
 export function progressDrawn(parcel) {
-  return (parcel.payments || []).reduce((s, p) => s + (Number(p.amount) || 0), 0)
-}
-
-// Rolls a Progress facility's invoice lines up by supplier — so when a
-// claim bundles several suppliers' invoices together, Cameron can see at a
-// glance how much each supplier is owed in total, how much of that has
-// already been paid, and what's still outstanding, without having to
-// mentally add up rows scattered through the full invoice list. Sorted by
-// total invoiced (largest first).
-export function progressSupplierSummary(parcel) {
-  const bySupplier = {}
-  ;(parcel.payments || []).forEach(pay => {
-    const key = pay.supplier || '(No supplier)'
-    if (!bySupplier[key]) bySupplier[key] = { supplier: key, count: 0, total: 0, paid: 0, outstanding: 0 }
-    const amt = Number(pay.amount) || 0
-    const row = bySupplier[key]
-    row.count += 1
-    row.total += amt
-    if (pay.paid) row.paid += amt
-    else row.outstanding += amt
-  })
-  return Object.values(bySupplier).sort((a, b) => b.total - a.total)
+  return getSupplierGroups(parcel).reduce((s, g) => s + groupSubtotal(g.invoices).total, 0)
 }
 
 export function progressRemaining(parcel) {

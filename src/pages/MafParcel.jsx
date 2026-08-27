@@ -1,12 +1,12 @@
 import React, { useState, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { fmt } from '../lib/data'
-import { fmtDate } from '../lib/dateUtils'
+import { fmtDate, calcMaturityDate, expiryBadge } from '../lib/dateUtils'
 import { Panel, PanelTitle, EditBtn, SaveBtn, CancelBtn, FieldGroup, DateInput } from '../components/UI'
 import {
   assetFinanceBalanceHistory, assetFinanceCurrentBalance, assetFinanceMonthlyRepayment,
-  assetFinanceTotalMonthlyCost, progressDrawn, progressRemaining, mkProgressPayment,
-  PROGRESS_PAYMENT_STATUSES, progressSupplierSummary,
+  assetFinanceTotalMonthlyCost, progressDrawn, progressRemaining,
+  PROGRESS_PAYMENT_STATUSES, getSupplierGroups, mkSupplierGroup, mkProgressInvoice, groupSubtotal,
 } from '../lib/mafFacilities'
 
 const NAVY = '#3D4F6B'
@@ -104,7 +104,8 @@ function AssetFinanceParcelView({ parcel, facility, updateParcel }) {
   const monthlyFee = Number(parcel.monthlyFee) || 0
   const monthlyRepayment = assetFinanceMonthlyRepayment(parcel)
   const totalMonthlyCost = assetFinanceTotalMonthlyCost(parcel)
-  const history = useMemo(() => assetFinanceBalanceHistory(parcel), [parcel.amount, parcel.rate, parcel.rpmt, parcel.term, parcel.settled])
+  const history = useMemo(() => assetFinanceBalanceHistory(parcel), [parcel.amount, parcel.rate, parcel.rpmt, parcel.term, parcel.settled, parcel.balloon])
+  const afMaturity = calcMaturityDate(parcel.settled, parcel.term)
   const past = history.filter(h => h.isPast)
   const future = history.filter(h => !h.isPast)
   const futureInt = future.reduce((s, h) => s + h.interest, 0)
@@ -149,10 +150,15 @@ function AssetFinanceParcelView({ parcel, facility, updateParcel }) {
     const movement = i > 0 ? Math.max(0, Math.round(arr[i - 1].balance - h.balance)) : Math.max(0, Math.round((Number(parcel.amount) || h.balance) - h.balance))
     return { date: dLabel, balance: h.balance, movement, interest: h.interest, type: 'Estimated' }
   })
-  const tableProjRows = (tableView === 'monthly' ? future : future.filter((_, i) => i % 3 === 0 || i === future.length - 1)).map(h => {
+  const tableProjRows = (tableView === 'monthly' ? future : future.filter((_, i) => i % 3 === 0 || i === future.length - 1)).map((h, i, arr) => {
     const d = parseAfMonth(h.date)
     const dLabel = `${MO[d.getMonth()]}-${String(d.getFullYear()).slice(2)}`
-    return { date: dLabel, balance: h.balance, movement: Math.max(0, Math.round((h.repayment || 0) - h.interest)), interest: h.interest, type: rowType }
+    // Movement is the actual balance drop since the previous row (not just
+    // the standard repayment less interest), so the final row's full
+    // balloon payoff shows its true size rather than one regular
+    // instalment's worth — matches LoanAccount.jsx's Asset Finance table.
+    const prevBal = i > 0 ? arr[i - 1].balance : balance
+    return { date: dLabel, balance: h.balance, movement: Math.max(0, Math.round(prevBal - h.balance)), interest: h.interest, type: h.isBalloonClear ? 'Balloon' : rowType }
   })
 
   const th = { padding: '6px 8px', background: '#3D5570', color: '#fff', fontSize: 10, fontWeight: 500, textAlign: 'left', whiteSpace: 'nowrap' }
@@ -264,6 +270,15 @@ function AssetFinanceParcelView({ parcel, facility, updateParcel }) {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Settlement date</span>
                 <span style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-primary)' }}>{fmtDate(parcel.settled)}</span>
+              </div>
+            </div>
+            <div style={{ padding: '9px 0', borderBottom: '0.5px solid var(--border-light)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Maturity date</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  {afMaturity && (() => { const badge = expiryBadge(afMaturity); return badge ? <span style={{ padding: '1px 8px', borderRadius: 20, fontSize: 10, fontWeight: 500, background: badge.bg, color: badge.color }}>{badge.label}</span> : null })()}
+                  <span style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-primary)' }}>{fmtDate(afMaturity)}</span>
+                </div>
               </div>
             </div>
             {parcel.balloon > 0 && (
@@ -395,7 +410,7 @@ function AssetFinanceParcelView({ parcel, facility, updateParcel }) {
                       <td style={td({ textAlign: 'right', fontWeight: 500, color: 'var(--text-primary)' })}>${row.balance.toLocaleString()}</td>
                       <td style={td({ textAlign: 'right', color: '#166534' })}>${row.movement.toLocaleString()}</td>
                       <td style={td({ textAlign: 'right', color: '#c0392b' })}>${row.interest.toLocaleString()}</td>
-                      <td style={td({ fontSize: 9 })}><span style={{ background: row.type === 'IO' ? '#fef9c3' : '#f0fdf4', color: row.type === 'IO' ? '#92600a' : '#166534', padding: '1px 6px', borderRadius: 10, fontSize: 9 }}>{row.type}</span></td>
+                      <td style={td({ fontSize: 9 })}><span style={{ background: row.type === 'IO' ? '#fef9c3' : row.type === 'Balloon' ? '#fee2e2' : '#f0fdf4', color: row.type === 'IO' ? '#92600a' : row.type === 'Balloon' ? '#b91c1c' : '#166534', padding: '1px 6px', borderRadius: 10, fontSize: 9 }}>{row.type}</span></td>
                     </tr>
                   ))}
                   {tableProjRows.length > 0 && (
@@ -426,24 +441,37 @@ function daysUntil(dueDate) {
   return Math.round((due - today) / 86400000)
 }
 
-function ProgressParcelView({ parcel: p, updateParcel, inputStyle, label }) {
+function ProgressParcelView({ parcel: p, updateParcel, inputStyle }) {
   const drawn = progressDrawn(p)
   const remaining = progressRemaining(p)
-  const payments = p.payments || []
-  const supplierRows = progressSupplierSummary(p)
+  const groups = getSupplierGroups(p)
+  const totalInvoiceCount = groups.reduce((s, g) => s + (g.invoices || []).length, 0)
+  const totalPaid = groups.reduce((s, g) => s + groupSubtotal(g.invoices).paid, 0)
+  const totalOutstanding = groups.reduce((s, g) => s + groupSubtotal(g.invoices).outstanding, 0)
 
-  function addPayment() {
-    updateParcel({ payments: [...payments, mkProgressPayment()] })
+  function addSupplier() {
+    updateParcel({ supplierGroups: [...groups, mkSupplierGroup()] })
   }
-  function updatePayment(id, patch) {
-    updateParcel({ payments: payments.map(pay => pay.id === id ? { ...pay, ...patch } : pay) })
+  function updateGroup(groupId, patch) {
+    updateParcel({ supplierGroups: groups.map(g => g.id === groupId ? { ...g, ...patch } : g) })
   }
-  function removePayment(id) {
+  function removeGroup(groupId) {
+    if (!window.confirm('Remove this supplier and all its invoices? This can\'t be undone.')) return
+    updateParcel({ supplierGroups: groups.filter(g => g.id !== groupId) })
+  }
+  function addInvoice(groupId) {
+    updateParcel({ supplierGroups: groups.map(g => g.id === groupId ? { ...g, invoices: [...(g.invoices || []), mkProgressInvoice()] } : g) })
+  }
+  function updateInvoice(groupId, invId, patch) {
+    updateParcel({ supplierGroups: groups.map(g => g.id === groupId ? { ...g, invoices: g.invoices.map(inv => inv.id === invId ? { ...inv, ...patch } : inv) } : g) })
+  }
+  function removeInvoice(groupId, invId) {
     if (!window.confirm('Remove this invoice line? This can\'t be undone.')) return
-    updateParcel({ payments: payments.filter(pay => pay.id !== id) })
+    updateParcel({ supplierGroups: groups.map(g => g.id === groupId ? { ...g, invoices: g.invoices.filter(inv => inv.id !== invId) } : g) })
   }
 
   const cellIn = { ...inputStyle, fontSize: 11, padding: '5px 6px' }
+  const INVOICE_COLS = ['Invoice/Ref', 'Description', 'Due date', 'Amount', 'Paying to', 'Status', 'Paid', 'Pmt date', 'Bridging rate', 'Days', 'Notes', '']
 
   return (
     <>
@@ -493,126 +521,124 @@ function ProgressParcelView({ parcel: p, updateParcel, inputStyle, label }) {
         </div>
       </Panel>
 
-      {supplierRows.length > 0 && (
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, gap: 12, flexWrap: 'wrap' }}>
+        <div style={{ fontSize: 10.5, color: '#94a3b8', lineHeight: 1.5, maxWidth: 640 }}>
+          Each supplier gets its own table below — add a supplier, then add that supplier's invoices underneath it, so a bundled claim stays broken down the same way it's tracked in the spreadsheet.
+        </div>
+        <button onClick={addSupplier} style={{ fontSize: 10, padding: '5px 12px', borderRadius: 6, border: `0.5px solid ${PINK}`, background: 'transparent', color: PINK, cursor: 'pointer', fontWeight: 600, whiteSpace: 'nowrap' }}>+ Add supplier</button>
+      </div>
+
+      {!groups.length ? (
         <Panel style={{ marginBottom: 16 }}>
-          <PanelTitle>By supplier</PanelTitle>
-          <div style={{ fontSize: 10.5, color: '#94a3b8', marginBottom: 10, lineHeight: 1.5 }}>
-            Rolls up the invoice lines below by supplier, so you can see at a glance how much each one is owed in total when a claim bundles several of them together.
-          </div>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11.5 }}>
-              <thead><tr>
-                {['Supplier', 'Invoices', 'Total invoiced', 'Paid', 'Outstanding'].map((h, i) => (
-                  <th key={h} style={{ padding: '6px 8px', background: '#3D5570', color: '#fff', fontSize: 10, textAlign: i === 0 ? 'left' : i === 1 ? 'center' : 'right' }}>{h}</th>
-                ))}
-              </tr></thead>
-              <tbody>
-                {supplierRows.map(row => (
-                  <tr key={row.supplier}>
-                    <td style={{ padding: '6px 8px', borderBottom: '0.5px solid var(--border-light)', fontWeight: 500 }}>{row.supplier}</td>
-                    <td style={{ padding: '6px 8px', borderBottom: '0.5px solid var(--border-light)', textAlign: 'center', color: 'var(--text-secondary)' }}>{row.count}</td>
-                    <td style={{ padding: '6px 8px', borderBottom: '0.5px solid var(--border-light)', textAlign: 'right', fontWeight: 600 }}>{fmt(row.total)}</td>
-                    <td style={{ padding: '6px 8px', borderBottom: '0.5px solid var(--border-light)', textAlign: 'right', color: '#166534' }}>{fmt(row.paid)}</td>
-                    <td style={{ padding: '6px 8px', borderBottom: '0.5px solid var(--border-light)', textAlign: 'right', color: row.outstanding > 0 ? '#c0392b' : 'var(--text-secondary)', fontWeight: row.outstanding > 0 ? 600 : 400 }}>{fmt(row.outstanding)}</td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr style={{ background: '#f0f4f8' }}>
-                  <td style={{ padding: '6px 8px', fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)' }}>All suppliers</td>
-                  <td style={{ padding: '6px 8px', textAlign: 'center', fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)' }}>{payments.length}</td>
-                  <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 700, color: '#2A3545', fontSize: 11.5 }}>{fmt(drawn)}</td>
-                  <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 700, color: '#166534', fontSize: 11.5 }}>{fmt(supplierRows.reduce((s, r) => s + r.paid, 0))}</td>
-                  <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 700, color: '#c0392b', fontSize: 11.5 }}>{fmt(supplierRows.reduce((s, r) => s + r.outstanding, 0))}</td>
-                </tr>
-              </tfoot>
-            </table>
+          <div style={{ fontSize: 12, color: '#94a3b8', padding: '18px 0', textAlign: 'center' }}>No suppliers added yet — click "+ Add supplier" to start tracking invoices.</div>
+        </Panel>
+      ) : groups.map(g => {
+        const sub = groupSubtotal(g.invoices)
+        return (
+          <Panel key={g.id} style={{ marginBottom: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, gap: 10, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 200 }}>
+                <div style={{ fontSize: 10, fontWeight: 600, color: '#7A8090', textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>Supplier</div>
+                <input style={{ ...inputStyle, fontSize: 13, fontWeight: 600, maxWidth: 260 }} value={g.supplier || ''} onChange={e => updateGroup(g.id, { supplier: e.target.value })} placeholder="Supplier name" />
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{sub.count} invoice{sub.count !== 1 ? 's' : ''} · <span style={{ fontWeight: 600, color: '#2A3545' }}>{fmt(sub.total)}</span></div>
+                <button onClick={() => addInvoice(g.id)} style={{ fontSize: 10, padding: '4px 10px', borderRadius: 6, border: `0.5px solid ${PINK}`, background: 'transparent', color: PINK, cursor: 'pointer', fontWeight: 600, whiteSpace: 'nowrap' }}>+ Add invoice</button>
+                <button onClick={() => removeGroup(g.id)} style={{ fontSize: 10, padding: '4px 10px', borderRadius: 6, border: '1px solid #fecaca', background: '#fef2f2', color: '#dc2626', cursor: 'pointer', fontWeight: 600, whiteSpace: 'nowrap' }}>Remove supplier</button>
+              </div>
+            </div>
+
+            {!g.invoices.length ? (
+              <div style={{ fontSize: 12, color: '#94a3b8', padding: '14px 0', textAlign: 'center' }}>No invoices for this supplier yet.</div>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+                  <thead><tr>
+                    {INVOICE_COLS.map(h => (
+                      <th key={h} style={{ padding: '6px 6px', background: '#3D5570', color: '#fff', fontSize: 9.5, textAlign: h === 'Amount' || h === 'Bridging rate' || h === 'Days' ? 'right' : 'left', whiteSpace: 'nowrap' }}>{h}</th>
+                    ))}
+                  </tr></thead>
+                  <tbody>
+                    {g.invoices.map(inv => {
+                      const days = !inv.paid ? daysUntil(inv.dueDate) : null
+                      return (
+                        <tr key={inv.id}>
+                          <td style={{ padding: '5px 6px', borderBottom: '0.5px solid var(--border-light)' }}>
+                            <input style={{ ...cellIn, width: 90 }} value={inv.invoiceRef || ''} onChange={e => updateInvoice(g.id, inv.id, { invoiceRef: e.target.value })} />
+                          </td>
+                          <td style={{ padding: '5px 6px', borderBottom: '0.5px solid var(--border-light)' }}>
+                            <input style={{ ...cellIn, width: 140 }} value={inv.description || ''} onChange={e => updateInvoice(g.id, inv.id, { description: e.target.value })} placeholder="e.g. 30% Deposit" />
+                          </td>
+                          <td style={{ padding: '5px 6px', borderBottom: '0.5px solid var(--border-light)' }}>
+                            <DateInput value={inv.dueDate || ''} onChange={v => updateInvoice(g.id, inv.id, { dueDate: v })} style={{ ...cellIn, width: 108 }} />
+                          </td>
+                          <td style={{ padding: '5px 6px', borderBottom: '0.5px solid var(--border-light)' }}>
+                            <input style={{ ...cellIn, width: 90, textAlign: 'right' }} type="number" value={inv.amount} onChange={e => updateInvoice(g.id, inv.id, { amount: e.target.value })} />
+                          </td>
+                          <td style={{ padding: '5px 6px', borderBottom: '0.5px solid var(--border-light)' }}>
+                            <select style={{ ...cellIn, width: 84 }} value={inv.payingTo || 'Supplier'} onChange={e => updateInvoice(g.id, inv.id, { payingTo: e.target.value })}>
+                              <option>Supplier</option><option>Client</option>
+                            </select>
+                          </td>
+                          <td style={{ padding: '5px 6px', borderBottom: '0.5px solid var(--border-light)' }}>
+                            <select style={{ ...cellIn, width: 148 }} value={inv.status || 'Pending'} onChange={e => updateInvoice(g.id, inv.id, { status: e.target.value })}>
+                              {PROGRESS_PAYMENT_STATUSES.map(s => <option key={s}>{s}</option>)}
+                            </select>
+                          </td>
+                          <td style={{ padding: '5px 6px', borderBottom: '0.5px solid var(--border-light)', textAlign: 'center' }}>
+                            <input type="checkbox" checked={!!inv.paid} onChange={e => updateInvoice(g.id, inv.id, { paid: e.target.checked, paymentDate: e.target.checked ? (inv.paymentDate || new Date().toISOString().slice(0, 10)) : inv.paymentDate })} />
+                          </td>
+                          <td style={{ padding: '5px 6px', borderBottom: '0.5px solid var(--border-light)' }}>
+                            <DateInput value={inv.paymentDate || ''} onChange={v => updateInvoice(g.id, inv.id, { paymentDate: v })} style={{ ...cellIn, width: 108 }} />
+                          </td>
+                          <td style={{ padding: '5px 6px', borderBottom: '0.5px solid var(--border-light)' }}>
+                            <input style={{ ...cellIn, width: 60, textAlign: 'right' }} type="number" step="0.01" value={inv.bridgingRate || ''} onChange={e => updateInvoice(g.id, inv.id, { bridgingRate: e.target.value })} placeholder="%" />
+                          </td>
+                          <td style={{ padding: '5px 6px', borderBottom: '0.5px solid var(--border-light)', textAlign: 'right', fontSize: 10.5, color: days != null && days < 0 ? '#dc2626' : 'var(--text-secondary)', fontWeight: days != null && days < 0 ? 600 : 400, whiteSpace: 'nowrap' }}>
+                            {days == null ? '—' : (days < 0 ? `${Math.abs(days)}d overdue` : `${days}d`)}
+                          </td>
+                          <td style={{ padding: '5px 6px', borderBottom: '0.5px solid var(--border-light)' }}>
+                            <input style={{ ...cellIn, width: 130 }} value={inv.notes || ''} onChange={e => updateInvoice(g.id, inv.id, { notes: e.target.value })} />
+                          </td>
+                          <td style={{ padding: '5px 6px', borderBottom: '0.5px solid var(--border-light)' }}>
+                            <button onClick={() => removeInvoice(g.id, inv.id)} style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', borderRadius: 5, padding: '3px 8px', cursor: 'pointer', fontSize: 11 }}>✕</button>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                  <tfoot>
+                    <tr style={{ background: '#f0f4f8' }}>
+                      <td colSpan={3} style={{ padding: '7px 6px', fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)' }}>Subtotal — {g.supplier || 'Supplier'} ({sub.count} invoice{sub.count !== 1 ? 's' : ''})</td>
+                      <td style={{ padding: '7px 6px', fontSize: 11, fontWeight: 700, color: '#2A3545', textAlign: 'right' }}>{fmt(sub.total)}</td>
+                      <td colSpan={8}></td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            )}
+          </Panel>
+        )
+      })}
+
+      {groups.length > 0 && (
+        <Panel>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <div style={{ background: '#F4F6FA', borderRadius: 8, padding: '10px 16px', flex: '1 1 160px' }}>
+              <div style={{ fontSize: 10, color: '#7A8090', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Total across all suppliers ({totalInvoiceCount} invoice{totalInvoiceCount !== 1 ? 's' : ''})</div>
+              <div style={{ fontSize: 17, fontWeight: 700, color: '#2A3545' }}>{fmt(drawn)}</div>
+            </div>
+            <div style={{ background: '#F4F6FA', borderRadius: 8, padding: '10px 16px', flex: '1 1 160px' }}>
+              <div style={{ fontSize: 10, color: '#7A8090', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Paid</div>
+              <div style={{ fontSize: 17, fontWeight: 700, color: '#166534' }}>{fmt(totalPaid)}</div>
+            </div>
+            <div style={{ background: '#F4F6FA', borderRadius: 8, padding: '10px 16px', flex: '1 1 160px' }}>
+              <div style={{ fontSize: 10, color: '#7A8090', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Outstanding</div>
+              <div style={{ fontSize: 17, fontWeight: 700, color: totalOutstanding > 0 ? '#c0392b' : '#2A3545' }}>{fmt(totalOutstanding)}</div>
+            </div>
           </div>
         </Panel>
       )}
-
-      <Panel>
-        <PanelTitle action={
-          <button onClick={addPayment} style={{ fontSize: 10, padding: '4px 10px', borderRadius: 6, border: `0.5px solid ${PINK}`, background: 'transparent', color: PINK, cursor: 'pointer', fontWeight: 600 }}>+ Add invoice line</button>
-        }>Progress payments &amp; invoices</PanelTitle>
-        <div style={{ fontSize: 10.5, color: '#94a3b8', marginBottom: 10, lineHeight: 1.5 }}>
-          When one progress claim bundles several supplier invoices, add each invoice as its own line here so it can be tracked and marked paid separately, rather than lumping them into one amount.
-        </div>
-
-        {!payments.length ? (
-          <div style={{ fontSize: 12, color: '#94a3b8', padding: '18px 0', textAlign: 'center' }}>No invoices recorded yet.</div>
-        ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
-              <thead><tr>
-                {['Invoice/Ref', 'Supplier', 'Description', 'Due date', 'Amount', 'Paying to', 'Status', 'Paid', 'Pmt date', 'Bridging rate', 'Days', 'Notes', ''].map(h => (
-                  <th key={h} style={{ padding: '6px 6px', background: '#3D5570', color: '#fff', fontSize: 9.5, textAlign: h === 'Amount' || h === 'Bridging rate' || h === 'Days' ? 'right' : 'left', whiteSpace: 'nowrap' }}>{h}</th>
-                ))}
-              </tr></thead>
-              <tbody>
-                {payments.map(pay => {
-                  const due = pay.dueDate || pay.date || ''
-                  const days = !pay.paid ? daysUntil(due) : null
-                  return (
-                    <tr key={pay.id}>
-                      <td style={{ padding: '5px 6px', borderBottom: '0.5px solid var(--border-light)' }}>
-                        <input style={{ ...cellIn, width: 90 }} value={pay.invoiceRef || ''} onChange={e => updatePayment(pay.id, { invoiceRef: e.target.value })} />
-                      </td>
-                      <td style={{ padding: '5px 6px', borderBottom: '0.5px solid var(--border-light)' }}>
-                        <input style={{ ...cellIn, width: 130 }} value={pay.supplier || ''} onChange={e => updatePayment(pay.id, { supplier: e.target.value })} />
-                      </td>
-                      <td style={{ padding: '5px 6px', borderBottom: '0.5px solid var(--border-light)' }}>
-                        <input style={{ ...cellIn, width: 120 }} value={pay.description || ''} onChange={e => updatePayment(pay.id, { description: e.target.value })} placeholder="e.g. 30% Deposit" />
-                      </td>
-                      <td style={{ padding: '5px 6px', borderBottom: '0.5px solid var(--border-light)' }}>
-                        <DateInput value={due} onChange={v => updatePayment(pay.id, { dueDate: v })} style={{ ...cellIn, width: 108 }} />
-                      </td>
-                      <td style={{ padding: '5px 6px', borderBottom: '0.5px solid var(--border-light)' }}>
-                        <input style={{ ...cellIn, width: 90, textAlign: 'right' }} type="number" value={pay.amount} onChange={e => updatePayment(pay.id, { amount: e.target.value })} />
-                      </td>
-                      <td style={{ padding: '5px 6px', borderBottom: '0.5px solid var(--border-light)' }}>
-                        <select style={{ ...cellIn, width: 84 }} value={pay.payingTo || 'Supplier'} onChange={e => updatePayment(pay.id, { payingTo: e.target.value })}>
-                          <option>Supplier</option><option>Client</option>
-                        </select>
-                      </td>
-                      <td style={{ padding: '5px 6px', borderBottom: '0.5px solid var(--border-light)' }}>
-                        <select style={{ ...cellIn, width: 148 }} value={pay.status || 'Pending'} onChange={e => updatePayment(pay.id, { status: e.target.value })}>
-                          {PROGRESS_PAYMENT_STATUSES.map(s => <option key={s}>{s}</option>)}
-                        </select>
-                      </td>
-                      <td style={{ padding: '5px 6px', borderBottom: '0.5px solid var(--border-light)', textAlign: 'center' }}>
-                        <input type="checkbox" checked={!!pay.paid} onChange={e => updatePayment(pay.id, { paid: e.target.checked, paymentDate: e.target.checked ? (pay.paymentDate || new Date().toISOString().slice(0, 10)) : pay.paymentDate })} />
-                      </td>
-                      <td style={{ padding: '5px 6px', borderBottom: '0.5px solid var(--border-light)' }}>
-                        <DateInput value={pay.paymentDate || ''} onChange={v => updatePayment(pay.id, { paymentDate: v })} style={{ ...cellIn, width: 108 }} />
-                      </td>
-                      <td style={{ padding: '5px 6px', borderBottom: '0.5px solid var(--border-light)' }}>
-                        <input style={{ ...cellIn, width: 60, textAlign: 'right' }} type="number" step="0.01" value={pay.bridgingRate || ''} onChange={e => updatePayment(pay.id, { bridgingRate: e.target.value })} placeholder="%" />
-                      </td>
-                      <td style={{ padding: '5px 6px', borderBottom: '0.5px solid var(--border-light)', textAlign: 'right', fontSize: 10.5, color: days != null && days < 0 ? '#dc2626' : 'var(--text-secondary)', fontWeight: days != null && days < 0 ? 600 : 400, whiteSpace: 'nowrap' }}>
-                        {days == null ? '—' : (days < 0 ? `${Math.abs(days)}d overdue` : `${days}d`)}
-                      </td>
-                      <td style={{ padding: '5px 6px', borderBottom: '0.5px solid var(--border-light)' }}>
-                        <input style={{ ...cellIn, width: 130 }} value={pay.notes || ''} onChange={e => updatePayment(pay.id, { notes: e.target.value })} />
-                      </td>
-                      <td style={{ padding: '5px 6px', borderBottom: '0.5px solid var(--border-light)' }}>
-                        <button onClick={() => removePayment(pay.id)} style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', borderRadius: 5, padding: '3px 8px', cursor: 'pointer', fontSize: 11 }}>✕</button>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-              <tfoot>
-                <tr style={{ background: '#f0f4f8' }}>
-                  <td colSpan={4} style={{ padding: '7px 6px', fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)' }}>Total ({payments.length} invoice{payments.length !== 1 ? 's' : ''})</td>
-                  <td style={{ padding: '7px 6px', fontSize: 11, fontWeight: 700, color: '#2A3545', textAlign: 'right' }}>{fmt(drawn)}</td>
-                  <td colSpan={7}></td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-        )}
-      </Panel>
     </>
   )
 }

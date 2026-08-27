@@ -2,7 +2,7 @@ import { sbSaveTicked } from '../lib/supabase'
 import React, { useState, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { fmt } from '../lib/data'
-import { fmtDate, dateCellStyle, expiryBadge, calcRepayment, effectiveRpmt, buildBalanceHistory } from '../lib/dateUtils'
+import { fmtDate, dateCellStyle, expiryBadge, calcRepayment, effectiveRpmt, buildBalanceHistory, calcMaturityDate } from '../lib/dateUtils'
 import { Panel, PanelTitle, EditBtn, SaveBtn, CancelBtn, FieldGroup, Pill, DateInput } from '../components/UI'
 
 export default function LoanAccount({ clients, updateClient }) {
@@ -149,7 +149,11 @@ export default function LoanAccount({ clients, updateClient }) {
   // isPast or not, so this one array covers both "historic" and
   // "predicted" without needing the statement+buildProjection split above.
   const afHistory = useMemo(() => isAssetFinance ? buildBalanceHistory(loan) : [],
-    [isAssetFinance, loan.amount, loan.rate, loan.rpmt, loan.term, loan.settled])
+    [isAssetFinance, loan.amount, loan.rate, loan.rpmt, loan.term, loan.settled, loan.balloon])
+  // Asset Finance doesn't carry its own manually-entered maturity date —
+  // it's always derived from settlement + term instead, so it can't drift
+  // out of sync with the loan's actual terms.
+  const afMaturity = isAssetFinance ? calcMaturityDate(loan.settled, loan.term) : null
   const afPast = afHistory.filter(h => h.isPast)
   const afFuture = afHistory.filter(h => !h.isPast)
   const afCurrentBalance = afPast.length ? afPast[afPast.length-1].balance : (loan.amount || 0)
@@ -276,10 +280,15 @@ export default function LoanAccount({ clients, updateClient }) {
       })
     : []
   const tableProjRows = isAssetFinance
-    ? (tableView==='monthly' ? afFuture : afFuture.filter((_,i)=>i%3===0||i===afFuture.length-1)).map(h => {
+    ? (tableView==='monthly' ? afFuture : afFuture.filter((_,i)=>i%3===0||i===afFuture.length-1)).map((h,i,arr) => {
         const d = parseAfMonth(h.date)
         const label = `${MO[d.getMonth()]}-${String(d.getFullYear()).slice(2)}`
-        return { date: label, balance: h.balance, movement: Math.max(0, Math.round((h.repayment||0) - h.interest)), interest: h.interest, type: afRowType }
+        // Movement is the actual balance drop since the previous row (not
+        // just the standard repayment less interest), so the final row's
+        // full balloon payoff shows its true size rather than one regular
+        // instalment's worth.
+        const prevBal = i>0 ? arr[i-1].balance : afCurrentBalance
+        return { date: label, balance: h.balance, movement: Math.max(0, Math.round(prevBal - h.balance)), interest: h.interest, type: h.isBalloonClear ? 'Balloon' : afRowType }
       })
     : (tableView==='monthly' ? projection : projection.filter((_,i)=>i%3===0||i===projection.length-1))
         .map(r => ({ date:r.dateStr, balance:r.openingBal, movement:r.principal, interest:r.interest, type:r.isIO?'IO':r.isBalloonClear?'Balloon':'P&I' }))
@@ -515,9 +524,8 @@ export default function LoanAccount({ clients, updateClient }) {
             <PanelTitle>Key dates &amp; expiry flags</PanelTitle>
             {[
               ['Settlement date',loan.settled,false,null],
-              ['Maturity date',loan.maturity,true,'Maturity'],
-              ['Fixed rate expiry',loan.fixed,true,'Fixed Term'],
-              ['Interest only expiry',loan.io,true,'IO Term'],
+              ['Maturity date',isAssetFinance?afMaturity:loan.maturity,true,'Maturity'],
+              ...(isAssetFinance?[]:[['Fixed rate expiry',loan.fixed,true,'Fixed Term'],['Interest only expiry',loan.io,true,'IO Term']]),
               ['Balloon / residual',loan.balloon>0?String(loan.balloon):null,false,null],
             ].map(([label,val,showBadge,noteKeyword])=>{
               const badge=showBadge&&val?expiryBadge(val):null

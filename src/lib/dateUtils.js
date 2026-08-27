@@ -130,29 +130,70 @@ export function quarterlyIncome(commData) {
   return Object.values(qMap).sort((a,b) => a.yr !== b.yr ? a.yr-b.yr : a.q-b.q)
 }
 
-// Build balance history from settlement date
+// The maturity date implied by a settlement date + term — used for Asset
+// Finance loans/parcels, which don't carry their own separately-entered
+// `maturity` field the way other loan types do; it's always derived from
+// settled+term instead, so it can never drift out of sync with the terms
+// actually on the loan. Returns an ISO date string ('YYYY-MM-DD') so it
+// drops straight into fmtDate()/expiryBadge() like any other date field.
+export function calcMaturityDate(settled, termYears) {
+  if (!settled) return null
+  const start = new Date(settled)
+  const n = Math.max(1, Math.round((termYears || 30) * 12))
+  const d = new Date(start)
+  d.setMonth(d.getMonth() + n)
+  return d.toISOString().slice(0, 10)
+}
+
+// Build balance history from settlement date through to the loan's actual
+// maturity date (settlement + term) — the full contracted life of the
+// loan, not an arbitrary window past today, so the curve always reaches
+// where the loan actually ends regardless of how far into its term today
+// happens to fall. When a balloon/residual is set, the payment amortises
+// the balance down to that residual by the second-to-last month (same
+// formula the standard loan Predictor uses), then the final month clears
+// it to zero — the balloon being paid off/refinanced at maturity, exactly
+// like every other loan type's projection already assumes.
 export function buildBalanceHistory(loan) {
   if (!loan.settled || !loan.amount) return []
   const start = new Date(loan.settled)
   const rate = (loan.rate || 0) / 100 / 12
   const isIO = loan.rpmt === 'IO'
-  const n = (loan.term || 30) * 12
-  const monthlyPmt = (!rate || isIO)
-    ? (rate ? Math.round(loan.amount * rate) : 0)
-    : Math.round((loan.amount * rate * Math.pow(1+rate,n)) / (Math.pow(1+rate,n)-1))
+  const balloon = Number(loan.balloon) || 0
+  const n = Math.max(1, Math.round((loan.term || 30) * 12))
+  const factor = rate ? Math.pow(1 + rate, n) : 1
+
+  let monthlyPmt
+  if (isIO) {
+    monthlyPmt = rate ? Math.round(loan.amount * rate) : 0
+  } else if (balloon > 0 && rate) {
+    // Balloon P&I: payment that reduces balance from amount to balloon
+    // over the full term — pmt = (PV×(1+r)^n − FV)×r / ((1+r)^n − 1)
+    monthlyPmt = Math.round((loan.amount * factor - balloon) * rate / (factor - 1))
+  } else if (rate) {
+    monthlyPmt = Math.round((loan.amount * rate * factor) / (factor - 1))
+  } else {
+    monthlyPmt = Math.round(Math.max(0, loan.amount - balloon) / n)
+  }
 
   const today = new Date()
   const history = []
   let bal = loan.amount
 
-  // From settlement to today (history) then 24 months forward (projection)
-  const totalMonths = Math.floor((today - start) / (30.44 * 86400000)) + 24
-
-  for (let m = 0; m <= totalMonths; m++) {
+  for (let m = 0; m <= n; m++) {
     const date = new Date(start)
     date.setMonth(date.getMonth() + m)
+    const isLastMonth = m === n
     const interest = rate ? Math.round(bal * rate) : 0
-    const principal = isIO ? 0 : Math.max(0, monthlyPmt - interest)
+    let principal
+    if (isLastMonth && balloon > 0) {
+      principal = bal // balloon paid off/refinanced at maturity
+    } else if (isIO) {
+      principal = 0
+    } else {
+      principal = Math.max(0, monthlyPmt - interest)
+      if (balloon > 0) principal = Math.min(principal, Math.max(0, bal - balloon))
+    }
     bal = Math.max(0, bal - principal)
     const isPast = date <= today
     history.push({
@@ -161,6 +202,7 @@ export function buildBalanceHistory(loan) {
       interest,
       repayment: monthlyPmt,
       isPast,
+      isBalloonClear: isLastMonth && balloon > 0,
     })
   }
   return history
