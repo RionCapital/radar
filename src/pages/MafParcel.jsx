@@ -590,6 +590,12 @@ function ProgressParcelView({ parcel: p, updateParcel, inputStyle }) {
                   <tbody>
                     {g.invoices.map(inv => {
                       const days = !inv.paid ? daysUntil(inv.dueDate) : null
+                      // Due date colour: red once it's passed, amber inside
+                      // the final 2 weeks (14 days), otherwise left as the
+                      // normal text colour. Blank (unset) once paid, same
+                      // as the Days column, since a paid invoice's due date
+                      // isn't a live risk any more.
+                      const dueColor = days == null ? undefined : days < 0 ? '#dc2626' : days <= 14 ? '#854F0B' : undefined
                       return (
                         <tr key={inv.id}>
                           <td style={{ padding: '5px 6px', borderBottom: '0.5px solid var(--border-light)' }}>
@@ -599,10 +605,10 @@ function ProgressParcelView({ parcel: p, updateParcel, inputStyle }) {
                             <input style={{ ...cellIn, width: 140 }} value={inv.description || ''} onChange={e => updateInvoice(g.id, inv.id, { description: e.target.value })} placeholder="e.g. 30% Deposit" />
                           </td>
                           <td style={{ padding: '5px 6px', borderBottom: '0.5px solid var(--border-light)' }}>
-                            <DateInput value={inv.dueDate || ''} onChange={v => updateInvoice(g.id, inv.id, { dueDate: v })} style={{ ...cellIn, width: 108 }} />
+                            <DateInput value={inv.dueDate || ''} onChange={v => updateInvoice(g.id, inv.id, { dueDate: v })} style={{ ...cellIn, width: 108, color: dueColor, fontWeight: dueColor ? 600 : 400 }} />
                           </td>
                           <td style={{ padding: '5px 6px', borderBottom: '0.5px solid var(--border-light)', textAlign: 'right' }}>
-                            <AmountInput style={{ ...cellIn, width: 100, textAlign: 'right' }} value={inv.amount} onChange={val => updateInvoice(g.id, inv.id, { amount: val })} />
+                            <AmountInput style={{ ...cellIn, width: 100, textAlign: 'right', color: inv.paid ? '#166534' : undefined, fontWeight: inv.paid ? 600 : 400 }} value={inv.amount} onChange={val => updateInvoice(g.id, inv.id, { amount: val })} />
                           </td>
                           <td style={{ padding: '5px 6px', borderBottom: '0.5px solid var(--border-light)' }}>
                             <select style={{ ...cellIn, width: 84 }} value={inv.payingTo || 'Supplier'} onChange={e => updateInvoice(g.id, inv.id, { payingTo: e.target.value })}>
@@ -623,7 +629,7 @@ function ProgressParcelView({ parcel: p, updateParcel, inputStyle }) {
                           <td style={{ padding: '5px 6px', borderBottom: '0.5px solid var(--border-light)' }}>
                             <input style={{ ...cellIn, width: 60, textAlign: 'right' }} type="number" step="0.01" value={inv.bridgingRate || ''} onChange={e => updateInvoice(g.id, inv.id, { bridgingRate: e.target.value })} placeholder="%" />
                           </td>
-                          <td style={{ padding: '5px 6px', borderBottom: '0.5px solid var(--border-light)', textAlign: 'right', fontSize: 10.5, color: days != null && days < 0 ? '#dc2626' : 'var(--text-secondary)', fontWeight: days != null && days < 0 ? 600 : 400, whiteSpace: 'nowrap' }}>
+                          <td style={{ padding: '5px 6px', borderBottom: '0.5px solid var(--border-light)', textAlign: 'right', fontSize: 10.5, color: dueColor || 'var(--text-secondary)', fontWeight: dueColor ? 600 : 400, whiteSpace: 'nowrap' }}>
                             {days == null ? '—' : (days < 0 ? `${Math.abs(days)}d overdue` : `${days}d`)}
                           </td>
                           <td style={{ padding: '5px 6px', borderBottom: '0.5px solid var(--border-light)' }}>
