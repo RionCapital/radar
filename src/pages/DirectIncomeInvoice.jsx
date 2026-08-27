@@ -103,6 +103,19 @@ export default function DirectIncomeInvoice() {
   const inputStyle = { border: '1px solid #e8eaed', borderRadius: 5, padding: '6px 8px', fontSize: 12, width: '100%', boxSizing: 'border-box', fontFamily: 'inherit' }
   const label = txt => <div style={{ fontSize: 10, color: '#7A8090', fontWeight: 600, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{txt}</div>
 
+  // The exact "bill to" fields that print on the invoice PDF — Name, Full
+  // Legal Name, ABN, ACN, Address — shown here read-only so it's obvious
+  // before downloading whether the matched Marketing contact is missing
+  // anything (client households don't carry these, so they just show Name).
+  const matchedPayee = payeeOptions.find(o => o.name === entry.supplierName)
+  const billToRows = entry.supplierName ? [
+    { field: 'Name', value: entry.supplierName },
+    { field: 'Full Legal Name', value: matchedPayee?.company || '' },
+    { field: 'ABN', value: matchedPayee?.abn || '' },
+    { field: 'ACN', value: matchedPayee?.acn || '' },
+    { field: 'Address', value: matchedPayee?.address || '' },
+  ] : []
+
   return (
     <div style={{ padding: '24px 32px', maxWidth: 1100, margin: '0 auto', fontFamily: 'Montserrat, sans-serif' }}>
       <datalist id="direct-income-invoice-tax-rates">
@@ -166,6 +179,22 @@ export default function DirectIncomeInvoice() {
               list="direct-income-invoice-clients" placeholder="Start typing…" style={inputStyle} />
           </div>
         </div>
+
+        {billToRows.length > 0 && (
+          <div style={{ marginTop: 16, paddingTop: 14, borderTop: '0.5px solid #e8eaed' }}>
+            {label('Bill to (as it will print on the invoice)')}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '4px 20px' }}>
+              {billToRows.map(r => (
+                <div key={r.field} style={{ display: 'flex', gap: 6, fontSize: 12 }}>
+                  <span style={{ color: '#7A8090', minWidth: 96, flexShrink: 0 }}>{r.field}</span>
+                  {r.value
+                    ? <span style={{ color: '#2A3545' }}>{r.value}</span>
+                    : <span style={{ color: '#CBD5E1', fontStyle: 'italic' }}>{r.field === 'Name' ? '—' : 'Not yet filled in'}</span>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       <div style={{ background: '#fff', borderRadius: 10, border: '0.5px solid #e8eaed', overflow: 'hidden', marginBottom: 16 }}>

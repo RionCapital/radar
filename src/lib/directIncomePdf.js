@@ -66,6 +66,12 @@ export function formatAddressLines(raw) {
 export function downloadTaxInvoicePdf(entry, suppliers) {
   const issuer = loadIssuer()
   const supplier = (suppliers || []).find(s => s.name === entry.supplierName)
+  // "Bill to" block shows Name, Full Legal Name, ABN, ACN, Address as
+  // separate lines — Name is whatever was typed/selected in the payee
+  // picker, Full Legal Name is the matched Marketing contact's "company"
+  // field (only shown when it's set and actually differs from Name).
+  const billToShortName = entry.supplierName || '—'
+  const billToLegalName = supplier?.company && supplier.company !== billToShortName ? supplier.company : ''
   const billToName = supplier?.company || entry.supplierName || '—'
   const supplierAddr = formatAddressLines(supplier?.address)
   const issuerAddr = formatAddressLines(issuer.addressLine1)
@@ -83,11 +89,13 @@ export function downloadTaxInvoicePdf(entry, suppliers) {
   doc.text('TAX INVOICE', 14, y); y += 10
 
   doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(40)
-  doc.text(billToName, 14, y); y += 5
+  doc.text(billToShortName, 14, y); y += 5
+  if (billToLegalName) { doc.text(billToLegalName, 14, y); y += 5 }
+  if (supplier?.abn) { doc.text(`ABN ${supplier.abn}`, 14, y); y += 5 }
+  if (supplier?.acn) { doc.text(`ACN ${supplier.acn}`, 14, y); y += 5 }
   if (supplierAddr.line1) { doc.text(supplierAddr.line1, 14, y); y += 5 }
   if (supplierAddr.line2) { doc.text(supplierAddr.line2, 14, y); y += 5 }
   if (supplierAddr.country) { doc.text(supplierAddr.country, 14, y); y += 5 }
-  if (supplier?.abn) { doc.text(`ABN ${supplier.abn}`, 14, y); y += 5 }
 
   let my = 58
   doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(...NAVY_RGB)

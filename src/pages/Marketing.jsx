@@ -894,13 +894,14 @@ function ContactDetail({ contact, section, onBack, onSave, onDelete, onMove, rra
 
           // Build field list based on section — always show all relevant fields
           const fields = [
+            { label:'Full Legal Name', value:contact.company },
+            { label:'ABN',            value:contact.abn },
+            { label:'ACN',            value:contact.acn },
+            { label:'Address',        value:contact.address },
             { label:'Email',          value:contact.email,          icon:'✉' },
             { label:'Mobile',         value:contact.mobile,         icon:'📱' },
             { label:'Bus. Phone',     value:contact.busPhone,       icon:'📞' },
-            { label:'Full Legal Name', value:contact.company },
             { label:'Type / Role',    value:contact.type },
-            { label:'Address',        value:contact.address },
-            { label:'ABN',            value:contact.abn },
             { label:`DOB${ageVal ? ` (${ageVal}yrs)` : ''}`, value: dobDisplay || contact.dob || '' },
             ...(clientSince ? [{ label:'Client Since', value: (() => { try { return new Date(clientSince).toLocaleDateString('en-AU',{day:'2-digit',month:'short',year:'numeric'}) } catch { return clientSince } })() }] : []),
             ...(section === 'clients' ? [
@@ -1061,11 +1062,12 @@ function EditContactModal({ contact, section, onChange, onSave, onClose }) {
   return (
     <Modal title={f.id ? 'Edit Contact' : 'Add Contact'} onClose={onClose}>
       <Input label="Full Name *" value={f.name || ''} onChange={e => set('name', e.target.value)} />
+      <Input label="Full Legal Name" value={f.company || ''} onChange={e => set('company', e.target.value)} />
+      <Input label="ABN" value={f.abn || ''} onChange={e => set('abn', e.target.value)} />
+      <Input label="ACN" value={f.acn || ''} onChange={e => set('acn', e.target.value)} />
+      <Input label="Address" value={f.address || ''} onChange={e => set('address', e.target.value)} />
       <Input label="Email" value={f.email || ''} onChange={e => set('email', e.target.value)} />
       <Input label="Mobile" value={f.mobile || ''} onChange={e => set('mobile', e.target.value)} />
-      <Input label="Full Legal Name" value={f.company || ''} onChange={e => set('company', e.target.value)} />
-      <Input label="Address" value={f.address || ''} onChange={e => set('address', e.target.value)} />
-      <Input label="ABN" value={f.abn || ''} onChange={e => set('abn', e.target.value)} />
 
       {section === 'clients' && (
         <>
