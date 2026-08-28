@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { totalBal, fmt } from '../lib/data'
+import { daysSinceReview } from '../lib/dateUtils'
 import { Panel, ClientRow } from '../components/UI'
 import AddClient from './AddClient'
 
@@ -65,6 +66,7 @@ export default function ClientList({ clients, onAddClient }) {
         {list.length > 0 ? list.map(c => {
           const bal = c.loans.filter(l=>!l.closed).reduce((s,l)=>s+(l.balance||0),0)
           const isComm = c.stream==='Commercial'
+          const days = daysSinceReview(c)
           return (
             <div key={c.name} onClick={()=>navigate(`/radar/clients/${encodeURIComponent(c.name)}`)}
               style={{display:'grid',gridTemplateColumns:'80px 1fr 100px 80px 80px 60px',gap:8,padding:'8px 6px',borderBottom:'0.5px solid var(--border-light)',cursor:'pointer',borderRadius:6,alignItems:'center'}}
@@ -83,7 +85,7 @@ export default function ClientList({ clients, onAddClient }) {
               <div><span style={{padding:'2px 7px',borderRadius:20,fontSize:9,fontWeight:500,background:isComm?'#eef1f5':'#fdf0f6',color:isComm?'#2A3D54':'#EB99C2'}}>{c.stream==='Private Wealth'?'PW':'Comm'}</span></div>
               <div style={{fontSize:11,color:'var(--text-secondary)'}}>{c.loans.length} loan{c.loans.length!==1?'s':''}</div>
               <div style={{fontSize:11,fontWeight:500,color:'var(--text-primary)'}}>{bal>0?fmt(bal):'—'}</div>
-              <div>{c.days>365?<span style={{padding:'2px 7px',borderRadius:20,fontSize:10,background:'#fde8e8',color:'#c0392b',fontWeight:500}}>{c.days}d</span>:c.days>180?<span style={{padding:'2px 7px',borderRadius:20,fontSize:10,background:'#fef3e2',color:'#b7770d',fontWeight:500}}>{c.days}d</span>:<span style={{padding:'2px 7px',borderRadius:20,fontSize:10,background:'#e8f5e9',color:'#2e7d32',fontWeight:500}}>{c.days>0?c.days+'d':'new'}</span>}</div>
+              <div>{days>365?<span style={{padding:'2px 7px',borderRadius:20,fontSize:10,background:'#fde8e8',color:'#c0392b',fontWeight:500}}>{days}d</span>:days>180?<span style={{padding:'2px 7px',borderRadius:20,fontSize:10,background:'#fef3e2',color:'#b7770d',fontWeight:500}}>{days}d</span>:<span style={{padding:'2px 7px',borderRadius:20,fontSize:10,background:'#e8f5e9',color:'#2e7d32',fontWeight:500}}>{days>0?days+'d':'new'}</span>}</div>
             </div>
           )
         }) : (

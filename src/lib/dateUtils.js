@@ -52,6 +52,25 @@ export function expiryBadge(val) {
   return { label: `${days} days`, bg:'#e8f5e9', color:'#2e7d32' }
 }
 
+// "Days Since Review" — calculated live from the client's lastReviewDate
+// every time it's read, rather than trusting a stored `days` counter.
+// The stored counter only ever changes when someone marks a review done
+// (reset to 0) — nothing increments it day by day, so it silently drifts
+// stale the longer a review sits overdue (e.g. a client not reviewed
+// since 16-Jun-25 would keep showing whatever day-count it had at import
+// time, not the real elapsed count). Falls back to the stored `days`
+// field only for the rare legacy record with no lastReviewDate at all.
+export function daysSinceReview(client) {
+  if (!client) return 0
+  if (!client.lastReviewDate) return client.days || 0
+  const reviewed = new Date(client.lastReviewDate)
+  if (isNaN(reviewed)) return client.days || 0
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  reviewed.setHours(0, 0, 0, 0)
+  return Math.max(0, Math.round((today - reviewed) / 86400000))
+}
+
 export function loanFlag(loan) {
   const fields = [loan.fixed, loan.io, loan.balloon].filter(Boolean)
   if (!fields.length) return null

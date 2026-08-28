@@ -1,9 +1,9 @@
 import React, { useState, useCallback, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { totalBal, totalAmt, pwBal, commBal, fmt, calcOpp, ini, LOAN_TYPES, BANKS } from '../lib/data'
-import { loadSettings, getBrokerOptions } from '../lib/settings'
+import { totalBal, totalAmt, pwBal, commBal, fmt, calcOpp, ini, BANKS } from '../lib/data'
+import { loadSettings, getBrokerOptions, getLoanTypes } from '../lib/settings'
 import { sbLoadMarketing, sbSaveMarketing } from '../lib/supabase'
-import { fmtDate, dateCellStyle, loanFlag, effectiveRpmt, calcRepayment } from '../lib/dateUtils'
+import { fmtDate, dateCellStyle, loanFlag, effectiveRpmt, calcRepayment, daysSinceReview } from '../lib/dateUtils'
 import { Panel, PanelTitle, EditBtn, SaveBtn, CancelBtn, ActionBtn, FieldGroup, Pill, DateInput } from '../components/UI'
 import ReferrerPicker from '../components/ReferrerPicker'
 import NewOpportunityModal from '../components/NewOpportunityModal'
@@ -357,8 +357,15 @@ export default function ClientDashboard({ clients, updateClient }) {
 
   if (!client) return <div style={{padding:24}}>Client not found.</div>
 
+  // Calculated live from lastReviewDate every time this page opens, rather
+  // than trusting the stored `client.days` counter — that counter only
+  // ever changes when a review is marked done (reset to 0), so it drifts
+  // stale the longer a review sits overdue instead of tracking real time.
+  const reviewDays = daysSinceReview(client)
+
   const settings = loadSettings()
   const brokerOptions = getBrokerOptions(settings)
+  const loanTypeOptions = getLoanTypes(settings)
 
   const bal = totalBal(client), amt = totalAmt(client)
   const pw = pwBal(client), comm = commBal(client)
@@ -388,7 +395,7 @@ export default function ClientDashboard({ clients, updateClient }) {
     if (f==='overdue') return 'overdue'
     if (f==='warn' && worst!=='overdue') return 'warn'
     return worst
-  }, client.days >= 365 ? 'overdue' : null)
+  }, reviewDays >= 365 ? 'overdue' : null)
   const flagStyle = worstFlag==='overdue' ? {background:'#fde8e8',color:'#a32d2d'} : worstFlag==='warn' ? {background:'#fef9c3',color:'#854F0B'} : null
 
   function startEdit(section) { setEditSection(section); setDraft(JSON.parse(JSON.stringify(client[section]||[]))) }
@@ -507,7 +514,7 @@ export default function ClientDashboard({ clients, updateClient }) {
           {/* Portfolio */}
           <div style={{background:'rgba(255,255,255,0.08)',borderRadius:8,padding:'10px 14px'}}>
             <div style={{fontSize:10,color:'var(--sbl)',marginBottom:6,textTransform:'uppercase',letterSpacing:'0.05em'}}>Portfolio</div>
-            {[['Opp. score ↗',oppTotal,isPriority?'#EB99C2':'var(--pk)'],['No. of accounts',client.loans.length,'#fff'],['Days since review',client.days>0?client.days+'d':'Today',client.days>365?'#e74c3c':client.days>180?'#e8a020':'#27ae60']].map(([l,v,c])=>(
+            {[['Opp. score ↗',oppTotal,isPriority?'#EB99C2':'var(--pk)'],['No. of accounts',client.loans.length,'#fff'],['Days since review',reviewDays>0?reviewDays+'d':'Today',reviewDays>365?'#e74c3c':reviewDays>180?'#e8a020':'#27ae60']].map(([l,v,c])=>(
               <div key={l} onClick={l.includes('↗')?()=>navigate(`/radar/clients/${encodeURIComponent(client.name)}/opportunity`):undefined}
                 style={{display:'flex',justifyContent:'space-between',fontSize:12,marginBottom:3,cursor:l.includes('↗')?'pointer':'default',borderRadius:4,padding:'1px 3px',transition:'background 0.15s'}}
                 onMouseOver={e=>l.includes('↗')&&(e.currentTarget.style.background='rgba(218,64,141,0.2)')}
@@ -523,11 +530,11 @@ export default function ClientDashboard({ clients, updateClient }) {
             {(() => {
               const flagItems = []
               // Annual review overdue (days >= 365)
-              if (client.days >= 365) {
+              if (reviewDays >= 365) {
                 flagItems.push(
                   <div key="review" style={{fontSize:11,padding:'3px 0',display:'flex',gap:6,alignItems:'center'}}>
                     <span style={{width:7,height:7,borderRadius:'50%',background:'#e74c3c',display:'inline-block',flexShrink:0}}/>
-                    <span style={{color:'#fca5a5',fontSize:10}}>Annual review overdue ({client.days}d)</span>
+                    <span style={{color:'#fca5a5',fontSize:10}}>Annual review overdue ({reviewDays}d)</span>
                   </div>
                 )
               }
@@ -684,7 +691,7 @@ export default function ClientDashboard({ clients, updateClient }) {
                       </div>
                     </td>
                     <td style={tdStyle()}><select value={ld.type||''} onChange={e=>setLoanDraft({...loanDraft,type:e.target.value})} style={{width:110,fontSize:10,padding:'2px 4px',borderRadius:4,border:'0.5px solid var(--border)',background:'var(--bg)'}}>
-                      {LOAN_TYPES.map(t=><option key={t}>{t}</option>)}
+                      {loanTypeOptions.map(t=><option key={t}>{t}</option>)}
                     </select></td>
                     <td style={tdStyle()}><input value={ld.bank||''} onChange={e=>setLoanDraft({...loanDraft,bank:e.target.value})} style={{width:50,fontSize:10,padding:'2px 4px',borderRadius:4,border:'0.5px solid var(--border)',background:'var(--bg)'}}/></td>
                     <td style={tdStyle()}><input value={ld.assetDesc||''} onChange={e=>setLoanDraft({...loanDraft,assetDesc:e.target.value})} style={{width:120,fontSize:10,padding:'2px 4px',borderRadius:4,border:'0.5px solid var(--border)',background:'var(--bg)'}}/></td>

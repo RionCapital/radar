@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { totalBal, fmt, liveOppTotal } from '../lib/data'
-import { fmtDate, rollingYTD, quarterlyIncome, expiryBadge, daysUntil } from '../lib/dateUtils'
+import { fmtDate, rollingYTD, quarterlyIncome, expiryBadge, daysUntil, daysSinceReview } from '../lib/dateUtils'
 import { Panel, PanelTitle, DayBadge } from '../components/UI'
 import { sbSaveTicked, sbLoadTicked } from '../lib/supabase'
 import { loadDirectIncomeLocal, syncDirectIncomeFromSupabase, invoiceTotals } from '../lib/directIncome'
@@ -63,7 +63,12 @@ function computeImportedCommission(clients) {
       ;(l.commissionHistory || []).forEach(h => {
         if (!monthMap[h.month]) monthMap[h.month] = { trail: 0, upfront: 0, total: 0 }
         monthMap[h.month].trail   += h.trailComm   || 0
-        monthMap[h.month].upfront += h.upfrontComm || 0
+        // GST isn't shown as its own line anywhere Cameron looks at this
+        // data — it was only ever inside `total` (the actual amount paid),
+        // invisible in the Trail/Upfront breakdown. That made Trail +
+        // Upfront/Direct look like it didn't add up to Total. Folding it
+        // into Upfront here means the visible figures reconcile exactly.
+        monthMap[h.month].upfront += (h.upfrontComm || 0) + (h.gst || 0)
         monthMap[h.month].total   += h.totalPaid   || 0
       })
     })
@@ -125,16 +130,17 @@ function mergeCommission(clients, directByMonth = {}) {
 function buildAnnualRows(clients) {
   return clients
     .filter(c => !c._demo && c.loans.filter(l => !l.closed).length > 0)
+    .map(c => ({ c, days: daysSinceReview(c) }))
     .sort((a, b) => b.days - a.days)
     .slice(0, 30)
-    .map(c => {
+    .map(({ c, days }) => {
       const loan = c.loans.find(l => !l.closed) || c.loans[0]
       return {
         conn: c.name,
         client: loan.lname || c.name,
         acc: loan.acc || '—',
         balance: loan.balance || 0,
-        days: c.days,
+        days,
         score: liveOppTotal(c),
       }
     })
@@ -151,7 +157,7 @@ function buildFixedRows(clients) {
         client: l.lname || c.name,
         acc: l.acc || '—',
         balance: l.balance || 0,
-        days: c.days || 0,
+        days: daysSinceReview(c),
         score: liveOppTotal(c),
         expiryDate: l.fixed,
       })
@@ -171,7 +177,7 @@ function buildIORows(clients) {
         client: l.lname || c.name,
         acc: l.acc || '—',
         balance: l.balance || 0,
-        days: c.days || 0,
+        days: daysSinceReview(c),
         score: liveOppTotal(c),
         expiryDate: l.io,
       })
@@ -203,7 +209,7 @@ function buildMaturingRows(clients) {
         acc: l.acc || '—',
         loanType: l.type || '',
         balance: l.balance || 0,
-        days: c.days || 0,
+        days: daysSinceReview(c),
         score: liveOppTotal(c),
         expiryDate: l.maturity,
       })
@@ -474,7 +480,7 @@ export default function Dashboard({ clients, onImport, onUpdateClients }) {
   const allLoans = clients.flatMap(c => c.loans)
   const pwTotal = clients.filter(c => c.stream === 'Private Wealth' && !c._demo).flatMap(c => c.loans).filter(l => !l.closed).reduce((s, l) => s + (l.balance || 0), 0)
   const commTotal = clients.filter(c => c.stream === 'Commercial' && !c._demo).flatMap(c => c.loans).filter(l => !l.closed).reduce((s, l) => s + (l.balance || 0), 0)
-  const overdue = clients.filter(c => !c._demo && c.days >= 365).length
+  const overdue = clients.filter(c => !c._demo && daysSinceReview(c) >= 365).length
   const triggers = clients.filter(c => !c._demo && c.loans.some(l => l.io || l.fixed || l.balloon)).length
   const rolling12 = rollingYTD(COMM)
   const quarters = quarterlyIncome(COMM)
