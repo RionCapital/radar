@@ -1,7 +1,15 @@
 // Commission rates and app settings — stored in localStorage + Supabase
 import { sbLoadSettings, sbSaveSettings } from './supabase.js'
+import { LOAN_TYPES } from './data.js'
 
 const SETTINGS_KEY = 'rion-settings-v1'
+
+// Loan types whose exact string is depended on elsewhere in the app —
+// MAF drives the parcels page + dashboard routing (loan.type==='MAF'), and
+// Asset Finance drives the calculated balance graph on the loan detail page
+// (loan.type==='Asset Finance'). These can be reordered like any other type
+// but not renamed or removed — editable in Settings > CRM > Loan Types.
+export const PROTECTED_LOAN_TYPES = ['Asset Finance', 'MAF']
 
 export const DEFAULT_SETTINGS = {
   commissionRates: {
@@ -41,6 +49,13 @@ export const DEFAULT_SETTINGS = {
     settlementCount: 3,
     settlementDollar: 1000000,
   },
+  // Loan types offered in every "+ Add loan" / loan-type dropdown across
+  // the app — editable in Settings > CRM > Loan Types. A plain list of
+  // strings, stored directly on each loan as loan.type; renaming an entry
+  // here only changes what shows up for loans added from now on, it does
+  // NOT retroactively rename existing loans (unlike CRM > Stages, there's
+  // no id-based indirection here). See PROTECTED_LOAN_TYPES above.
+  loanTypes: LOAN_TYPES,
   // CRM pipeline stages — editable in Settings > CRM > Stages. `id` is
   // permanent and never shown; it's what every page uses internally to
   // recognise a stage (e.g. "this deal is Settled") so a deal's Status
@@ -274,4 +289,13 @@ export function getDealStages(settingsArg) {
 export function stageDisplay(id, settingsArg) {
   const found = getDealStages(settingsArg).find(s => s.id === id)
   return found ? found.display : ''
+}
+
+// The single source of truth for "what loan types show up in every
+// '+ Add loan' / loan-type dropdown" — read through this rather than
+// importing LOAN_TYPES from lib/data.js directly, so a broker's edits in
+// Settings > CRM > Loan Types take effect everywhere at once.
+export function getLoanTypes(settingsArg) {
+  const settings = settingsArg || loadSettings()
+  return (settings.loanTypes && settings.loanTypes.length) ? settings.loanTypes : DEFAULT_SETTINGS.loanTypes
 }

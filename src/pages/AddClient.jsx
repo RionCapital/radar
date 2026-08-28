@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
-import { LOAN_TYPES, BANKS } from '../lib/data'
+import { BANKS } from '../lib/data'
+import { getLoanTypes } from '../lib/settings'
 import { FieldGroup, SaveBtn, CancelBtn, DateInput } from '../components/UI'
 
 const blank = () => ({
@@ -15,6 +16,7 @@ export default function AddClient({ clients, onSave, onClose }) {
   const nextConnNo = Math.max(...(clients||[]).map(c => c.connNo || 0), 1099) + 1
   const [client, setClient] = useState(() => ({ ...blank(), connNo: nextConnNo }))
   const [errors, setErrors] = useState({})
+  const loanTypeOptions = getLoanTypes()
 
   const set = (field, val) => setClient(c => ({ ...c, [field]: val }))
 
@@ -100,7 +102,7 @@ export default function AddClient({ clients, onSave, onClose }) {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 8, marginBottom: 8 }}>
               <FieldGroup label="Type">
                 <select style={inp} value={l.type} onChange={e => { const ls=[...client.loans]; ls[i]={...ls[i],type:e.target.value}; set('loans',ls) }}>
-                  {LOAN_TYPES.map(t => <option key={t}>{t}</option>)}
+                  {loanTypeOptions.map(t => <option key={t}>{t}</option>)}
                 </select>
               </FieldGroup>
               <FieldGroup label="Bank">

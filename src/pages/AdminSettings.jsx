@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { loadSettings, saveSettings, syncSettingsFromSupabase, DEFAULT_SETTINGS, getCurrentUser, getDealStages } from '../lib/settings'
+import { loadSettings, saveSettings, syncSettingsFromSupabase, DEFAULT_SETTINGS, getCurrentUser, getDealStages, getLoanTypes, PROTECTED_LOAN_TYPES } from '../lib/settings'
 import { loadDeals, saveDeals as libSaveDeals } from '../lib/deals'
 import { icon_crm, icon_radar, icon_marketing, icon_planner, icon_studio } from '../lib/icons'
 
@@ -204,6 +204,49 @@ export default function AdminSettings({ clients, onUpdateClients }) {
     setTimeout(() => setStagesSaved(false), 3000)
   }
 
+  // ── CRM > Loan Types ────────────────────────────────────────────────────
+  // Unlike Stages, a loan's type is stored as a plain string directly on
+  // the loan record (loan.type) — there's no id-based indirection to
+  // cascade a rename through, so this edits settings.loanTypes directly and
+  // rides the page's normal "Save changes" button rather than needing its
+  // own migration step. 'Asset Finance' and 'MAF' are locked (can reorder,
+  // can't rename or remove) because other pages key real behaviour off
+  // those exact strings — see PROTECTED_LOAN_TYPES in lib/settings.js.
+  const loanTypesDraft = getLoanTypes(settings)
+  const [newLoanTypeLabel, setNewLoanTypeLabel] = useState('')
+  function loanTypeUsageCount(type) {
+    return (clients || []).reduce((n, c) => n + (c.loans || []).filter(l => l.type === type).length, 0)
+  }
+  function setLoanTypes(list) { setSettings(s => ({ ...s, loanTypes: list })) }
+  function updateLoanType(idx, value) {
+    setLoanTypes(loanTypesDraft.map((t, i) => i === idx ? value : t))
+  }
+  function moveLoanType(idx, dir) {
+    const j = idx + dir
+    if (j < 0 || j >= loanTypesDraft.length) return
+    const copy = [...loanTypesDraft]
+    ;[copy[idx], copy[j]] = [copy[j], copy[idx]]
+    setLoanTypes(copy)
+  }
+  function addLoanType() {
+    const label = (newLoanTypeLabel || '').trim()
+    if (!label) return
+    if (loanTypesDraft.includes(label)) { alert('That loan type already exists.'); return }
+    setLoanTypes([...loanTypesDraft, label])
+    setNewLoanTypeLabel('')
+  }
+  function removeLoanType(idx) {
+    const type = loanTypesDraft[idx]
+    if (PROTECTED_LOAN_TYPES.includes(type)) return
+    const count = loanTypeUsageCount(type)
+    if (count > 0) {
+      alert(`Can't remove "${type}" — ${count} loan${count!==1?'s':''} currently use this type. Change ${count!==1?'them':'it'} to another type first.`)
+      return
+    }
+    if (!window.confirm(`Remove the "${type}" loan type?`)) return
+    setLoanTypes(loanTypesDraft.filter((_, i) => i !== idx))
+  }
+
   // ── CRM > Communication ────────────────────────────────────────────────
   const [expandedTemplateId, setExpandedTemplateId] = useState(null)
   function addTemplate() {
@@ -278,6 +321,7 @@ export default function AdminSettings({ clients, onUpdateClients }) {
     ],
     crm: [
       { id:'stages', label:'Stages' },
+      { id:'loanTypes', label:'Loan Types' },
       { id:'communication', label:'Communication' },
     ],
   }
@@ -446,6 +490,49 @@ export default function AdminSettings({ clients, onUpdateClients }) {
               </div>
               <div style={{ marginTop:14, padding:'10px 12px', background:'#fef9c3', borderRadius:7, fontSize:11, color:'#78350f' }}>
                 💡 This button saves and migrates deals immediately — separate from the page's main "Save changes" button, since a rename here needs to update deal records at the same moment, not just settings.
+              </div>
+            </Card>
+          )}
+
+          {/* CRM > Loan Types */}
+          {section==='crm' && tab==='loanTypes' && (
+            <Card style={{ marginBottom:16 }}>
+              <CardTitle>Loan types</CardTitle>
+              <div style={{ fontSize:11, color:'#7A8090', marginBottom:14, lineHeight:1.5 }}>
+                These are the options offered in every "+ Add loan" / loan-type dropdown across the app. Use the arrows to reorder. Renaming a type here only affects loans added from now on — it doesn't rename loans that already use the old label. <strong>Asset Finance</strong> and <strong>MAF</strong> are locked because other parts of the app (the calculated balance graph, the MAF parcels page) key off those exact names.
+              </div>
+              {loanTypesDraft.map((t, i) => {
+                const locked = PROTECTED_LOAN_TYPES.includes(t)
+                const count = loanTypeUsageCount(t)
+                return (
+                  <div key={i} style={{ display:'flex', alignItems:'center', gap:10, padding:'7px 0', borderBottom:'0.5px solid #f0f0f0' }}>
+                    <div style={{ display:'flex', flexDirection:'column', gap:1 }}>
+                      <button onClick={() => moveLoanType(i,-1)} disabled={i===0}
+                        style={{ width:20, height:16, fontSize:9, lineHeight:1, border:'1px solid #e8eaed', background:'#fff', borderRadius:'4px 4px 0 0', cursor: i===0?'default':'pointer', color: i===0?'#d1d5db':'#7A8090', padding:0 }}>▲</button>
+                      <button onClick={() => moveLoanType(i,1)} disabled={i===loanTypesDraft.length-1}
+                        style={{ width:20, height:16, fontSize:9, lineHeight:1, border:'1px solid #e8eaed', borderTop:'none', background:'#fff', borderRadius:'0 0 4px 4px', cursor: i===loanTypesDraft.length-1?'default':'pointer', color: i===loanTypesDraft.length-1?'#d1d5db':'#7A8090', padding:0 }}>▼</button>
+                    </div>
+                    <input style={{ ...inp, flex:1, background: locked ? '#f8f9fa' : '#fff', color: locked ? '#9ca3af' : '#2A3545' }} value={t} readOnly={locked}
+                      onChange={e => updateLoanType(i, e.target.value)} />
+                    {locked && <span style={{ fontSize:9, fontWeight:700, color:'#3D4F6B', background:'#eef4fb', padding:'2px 7px', borderRadius:10, textTransform:'uppercase', letterSpacing:'0.04em', flexShrink:0 }}>Built-in</span>}
+                    <span style={{ fontSize:10, color:'#9ca3af', minWidth:64, textAlign:'right', flexShrink:0 }}>{count} loan{count!==1?'s':''}</span>
+                    <button onClick={() => removeLoanType(i)} disabled={locked}
+                      style={{ fontSize:10, padding:'4px 10px', borderRadius:5, border: locked ? '1px solid #e8eaed' : '1px solid #fecaca', background:'#fff', color: locked ? '#d1d5db' : '#dc2626', cursor: locked ? 'default' : 'pointer', flexShrink:0 }}>
+                      Remove
+                    </button>
+                  </div>
+                )
+              })}
+              <div style={{ display:'flex', gap:8, marginTop:14 }}>
+                <input style={inp} placeholder="New loan type…" value={newLoanTypeLabel}
+                  onChange={e => setNewLoanTypeLabel(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addLoanType() } }} />
+                <button onClick={addLoanType} style={{ fontSize:12, padding:'7px 16px', borderRadius:7, border:'none', background:'#3D4F6B', color:'#fff', fontWeight:600, cursor:'pointer', whiteSpace:'nowrap' }}>
+                  + Add loan type
+                </button>
+              </div>
+              <div style={{ marginTop:16, fontSize:11, color:'#7A8090' }}>
+                Changes here are saved with the page's main "Save changes" button, top right.
               </div>
             </Card>
           )}
