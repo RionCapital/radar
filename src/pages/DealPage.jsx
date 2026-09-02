@@ -2506,6 +2506,89 @@ function AttachmentsTab({ deal, deals, setDeals, editing, d, set }) {
     else notifySaveFailed('attachments', { error: 'Could not generate a link for this file — check the deal-attachments Storage bucket exists.' })
   }
 
+  // Bundles every file currently attached across all sections into a single
+  // zip — one folder per section, named after that section's own heading
+  // (e.g. "Financial Information"), so the download mirrors the checklist
+  // the broker already sees on screen. Named after the deal itself, matching
+  // how Cameron refers to deals elsewhere (e.g. "Prattent (3)").
+  const [zipping, setZipping] = useState(false)
+  const [zipError, setZipError] = useState(null)
+  async function downloadAllAttachments() {
+    setZipError(null)
+    const filesBySection = sections.map(sec => ({
+      heading: sec.heading,
+      files: sec.items.flatMap(it => [
+        ...(it.files || []),
+        ...((it.subItems || []).flatMap(su => su.files || [])),
+      ]),
+    })).filter(sec => sec.files.length > 0)
+
+    if (filesBySection.length === 0) {
+      setZipError('No attachments have been uploaded yet — nothing to download.')
+      return
+    }
+
+    setZipping(true)
+    try {
+      const { default: JSZip } = await import('jszip')
+      const zip = new JSZip()
+      const failedNames = []
+
+      for (const { heading, files } of filesBySection) {
+        // JSZip treats "/" in a folder name as a path separator, which would
+        // silently split a heading like "Director/Shareholder Information"
+        // into two nested folders instead of the single folder Cameron
+        // expects — swap it for a dash so the heading stays intact as one
+        // folder name.
+        const folderName = heading.replace(/[\\/]/g, '-')
+        const folder = zip.folder(folderName)
+        const usedNames = new Set()
+        for (const f of files) {
+          const url = await sbGetAttachmentUrl(f.path)
+          if (!url) { failedNames.push(f.name); continue }
+          try {
+            const res = await fetch(url)
+            if (!res.ok) { failedNames.push(f.name); continue }
+            const blob = await res.blob()
+            let name = f.name || 'file'
+            if (usedNames.has(name)) {
+              const dot = name.lastIndexOf('.')
+              const base = dot > 0 ? name.slice(0, dot) : name
+              const ext = dot > 0 ? name.slice(dot) : ''
+              let n = 2
+              while (usedNames.has(`${base} (${n})${ext}`)) n++
+              name = `${base} (${n})${ext}`
+            }
+            usedNames.add(name)
+            folder.file(name, blob)
+          } catch {
+            failedNames.push(f.name)
+          }
+        }
+      }
+
+      const zipBlob = await zip.generateAsync({ type: 'blob' })
+      const zipName = (deal['Transaction Name'] || 'Attachments').replace(/[\\/:*?"<>|]/g, '').trim() + '.zip'
+      const url = URL.createObjectURL(zipBlob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = zipName
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+
+      if (failedNames.length > 0) {
+        setZipError(`Zip downloaded, but ${failedNames.length} file(s) couldn't be fetched: ${failedNames.join(', ')}`)
+      }
+    } catch (err) {
+      setZipError('Something went wrong building the zip — please try again.')
+      console.warn('Attachment zip failed:', err)
+    } finally {
+      setZipping(false)
+    }
+  }
+
   // Renders the inline file links + attach control shared by every row —
   // master items, plain items, and sub-items alike.
   function UploadTrigger({ uploadKey, onUpload }) {
@@ -2551,7 +2634,14 @@ function AttachmentsTab({ deal, deals, setDeals, editing, d, set }) {
           <span style={{ fontSize:10.5, color:'#9ca3af' }}>{doneCount}/{allLeaf.length} received</span>
         </div>
         <div style={{ fontSize:10.5, color:'#9ca3af', marginBottom:12 }}>Changing this replaces the checklist below with that transaction type's own requirements.</div>
-        <EmailClientsButton deal={deal} navigate={navigate} />
+        <div style={{ display:'flex', gap:10, alignItems:'center', flexWrap:'wrap' }}>
+          <EmailClientsButton deal={deal} navigate={navigate} />
+          <button onClick={downloadAllAttachments} disabled={zipping}
+            style={{ padding:'7px 12px', borderRadius:6, border:'1px solid #3D4F6B', background:'#fff', color:'#3D4F6B', fontWeight:600, fontSize:11.5, cursor: zipping ? 'default' : 'pointer', display:'flex', alignItems:'center', gap:6, opacity: zipping ? 0.6 : 1 }}>
+            ⬇ {zipping ? 'Zipping…' : 'Download all'}
+          </button>
+        </div>
+        {zipError && <div style={{ fontSize:11, color:'#c0392b', marginTop:8 }}>{zipError}</div>}
       </TabCard>
 
       {sections.map((sec, si) => (
