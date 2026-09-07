@@ -1157,29 +1157,45 @@ function EditContactModal({ contact, section, onChange, onSave, onClose }) {
 }
 
 // ─── Contact List ─────────────────────────────────────────────────────────────
+// A contact's name is stored as one free-text field ("Chris Angel") rather
+// than separate first/last fields — fine for display, but useless for a
+// mail-merge greeting ("Hi {{First Name}},"). This splits it the same
+// simple way any mail-merge tool would: first word is the first name,
+// everything else is the last name. Good enough for the vast majority of
+// real names; anything unusual (a single name, a title prefix) just lands
+// however a human doing the same split by eye would read it, and is easy
+// to hand-correct in the spreadsheet afterward.
+function splitName(fullName) {
+  const parts = String(fullName || '').trim().split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return { first: '', last: '' }
+  if (parts.length === 1) return { first: parts[0], last: '' }
+  return { first: parts[0], last: parts.slice(1).join(' ') }
+}
+
 // ─── CSV Export ──────────────────────────────────────────────────────────────
 function exportToCSV(contacts, section, label) {
   const cols = section === 'clients'
-    ? ['Name','Email','Mobile','Connection','Connection #','Stream','Profession','Industry','Preferred Contact','Referred By','Spouse/Partner','LinkedIn','Unsubscribed']
+    ? ['Name','First Name','Last Name','Email','Mobile','Connection','Connection #','Stream','Profession','Industry','Preferred Contact','Referred By','Spouse/Partner','LinkedIn','Unsubscribed']
     : section === 'referrers'
-    ? ['Name','Email','Mobile','Company','Type','Tier','LinkedIn','Preferred Contact','Referral Count','Unsubscribed']
+    ? ['Name','First Name','Last Name','Email','Mobile','Company','Type','Tier','LinkedIn','Preferred Contact','Referral Count','Unsubscribed']
     : section === 'lenders'
-    ? ['Name','Email','Mobile','Company','Type','BDM Name','BDM Email','BDM Mobile']
-    : ['Name','Email','Mobile','Company','Type']
+    ? ['Name','First Name','Last Name','Email','Mobile','Company','Type','BDM Name','BDM Email','BDM Mobile']
+    : ['Name','First Name','Last Name','Email','Mobile','Company','Type']
 
   const rows = contacts.map(c => {
+    const { first, last } = splitName(c.name)
     if (section === 'clients') return [
-      c.name, c.email, c.mobile, c._clientName, c._connNo, c.stream,
+      c.name, first, last, c.email, c.mobile, c._clientName, c._connNo, c.stream,
       c.profession, c.industry, c.preferredContact, c.referredBy,
       c.spouseName, c.linkedIn, c.unsubscribed ? 'Yes' : 'No'
     ]
     if (section === 'referrers') return [
-      c.name, c.email, c.mobile, c.company, c.type,
+      c.name, first, last, c.email, c.mobile, c.company, c.type,
       REFERRER_TIERS.find(t => t.id === c.tier)?.label || c.tier,
       c.linkedIn, c.preferredContact, c.referralCount, c.unsubscribed ? 'Yes' : 'No'
     ]
-    if (section === 'lenders') return [c.name, c.email, c.mobile, c.company, c.type, c.bdmName, c.bdmEmail, c.bdmMobile]
-    return [c.name, c.email, c.mobile, c.company, c.type]
+    if (section === 'lenders') return [c.name, first, last, c.email, c.mobile, c.company, c.type, c.bdmName, c.bdmEmail, c.bdmMobile]
+    return [c.name, first, last, c.email, c.mobile, c.company, c.type]
   })
 
   const esc = v => `"${String(v ?? '').replace(/"/g, '""')}"`
