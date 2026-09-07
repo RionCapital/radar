@@ -190,7 +190,11 @@ export default function DocumentRequestEmail() {
   // off. Cameron wants this to read as a personal email he typed himself
   // in Outlook, with Outlook's own default signature filling in the
   // sign-off underneath (that branded/corporate treatment stays on the
-  // Annual/Security Review emails instead).
+  // Annual/Security Review emails instead). That's also why there's no
+  // max-width on the body here (there used to be one, at 640px) — a
+  // hand-typed Outlook email just wraps to however wide the compose window
+  // is, so a fixed narrow column made this look machine-generated and left
+  // a large dead strip down the right side of the window instead.
   function buildHtml() {
     if (!sections || !template) return ''
     const checklistHtml = buildChecklistHtml(sections, { onlyOutstanding })
@@ -202,7 +206,7 @@ export default function DocumentRequestEmail() {
     // The greeting is deliberately plain text + <br/> here, not its own <p> —
     // see the comment on renderTemplateBodyHtml in emailUtils.js for why.
     return `<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="${EMAIL_FONT_CSS}margin:0;padding:0;color:#1a1a1a;line-height:1.5">
-      <div style="${EMAIL_FONT_CSS}max-width:640px">Hi ${escapeHtml(clientNameForTokens)},<br/><br/>
+      <div style="${EMAIL_FONT_CSS}">Hi ${escapeHtml(clientNameForTokens)},<br/><br/>
         ${body}
       </div></body></html>`
   }
