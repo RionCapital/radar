@@ -4,7 +4,7 @@ import { sbSaveMarketing, sbLoadMarketing } from '../lib/supabase'
 import { notifySaveFailed } from '../lib/saveStatus'
 import { loadDeals } from '../lib/deals'
 import { loadClients } from '../lib/data'
-import { loadSettings, getDealStages } from '../lib/settings'
+import { loadSettings, getDealStages, getTrainingCategories, getTrainingExercises } from '../lib/settings'
 import { logo_rion_notag } from '../lib/icons'
 
 const NAVY = '#3D5570'
@@ -44,24 +44,17 @@ const DEFAULT_SETTLEMENT_COUNT_TARGET = 3
 const DEFAULT_SETTLEMENT_DOLLAR_TARGET = 1000000
 const DEFAULT_TRAINING_TARGET = 6
 
-const TRAINING_OPTIONS = [
-  { value: '', label: '\u2014', cat: null },
-  { value: 'Run', label: 'Run', cat: 'Cardio' },
-  { value: 'Swim', label: 'Swim', cat: 'Cardio' },
-  { value: 'Walk', label: 'Walk', cat: 'Cardio' },
-  { value: 'Hyrox', label: 'Hyrox', cat: 'Cardio' },
-  { value: 'General PT', label: 'General PT', cat: 'Cardio' },
-  { value: 'Shadow Box', label: 'Shadow box', cat: 'Boxing' },
-  { value: 'Boxing', label: 'Boxing', cat: 'Boxing' },
-  { value: 'Boxing Contact', label: 'Boxing - contact', cat: 'Boxing' },
-  { value: 'Weights Upper', label: 'Weights - upper', cat: 'Strength' },
-  { value: 'Weights Lower', label: 'Weights - lower', cat: 'Strength' },
-  { value: 'Strength Cond', label: 'Strength & cond.', cat: 'Strength' },
-  { value: 'Recovery', label: 'Recovery', cat: 'Recovery' },
-]
-const TRAINING_CAT_BY_VALUE = TRAINING_OPTIONS.reduce((m, o) => { if (o.value) m[o.value] = o.cat; return m }, {})
-const TRAINING_CATS = ['Cardio', 'Boxing', 'Strength', 'Recovery']
-const TRAINING_CAT_COLOR = { Cardio: '#3D8BC4', Boxing: '#E0904F', Strength: '#6FAF4C', Recovery: PINK }
+// Training categories and exercises now come from Settings > Planner >
+// Exercises (see getTrainingCategories/getTrainingExercises in
+// lib/settings.js) rather than being hardcoded here \u2014 the four original
+// categories keep their original brand colours below; any custom category
+// added later cycles through the fallback palette, same pattern used for
+// custom CRM deal stages (see stageColorFor in CRM.jsx/DealPage.jsx).
+const TRAINING_CAT_COLOR_MAP = { cardio: '#3D8BC4', boxing: '#E0904F', strength: '#6FAF4C', recovery: PINK }
+const TRAINING_CAT_COLOR_FALLBACKS = ['#8b5cf6', '#0ea5e9', '#f59e0b', '#10b981', '#ef4444', '#6366f1']
+function trainingCatColor(id, index) {
+  return TRAINING_CAT_COLOR_MAP[id] || TRAINING_CAT_COLOR_FALLBACKS[index % TRAINING_CAT_COLOR_FALLBACKS.length]
+}
 
 // ─── date helpers ───────────────────────────────────────────────────────────
 function toISO(d) {
@@ -225,10 +218,17 @@ function completedStats(week) {
   return { meetings: doneMeetings.length, byType, lodgedTotal, settledTotal, lodgedCount: doneLodgements.length, settledCount: doneSettlements.length }
 }
 
-function trainingStats(week) {
-  const totals = { Cardio: 0, Boxing: 0, Strength: 0, Recovery: 0 }
+// `trainingCatByValue` maps each exercise's stable id to its current
+// categoryId. A session still counts toward `sessions` even when its
+// stored value no longer matches any current exercise (e.g. one that's
+// since been removed in Settings) — it just won't have a category to add
+// to `totals`, so a past week's tally doesn't silently shrink just because
+// the exercise list changed since.
+function trainingStats(week, trainingCategories, trainingOptions, trainingCatByValue) {
+  const totals = {}
+  trainingCategories.forEach(c => { totals[c.id] = 0 })
   const byOption = {}
-  TRAINING_OPTIONS.forEach(o => { if (o.value) byOption[o.value] = 0 })
+  trainingOptions.forEach(o => { byOption[o.id] = 0 })
   let sessions = 0
   const days = (week.training && week.training.days) || {}
   DAYS.forEach(d => {
@@ -237,8 +237,10 @@ function trainingStats(week) {
       const val = slot[s]
       const done = slot[`${s}Done`]
       if (val && done) {
-        const cat = TRAINING_CAT_BY_VALUE[val]
-        if (cat) { totals[cat] = (totals[cat] || 0) + 1; sessions++; byOption[val] = (byOption[val] || 0) + 1 }
+        sessions++
+        byOption[val] = (byOption[val] || 0) + 1
+        const cat = trainingCatByValue[val]
+        if (cat) totals[cat] = (totals[cat] || 0) + 1
       }
     })
   })
@@ -377,6 +379,23 @@ export default function Planner() {
   const NEAR_SETTLEMENT_STAGES = useMemo(() => dealStagesFull.filter(s => ['lodged','conditional','unconditional'].includes(s.id)).map(s => s.display), [dealStagesFull])
   const lodgedDisplay = dealStagesFull.find(s => s.id === 'lodged')?.display
   const settledDisplay = dealStagesFull.find(s => s.id === 'settled')?.display
+
+  // Training categories/exercises come from Settings > Planner > Exercises.
+  const trainingCategories = useMemo(() => getTrainingCategories(loadSettings()), [])
+  const trainingOptions = useMemo(() => getTrainingExercises(loadSettings()), [])
+  const trainingCatColorById = useMemo(() => {
+    const m = {}
+    trainingCategories.forEach((c, i) => { m[c.id] = trainingCatColor(c.id, i) })
+    return m
+  }, [trainingCategories])
+  const trainingCatByValue = useMemo(() => {
+    const m = {}
+    trainingOptions.forEach(o => { m[o.id] = o.categoryId })
+    return m
+  }, [trainingOptions])
+  // The blank "—" placeholder is a UI-only default, never a real option
+  // stored in Settings — added here rather than to trainingOptions itself.
+  const trainingOptionsForSelect = useMemo(() => [{ value: '', label: '—' }, ...trainingOptions.map(o => ({ value: o.id, label: o.label }))], [trainingOptions])
 
   // ─── cloud sync ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -612,10 +631,19 @@ export default function Planner() {
             addActivity={addActivity} addActivityForClient={addActivityForClient}
             updateActivity={updateActivity} removeActivity={removeActivity} clientOptions={clientOptions}
             updateTrainingField={updateTrainingField} updateTrainingSlot={updateTrainingSlot} updateTrainingDone={updateTrainingDone}
+            trainingCategories={trainingCategories} trainingOptions={trainingOptions}
+            trainingCatByValue={trainingCatByValue} trainingCatColorById={trainingCatColorById}
+            trainingOptionsForSelect={trainingOptionsForSelect}
           />
         )}
         {tab === 'rhythm' && <RhythmTab />}
-        {tab === 'analysis' && <AnalysisTab store={store} onUpdateMonthNotes={updateMonthNotes} />}
+        {tab === 'analysis' && (
+          <AnalysisTab
+            store={store} onUpdateMonthNotes={updateMonthNotes}
+            trainingCategories={trainingCategories} trainingOptions={trainingOptions}
+            trainingCatByValue={trainingCatByValue} trainingCatColorById={trainingCatColorById}
+          />
+        )}
         {tab === 'history' && <HistoryTab store={store} onOpen={goToWeek} onDelete={deleteWeek} />}
       </div>
     </div>
@@ -633,12 +661,13 @@ function WeekTab({
   pullSettledFromCRM,
   addActivity, addActivityForClient, updateActivity, removeActivity, clientOptions,
   updateTrainingField, updateTrainingSlot, updateTrainingDone,
+  trainingCategories, trainingOptions, trainingCatByValue, trainingCatColorById, trainingOptionsForSelect,
 }) {
   const completed = completedStats(week)
   const settlePct = week.settlementTarget ? Math.min(100, Math.round(completed.settledTotal / week.settlementTarget * 100)) : 0
   const settleCountPct = week.settlementCountTarget ? Math.min(100, Math.round(completed.settledCount / week.settlementCountTarget * 100)) : 0
   const lodgeCountPct = week.lodgementCountTarget ? Math.min(100, Math.round(completed.lodgedCount / week.lodgementCountTarget * 100)) : 0
-  const trStats = trainingStats(week)
+  const trStats = trainingStats(week, trainingCategories, trainingOptions, trainingCatByValue)
 
   return (
     <div>
@@ -864,12 +893,18 @@ function WeekTab({
                       {['am', 'pm'].map(slot => {
                         const val = week.training.days[d]?.[slot] || ''
                         const done = !!week.training.days[d]?.[`${slot}Done`]
+                        // A week logged against an exercise that's since been
+                        // renamed-away-from or removed in Settings would
+                        // otherwise show this dropdown blank — fall back to
+                        // showing the stored value itself so it stays legible.
+                        const knownOption = trainingOptionsForSelect.some(o => o.value === val)
+                        const options = (!val || knownOption) ? trainingOptionsForSelect : [...trainingOptionsForSelect, { value: val, label: `${val} (removed)` }]
                         return (
                           <td key={slot} style={thTd}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                               <input type="checkbox" checked={done} disabled={!val} title={val ? 'Mark this session done' : 'Pick an activity first'} onChange={e => updateTrainingDone(d, slot, e.target.checked)} />
                               <select value={val} onChange={e => updateTrainingSlot(d, slot, e.target.value)} style={{ ...inp(), width: '100%', fontSize: 10, padding: '4px 4px', textDecoration: done ? 'line-through' : 'none', color: done ? SLATE : '#1a1a1a' }}>
-                                {TRAINING_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                               </select>
                             </div>
                           </td>
@@ -883,7 +918,8 @@ function WeekTab({
           </div>
         </SectionCard>
 
-        <TrainingWeekPanel week={week} trStats={trStats} onUpdateTarget={v => updateTrainingField({ target: v })} targetWeight={targetWeight} />
+        <TrainingWeekPanel week={week} trStats={trStats} onUpdateTarget={v => updateTrainingField({ target: v })} targetWeight={targetWeight}
+          trainingCategories={trainingCategories} trainingCatColorById={trainingCatColorById} />
       </div>
 
       <SectionCard title="Notes" style={{ marginTop: 16 }}>
@@ -955,10 +991,10 @@ function MoneyTargetInput({ value, onChange }) {
   )
 }
 
-function TrainingWeekPanel({ week, trStats, onUpdateTarget, targetWeight }) {
+function TrainingWeekPanel({ week, trStats, onUpdateTarget, targetWeight, trainingCategories, trainingCatColorById }) {
   const target = week.training.target || 0
   const pct = target ? Math.min(100, Math.round(trStats.sessions / target * 100)) : 0
-  const maxCat = Math.max(1, ...TRAINING_CATS.map(c => trStats.totals[c] || 0))
+  const maxCat = Math.max(1, ...trainingCategories.map(c => trStats.totals[c.id] || 0))
   const weightDiff = (week.training.startWeight && week.training.endWeight)
     ? Number(week.training.endWeight) - Number(week.training.startWeight)
     : null
@@ -975,14 +1011,14 @@ function TrainingWeekPanel({ week, trStats, onUpdateTarget, targetWeight }) {
       />
 
       <div style={{ marginTop: 18 }}>
-        {TRAINING_CATS.map(cat => {
-          const v = trStats.totals[cat] || 0
+        {trainingCategories.map(c => {
+          const v = trStats.totals[c.id] || 0
           const w = v ? Math.round(v / maxCat * 100) : 0
           return (
-            <div key={cat} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-              <div style={{ width: 62, fontSize: 11, color: SLATE, flexShrink: 0 }}>{cat}</div>
+            <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <div style={{ width: 62, fontSize: 11, color: SLATE, flexShrink: 0 }}>{c.label}</div>
               <div style={{ flex: 1, height: 9, background: '#f0f2f5', borderRadius: 4, overflow: 'hidden' }}>
-                <div style={{ height: '100%', width: `${w}%`, background: TRAINING_CAT_COLOR[cat], borderRadius: 4 }} />
+                <div style={{ height: '100%', width: `${w}%`, background: trainingCatColorById[c.id], borderRadius: 4 }} />
               </div>
               <div style={{ width: 18, fontSize: 11, fontWeight: 600, color: NAVY, textAlign: 'right', flexShrink: 0 }}>{v}</div>
             </div>
@@ -1101,7 +1137,7 @@ function CadenceStep({ day, label, desc }) {
 }
 
 // ─── ANALYSIS (monthly) ─────────────────────────────────────────────────────
-function AnalysisTab({ store, onUpdateMonthNotes }) {
+function AnalysisTab({ store, onUpdateMonthNotes, trainingCategories, trainingOptions, trainingCatByValue, trainingCatColorById }) {
   const monthRows = useMemo(() => {
     const byMonth = {}
     Object.keys(store.weeks).sort().forEach(wk => {
@@ -1111,8 +1147,8 @@ function AnalysisTab({ store, onUpdateMonthNotes }) {
         byMonth[key] = {
           key, meetings: 0, byType: {}, lodgedTotal: 0, settledTotal: 0, lodgedCount: 0, settledCount: 0,
           lodgementCountTargetSum: 0, settlementTargetSum: 0,
-          training: { Cardio: 0, Boxing: 0, Strength: 0, Recovery: 0 },
-          byOption: TRAINING_OPTIONS.reduce((o, t) => { if (t.value) o[t.value] = 0; return o }, {}),
+          training: trainingCategories.reduce((o, c) => { o[c.id] = 0; return o }, {}),
+          byOption: trainingOptions.reduce((o, t) => { o[t.id] = 0; return o }, {}),
           sessions: 0,
           startWeight: null, endWeight: null, weeksCount: 0,
         }
@@ -1128,8 +1164,8 @@ function AnalysisTab({ store, onUpdateMonthNotes }) {
       m.lodgementCountTargetSum += Number(week.lodgementCountTarget) || 0
       m.settlementTargetSum += Number(week.settlementTarget) || 0
       m.weeksCount += 1
-      const tr = trainingStats(week)
-      TRAINING_CATS.forEach(c => { m.training[c] += tr.totals[c] || 0 })
+      const tr = trainingStats(week, trainingCategories, trainingOptions, trainingCatByValue)
+      trainingCategories.forEach(c => { m.training[c.id] = (m.training[c.id] || 0) + (tr.totals[c.id] || 0) })
       Object.keys(m.byOption).forEach(k => { m.byOption[k] += tr.byOption[k] || 0 })
       m.sessions += tr.sessions
       if (week.training.startWeight && m.startWeight === null) m.startWeight = Number(week.training.startWeight)
@@ -1210,7 +1246,7 @@ function AnalysisTab({ store, onUpdateMonthNotes }) {
         </SectionCard>
 
         <SectionCard title="Training & fitness">
-          <StackChart labels={monthLabels} series={TRAINING_CATS.map(cat => ({ name: cat, color: TRAINING_CAT_COLOR[cat], values: monthRows.map(r => r.training[cat] || 0) }))} />
+          <StackChart labels={monthLabels} series={trainingCategories.map(c => ({ name: c.label, color: trainingCatColorById[c.id], values: monthRows.map(r => r.training[c.id] || 0) }))} />
         </SectionCard>
       </div>
 

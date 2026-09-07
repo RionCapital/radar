@@ -56,6 +56,41 @@ export const DEFAULT_SETTINGS = {
   // NOT retroactively rename existing loans (unlike CRM > Stages, there's
   // no id-based indirection here). See PROTECTED_LOAN_TYPES above.
   loanTypes: LOAN_TYPES,
+  // Categories the Planner's Training & Fitness weekly/monthly rollups are
+  // grouped into — editable in Settings > Planner > Exercises. `id` is
+  // permanent (what each exercise's categoryId points at, see
+  // trainingExercises below); `label` is the editable display text. Adding
+  // a new category here just means a new group shows up in the exercise
+  // list and the rollup bars/charts — nothing else needs to know about it.
+  trainingCategories: [
+    { id: 'cardio',   label: 'Cardio' },
+    { id: 'boxing',   label: 'Boxing' },
+    { id: 'strength', label: 'Strength' },
+    { id: 'recovery', label: 'Recovery' },
+  ],
+  // Exercises offered in every AM/PM slot on the Planner's Training &
+  // Fitness table — editable in Settings > Planner > Exercises. `id` is
+  // permanent and is the exact string stored in a week's
+  // training.days[day][am|pm] — renaming `label` here is safe (it only
+  // changes what's displayed), but `id` must never change once a week has
+  // used it, or that week's saved entry stops matching any option. Removing
+  // an exercise doesn't touch weeks that already logged it — see
+  // getTrainingExercises below and how Planner.jsx falls back to showing
+  // the raw id for an entry that no longer matches a current option.
+  trainingExercises: [
+    { id: 'Run',            label: 'Run',              categoryId: 'cardio' },
+    { id: 'Swim',           label: 'Swim',             categoryId: 'cardio' },
+    { id: 'Walk',           label: 'Walk',             categoryId: 'cardio' },
+    { id: 'Hyrox',          label: 'Hyrox',            categoryId: 'cardio' },
+    { id: 'General PT',     label: 'General PT',       categoryId: 'cardio' },
+    { id: 'Shadow Box',     label: 'Shadow box',       categoryId: 'boxing' },
+    { id: 'Boxing',         label: 'Boxing',           categoryId: 'boxing' },
+    { id: 'Boxing Contact', label: 'Boxing - contact', categoryId: 'boxing' },
+    { id: 'Weights Upper',  label: 'Weights - upper',  categoryId: 'strength' },
+    { id: 'Weights Lower',  label: 'Weights - lower',  categoryId: 'strength' },
+    { id: 'Strength Cond',  label: 'Strength & cond.', categoryId: 'strength' },
+    { id: 'Recovery',       label: 'Recovery',         categoryId: 'recovery' },
+  ],
   // CRM pipeline stages — editable in Settings > CRM > Stages. `id` is
   // permanent and never shown; it's what every page uses internally to
   // recognise a stage (e.g. "this deal is Settled") so a deal's Status
@@ -298,4 +333,16 @@ export function stageDisplay(id, settingsArg) {
 export function getLoanTypes(settingsArg) {
   const settings = settingsArg || loadSettings()
   return (settings.loanTypes && settings.loanTypes.length) ? settings.loanTypes : DEFAULT_SETTINGS.loanTypes
+}
+
+// The single source of truth for the Planner's training categories and
+// exercise list — read through these rather than the DEFAULT_SETTINGS
+// arrays directly, same reasoning as getLoanTypes above.
+export function getTrainingCategories(settingsArg) {
+  const settings = settingsArg || loadSettings()
+  return (settings.trainingCategories && settings.trainingCategories.length) ? settings.trainingCategories : DEFAULT_SETTINGS.trainingCategories
+}
+export function getTrainingExercises(settingsArg) {
+  const settings = settingsArg || loadSettings()
+  return (settings.trainingExercises && settings.trainingExercises.length) ? settings.trainingExercises : DEFAULT_SETTINGS.trainingExercises
 }

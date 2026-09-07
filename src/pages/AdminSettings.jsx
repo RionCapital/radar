@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { loadSettings, saveSettings, syncSettingsFromSupabase, DEFAULT_SETTINGS, getCurrentUser, getDealStages, getLoanTypes, PROTECTED_LOAN_TYPES } from '../lib/settings'
+import { loadSettings, saveSettings, syncSettingsFromSupabase, DEFAULT_SETTINGS, getCurrentUser, getDealStages, getLoanTypes, PROTECTED_LOAN_TYPES, getTrainingCategories, getTrainingExercises } from '../lib/settings'
 import { loadDeals, saveDeals as libSaveDeals } from '../lib/deals'
 import { icon_crm, icon_radar, icon_marketing, icon_planner, icon_studio } from '../lib/icons'
 
@@ -247,6 +247,89 @@ export default function AdminSettings({ clients, onUpdateClients }) {
     setLoanTypes(loanTypesDraft.filter((_, i) => i !== idx))
   }
 
+  // ── Planner > Exercises ─────────────────────────────────────────────────
+  // Training categories are id-based (like CRM > Stages) since each
+  // exercise stores a categoryId rather than the category's label — so
+  // renaming a category here can't silently orphan any exercise's
+  // grouping. Exercises themselves work like Loan Types: a plain list
+  // edited directly on settings.trainingExercises, riding the page's main
+  // "Save changes" button. An exercise's `id` is the exact string a
+  // week's saved AM/PM entry matches against, so it's set once (from the
+  // label, at creation) and never changes even if the label is renamed
+  // afterward — see the comment on DEFAULT_SETTINGS.trainingExercises in
+  // lib/settings.js.
+  const trainingCategoriesDraft = getTrainingCategories(settings)
+  const trainingExercisesDraft = getTrainingExercises(settings)
+  const [newCategoryLabel, setNewCategoryLabel] = useState('')
+  const [newExerciseLabel, setNewExerciseLabel] = useState('')
+  const [newExerciseCategoryId, setNewExerciseCategoryId] = useState('')
+
+  function setTrainingCategories(list) { setSettings(s => ({ ...s, trainingCategories: list })) }
+  function setTrainingExercises(list) { setSettings(s => ({ ...s, trainingExercises: list })) }
+  function categoryUsageCount(catId) { return trainingExercisesDraft.filter(e => e.categoryId === catId).length }
+
+  function moveCategory(idx, dir) {
+    const j = idx + dir
+    if (j < 0 || j >= trainingCategoriesDraft.length) return
+    const copy = [...trainingCategoriesDraft]
+    ;[copy[idx], copy[j]] = [copy[j], copy[idx]]
+    setTrainingCategories(copy)
+  }
+  function renameCategory(idx, label) {
+    setTrainingCategories(trainingCategoriesDraft.map((c, i) => i === idx ? { ...c, label } : c))
+  }
+  function addCategory() {
+    const label = (newCategoryLabel || '').trim()
+    if (!label) return
+    const id = slugify(label)
+    if (trainingCategoriesDraft.some(c => c.id === id)) { alert('That category already exists.'); return }
+    setTrainingCategories([...trainingCategoriesDraft, { id, label }])
+    setNewCategoryLabel('')
+  }
+  function removeCategory(idx) {
+    const cat = trainingCategoriesDraft[idx]
+    const count = categoryUsageCount(cat.id)
+    if (count > 0) {
+      alert(`Can't remove "${cat.label}" — ${count} exercise${count!==1?'s':''} currently use this category. Move ${count!==1?'them':'it'} to another category first.`)
+      return
+    }
+    if (trainingCategoriesDraft.length <= 1) { alert('At least one category is required.'); return }
+    if (!window.confirm(`Remove the "${cat.label}" category?`)) return
+    setTrainingCategories(trainingCategoriesDraft.filter((_, i) => i !== idx))
+  }
+
+  function moveExercise(idx, dir) {
+    const j = idx + dir
+    if (j < 0 || j >= trainingExercisesDraft.length) return
+    const copy = [...trainingExercisesDraft]
+    ;[copy[idx], copy[j]] = [copy[j], copy[idx]]
+    setTrainingExercises(copy)
+  }
+  function renameExercise(idx, label) {
+    setTrainingExercises(trainingExercisesDraft.map((e, i) => i === idx ? { ...e, label } : e))
+  }
+  function updateExerciseCategory(idx, categoryId) {
+    setTrainingExercises(trainingExercisesDraft.map((e, i) => i === idx ? { ...e, categoryId } : e))
+  }
+  function addExercise() {
+    const label = (newExerciseLabel || '').trim()
+    if (!label) return
+    if (trainingExercisesDraft.some(e => e.label.toLowerCase() === label.toLowerCase())) { alert('That exercise already exists.'); return }
+    const categoryId = newExerciseCategoryId || (trainingCategoriesDraft[0]?.id || '')
+    // The id has to be unique and stable (it's what a logged week's AM/PM
+    // entry matches against) — base it on the label, disambiguating with a
+    // numeric suffix in the rare case two exercises would collide.
+    let id = label, n = 2
+    while (trainingExercisesDraft.some(e => e.id === id)) { id = `${label} (${n})`; n++ }
+    setTrainingExercises([...trainingExercisesDraft, { id, label, categoryId }])
+    setNewExerciseLabel('')
+  }
+  function removeExercise(idx) {
+    const ex = trainingExercisesDraft[idx]
+    if (!window.confirm(`Remove "${ex.label}"? Weeks that already logged it will keep showing it (marked "removed") until changed to something else.`)) return
+    setTrainingExercises(trainingExercisesDraft.filter((_, i) => i !== idx))
+  }
+
   // ── CRM > Communication ────────────────────────────────────────────────
   const [expandedTemplateId, setExpandedTemplateId] = useState(null)
   function addTemplate() {
@@ -318,6 +401,7 @@ export default function AdminSettings({ clients, onUpdateClients }) {
     ],
     planner: [
       { id:'plannerTargets', label:'Planner Targets' },
+      { id:'exercises', label:'Exercises' },
     ],
     crm: [
       { id:'stages', label:'Stages' },
@@ -802,6 +886,84 @@ export default function AdminSettings({ clients, onUpdateClients }) {
                 💡 These are the defaults applied to every new week in the Planner. Any individual week can still be overridden on the This Week tab — changing these here only affects weeks that haven't started yet.
               </div>
             </Card>
+          )}
+
+          {/* Planner > Exercises */}
+          {section==='planner' && tab==='exercises' && (
+            <>
+              <Card style={{ marginBottom:16 }}>
+                <CardTitle>Categories</CardTitle>
+                <div style={{ fontSize:11, color:'#7A8090', marginBottom:14, lineHeight:1.5 }}>
+                  What each exercise below is grouped under in the Planner's weekly and monthly training rollups. Use the arrows to reorder.
+                </div>
+                {trainingCategoriesDraft.map((c, i) => {
+                  const count = categoryUsageCount(c.id)
+                  return (
+                    <div key={c.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'7px 0', borderBottom:'0.5px solid #f0f0f0' }}>
+                      <div style={{ display:'flex', flexDirection:'column', gap:1 }}>
+                        <button onClick={() => moveCategory(i,-1)} disabled={i===0}
+                          style={{ width:20, height:16, fontSize:9, lineHeight:1, border:'1px solid #e8eaed', background:'#fff', borderRadius:'4px 4px 0 0', cursor: i===0?'default':'pointer', color: i===0?'#d1d5db':'#7A8090', padding:0 }}>▲</button>
+                        <button onClick={() => moveCategory(i,1)} disabled={i===trainingCategoriesDraft.length-1}
+                          style={{ width:20, height:16, fontSize:9, lineHeight:1, border:'1px solid #e8eaed', borderTop:'none', background:'#fff', borderRadius:'0 0 4px 4px', cursor: i===trainingCategoriesDraft.length-1?'default':'pointer', color: i===trainingCategoriesDraft.length-1?'#d1d5db':'#7A8090', padding:0 }}>▼</button>
+                      </div>
+                      <input style={{ ...inp, flex:1 }} value={c.label} onChange={e => renameCategory(i, e.target.value)} />
+                      <span style={{ fontSize:10, color:'#9ca3af', minWidth:76, textAlign:'right', flexShrink:0 }}>{count} exercise{count!==1?'s':''}</span>
+                      <button onClick={() => removeCategory(i)}
+                        style={{ fontSize:10, padding:'4px 10px', borderRadius:5, border:'1px solid #fecaca', background:'#fff', color:'#dc2626', cursor:'pointer', flexShrink:0 }}>
+                        Remove
+                      </button>
+                    </div>
+                  )
+                })}
+                <div style={{ display:'flex', gap:8, marginTop:14 }}>
+                  <input style={inp} placeholder="New category…" value={newCategoryLabel}
+                    onChange={e => setNewCategoryLabel(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCategory() } }} />
+                  <button onClick={addCategory} style={{ fontSize:12, padding:'7px 16px', borderRadius:7, border:'none', background:'#3D4F6B', color:'#fff', fontWeight:600, cursor:'pointer', whiteSpace:'nowrap' }}>
+                    + Add category
+                  </button>
+                </div>
+              </Card>
+
+              <Card>
+                <CardTitle>Exercises</CardTitle>
+                <div style={{ fontSize:11, color:'#7A8090', marginBottom:14, lineHeight:1.5 }}>
+                  These are the options offered in every AM/PM slot on the Planner's Training & Fitness table. Renaming one here only changes its display text — weeks that already logged it keep working. Removing one doesn't touch weeks that already logged it; they'll just show it marked "removed" until changed to something else.
+                </div>
+                {trainingExercisesDraft.map((e, i) => (
+                  <div key={e.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'7px 0', borderBottom:'0.5px solid #f0f0f0' }}>
+                    <div style={{ display:'flex', flexDirection:'column', gap:1 }}>
+                      <button onClick={() => moveExercise(i,-1)} disabled={i===0}
+                        style={{ width:20, height:16, fontSize:9, lineHeight:1, border:'1px solid #e8eaed', background:'#fff', borderRadius:'4px 4px 0 0', cursor: i===0?'default':'pointer', color: i===0?'#d1d5db':'#7A8090', padding:0 }}>▲</button>
+                      <button onClick={() => moveExercise(i,1)} disabled={i===trainingExercisesDraft.length-1}
+                        style={{ width:20, height:16, fontSize:9, lineHeight:1, border:'1px solid #e8eaed', borderTop:'none', background:'#fff', borderRadius:'0 0 4px 4px', cursor: i===trainingExercisesDraft.length-1?'default':'pointer', color: i===trainingExercisesDraft.length-1?'#d1d5db':'#7A8090', padding:0 }}>▼</button>
+                    </div>
+                    <input style={{ ...inp, flex:1 }} value={e.label} onChange={ev => renameExercise(i, ev.target.value)} />
+                    <select style={{ ...inp, width:140, flexShrink:0 }} value={e.categoryId} onChange={ev => updateExerciseCategory(i, ev.target.value)}>
+                      {trainingCategoriesDraft.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+                    </select>
+                    <button onClick={() => removeExercise(i)}
+                      style={{ fontSize:10, padding:'4px 10px', borderRadius:5, border:'1px solid #fecaca', background:'#fff', color:'#dc2626', cursor:'pointer', flexShrink:0 }}>
+                      Remove
+                    </button>
+                  </div>
+                ))}
+                <div style={{ display:'flex', gap:8, marginTop:14 }}>
+                  <input style={{ ...inp, flex:1 }} placeholder="New exercise…" value={newExerciseLabel}
+                    onChange={e => setNewExerciseLabel(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addExercise() } }} />
+                  <select style={{ ...inp, width:140, flexShrink:0 }} value={newExerciseCategoryId || trainingCategoriesDraft[0]?.id || ''} onChange={e => setNewExerciseCategoryId(e.target.value)}>
+                    {trainingCategoriesDraft.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+                  </select>
+                  <button onClick={addExercise} style={{ fontSize:12, padding:'7px 16px', borderRadius:7, border:'none', background:'#3D4F6B', color:'#fff', fontWeight:600, cursor:'pointer', whiteSpace:'nowrap' }}>
+                    + Add exercise
+                  </button>
+                </div>
+                <div style={{ marginTop:16, fontSize:11, color:'#7A8090' }}>
+                  Changes here are saved with the page's main "Save changes" button, top right.
+                </div>
+              </Card>
+            </>
           )}
 
           {/* Team Members — admin only */}
