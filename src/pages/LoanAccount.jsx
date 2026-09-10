@@ -5,6 +5,7 @@ import { fmt } from '../lib/data'
 import { fmtDate, dateCellStyle, expiryBadge, calcRepayment, effectiveRpmt, buildBalanceHistory, calcMaturityDate } from '../lib/dateUtils'
 import { Panel, PanelTitle, EditBtn, SaveBtn, CancelBtn, FieldGroup, Pill, DateInput } from '../components/UI'
 import LoanHistoryImport from '../components/LoanHistoryImport'
+import { loanStream, getLoanTypeStreams } from '../lib/settings'
 
 export default function LoanAccount({ clients, updateClient }) {
   const { name, loanIdx } = useParams()
@@ -490,6 +491,7 @@ export default function LoanAccount({ clients, updateClient }) {
                   ['Loan name',loan.lname||'—'],
                   ['Account no.',loan.acc||'—'],
                   ['Loan type',loan.type||'—'],
+                  ['Stream', `${loanStream(loan, client)} ${getLoanTypeStreams()[loan.type] ? '(from loan type)' : "(client's stream)"}`],
                   ['Bank',loan.bank||'—'],
                   ['Security #', allSecurities.length>1 ? allSecurities.map(s=>s.num).join(', ') : (loan.security||'—')],
                   ['Asset / property', allSecurities.length>1 ? allSecurities.map(s=>`#${s.num} — ${s.address}`).join('|||') : (security?.address||loan.assetDesc||'—')],

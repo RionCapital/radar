@@ -56,6 +56,13 @@ export const DEFAULT_SETTINGS = {
   // NOT retroactively rename existing loans (unlike CRM > Stages, there's
   // no id-based indirection here). See PROTECTED_LOAN_TYPES above.
   loanTypes: LOAN_TYPES,
+  // Which stream (Private Wealth / Commercial) a loan belongs to, decided by
+  // its loan type — editable alongside the types in Settings > CRM > Loan
+  // Types. Keyed by the type's label. A type with no entry (or '') falls
+  // back to the client's own stream, so nothing changes until a type is
+  // explicitly assigned here. Read through loanStream() below rather than
+  // this map directly.
+  loanTypeStreams: {},
   // Categories the Planner's Training & Fitness weekly/monthly rollups are
   // grouped into — editable in Settings > Planner > Exercises. `id` is
   // permanent (what each exercise's categoryId points at, see
@@ -333,6 +340,23 @@ export function stageDisplay(id, settingsArg) {
 export function getLoanTypes(settingsArg) {
   const settings = settingsArg || loadSettings()
   return (settings.loanTypes && settings.loanTypes.length) ? settings.loanTypes : DEFAULT_SETTINGS.loanTypes
+}
+
+export const STREAMS = ['Private Wealth', 'Commercial']
+
+export function getLoanTypeStreams(settingsArg) {
+  const settings = settingsArg || loadSettings()
+  return settings.loanTypeStreams || {}
+}
+
+// The stream a loan counts toward (Dashboard Portfolio Split, etc.): the
+// stream assigned to its loan type in Settings if there is one, otherwise
+// the client's own stream. Every place that splits balances PW vs
+// Commercial should go through this rather than reading client.stream.
+export function loanStream(loan, client, settingsArg) {
+  const byType = getLoanTypeStreams(settingsArg)[loan?.type]
+  if (byType === 'Private Wealth' || byType === 'Commercial') return byType
+  return client?.stream === 'Commercial' ? 'Commercial' : 'Private Wealth'
 }
 
 // The single source of truth for the Planner's training categories and

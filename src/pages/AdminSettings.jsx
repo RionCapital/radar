@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { loadSettings, saveSettings, syncSettingsFromSupabase, DEFAULT_SETTINGS, getCurrentUser, getDealStages, getLoanTypes, PROTECTED_LOAN_TYPES, getTrainingCategories, getTrainingExercises } from '../lib/settings'
+import { loadSettings, saveSettings, syncSettingsFromSupabase, DEFAULT_SETTINGS, getCurrentUser, getDealStages, getLoanTypes, PROTECTED_LOAN_TYPES, getLoanTypeStreams, STREAMS, getTrainingCategories, getTrainingExercises } from '../lib/settings'
 import { loadDeals, saveDeals as libSaveDeals } from '../lib/deals'
 import { icon_crm, icon_radar, icon_marketing, icon_planner, icon_studio } from '../lib/icons'
 
@@ -217,9 +217,23 @@ export default function AdminSettings({ clients, onUpdateClients }) {
   function loanTypeUsageCount(type) {
     return (clients || []).reduce((n, c) => n + (c.loans || []).filter(l => l.type === type).length, 0)
   }
+  const loanTypeStreamsDraft = getLoanTypeStreams(settings)
   function setLoanTypes(list) { setSettings(s => ({ ...s, loanTypes: list })) }
   function updateLoanType(idx, value) {
-    setLoanTypes(loanTypesDraft.map((t, i) => i === idx ? value : t))
+    const prev = loanTypesDraft[idx]
+    setSettings(s => {
+      // Carry the type's stream assignment across to its new label.
+      const streams = { ...(s.loanTypeStreams || {}) }
+      if (prev !== value && streams[prev] !== undefined) { streams[value] = streams[prev]; delete streams[prev] }
+      return { ...s, loanTypes: loanTypesDraft.map((t, i) => i === idx ? value : t), loanTypeStreams: streams }
+    })
+  }
+  function setLoanTypeStream(type, stream) {
+    setSettings(s => {
+      const streams = { ...(s.loanTypeStreams || {}) }
+      if (stream) streams[type] = stream; else delete streams[type]
+      return { ...s, loanTypeStreams: streams }
+    })
   }
   function moveLoanType(idx, dir) {
     const j = idx + dir
@@ -245,6 +259,7 @@ export default function AdminSettings({ clients, onUpdateClients }) {
     }
     if (!window.confirm(`Remove the "${type}" loan type?`)) return
     setLoanTypes(loanTypesDraft.filter((_, i) => i !== idx))
+    setLoanTypeStream(type, '')
   }
 
   // ── Planner > Exercises ─────────────────────────────────────────────────
@@ -584,6 +599,8 @@ export default function AdminSettings({ clients, onUpdateClients }) {
               <CardTitle>Loan types</CardTitle>
               <div style={{ fontSize:11, color:'#7A8090', marginBottom:14, lineHeight:1.5 }}>
                 These are the options offered in every "+ Add loan" / loan-type dropdown across the app. Use the arrows to reorder. Renaming a type here only affects loans added from now on — it doesn't rename loans that already use the old label. <strong>Asset Finance</strong> and <strong>MAF</strong> are locked because other parts of the app (the calculated balance graph, the MAF parcels page) key off those exact names.
+                <br /><br />
+                <strong>Stream</strong> decides whether loans of that type count as Private Wealth or Commercial on the Dashboard's Portfolio Split — regardless of which stream the client is filed under. Leave a type on <em>Client's stream</em> and its loans keep following the client, as they always have.
               </div>
               {loanTypesDraft.map((t, i) => {
                 const locked = PROTECTED_LOAN_TYPES.includes(t)
@@ -599,6 +616,11 @@ export default function AdminSettings({ clients, onUpdateClients }) {
                     <input style={{ ...inp, flex:1, background: locked ? '#f8f9fa' : '#fff', color: locked ? '#9ca3af' : '#2A3545' }} value={t} readOnly={locked}
                       onChange={e => updateLoanType(i, e.target.value)} />
                     {locked && <span style={{ fontSize:9, fontWeight:700, color:'#3D4F6B', background:'#eef4fb', padding:'2px 7px', borderRadius:10, textTransform:'uppercase', letterSpacing:'0.04em', flexShrink:0 }}>Built-in</span>}
+                    <select value={loanTypeStreamsDraft[t] || ''} onChange={e => setLoanTypeStream(t, e.target.value)}
+                      style={{ ...inp, width:150, flex:'none', color: loanTypeStreamsDraft[t] ? '#2A3545' : '#9ca3af' }}>
+                      <option value="">Client's stream</option>
+                      {STREAMS.map(st => <option key={st} value={st}>{st}</option>)}
+                    </select>
                     <span style={{ fontSize:10, color:'#9ca3af', minWidth:64, textAlign:'right', flexShrink:0 }}>{count} loan{count!==1?'s':''}</span>
                     <button onClick={() => removeLoanType(i)} disabled={locked}
                       style={{ fontSize:10, padding:'4px 10px', borderRadius:5, border: locked ? '1px solid #e8eaed' : '1px solid #fecaca', background:'#fff', color: locked ? '#d1d5db' : '#dc2626', cursor: locked ? 'default' : 'pointer', flexShrink:0 }}>
