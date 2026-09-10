@@ -1,7 +1,8 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { BANKS } from '../lib/data'
 import { getLoanTypes } from '../lib/settings'
 import { FieldGroup, SaveBtn, CancelBtn, DateInput } from '../components/UI'
+import { suggestNextConnNo, syncConnNoSeqFromSupabase, commitConnNoUsed } from '../lib/connectionSequence'
 
 const blank = () => ({
   name: '', connNo: '', stream: 'Private Wealth',
@@ -13,10 +14,27 @@ const blankContact = () => ({ name: '', email: '', phone: '' })
 const blankLoan = () => ({ acc: '', lname: '', type: 'Home Loan (OO)', bank: 'CBA', security: '1', amount: 0, balance: 0, rate: 0, rpmt: 'P&I', term: 30, ioTerm: 0, fixed: '', io: '', balloon: '', settled: new Date().toISOString().slice(0,10) })
 
 export default function AddClient({ clients, onSave, onClose }) {
-  const nextConnNo = Math.max(...(clients||[]).map(c => c.connNo || 0), 1099) + 1
-  const [client, setClient] = useState(() => ({ ...blank(), connNo: nextConnNo }))
+  const [client, setClient] = useState(() => ({ ...blank(), connNo: suggestNextConnNo(clients) }))
   const [errors, setErrors] = useState({})
+  // True once Cameron has actually typed in the Connection No. field — used
+  // so the cloud sync below (which can bump the suggested number up if
+  // another device has issued connections since this one loaded) never
+  // overwrites a number he's deliberately chosen to override.
+  const [connNoTouched, setConnNoTouched] = useState(false)
   const loanTypeOptions = getLoanTypes()
+
+  // Reconcile with the cloud sequence on open — covers the case where
+  // another device/session has issued connections since this one last
+  // synced, so the suggested number here is never behind what's really
+  // next available.
+  useEffect(() => {
+    syncConnNoSeqFromSupabase().then(resolved => {
+      if (resolved && !connNoTouched) {
+        setClient(c => ({ ...c, connNo: Math.max(resolved, suggestNextConnNo(clients)) }))
+      }
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const set = (field, val) => setClient(c => ({ ...c, [field]: val }))
 
@@ -25,19 +43,24 @@ export default function AddClient({ clients, onSave, onClose }) {
     if (!client.name.trim()) e.name = 'Name is required'
     if (clients.find(c => c.name.toLowerCase() === client.name.trim().toLowerCase())) e.name = 'A client with this name already exists'
     if (!client.connNo) e.connNo = 'Connection number is required'
+    else if (clients.some(c => Number(c.connNo) === Number(client.connNo))) e.connNo = 'That connection number is already in use'
     setErrors(e)
     return Object.keys(e).length === 0
   }
 
   function handleSave() {
     if (!validate()) return
-    const maxConn = Math.max(...clients.map(c => c.connNo || 0), 1099)
+    const connNo = parseInt(client.connNo) || suggestNextConnNo(clients)
     onSave({
       ...client,
       name: client.name.trim(),
-      connNo: parseInt(client.connNo) || maxConn + 1,
+      connNo,
       days: parseInt(client.days) || 0,
     })
+    // Advance the persisted sequence past whatever number this connection
+    // actually got (whether that was the suggestion or a manual override),
+    // so it's never offered again — even once this client is later deleted.
+    commitConnNoUsed(connNo)
   }
 
   const inp = { width: '100%' }
@@ -60,8 +83,9 @@ export default function AddClient({ clients, onSave, onClose }) {
           </div>
           <div>
             <FieldGroup label="Connection no. *">
-              <input style={inp} type="number" value={client.connNo} onChange={e => set('connNo', e.target.value)} placeholder={`e.g. ${Math.max(...clients.map(c => c.connNo || 0), 1099) + 1}`} />
+              <input style={inp} type="number" value={client.connNo} onChange={e => { setConnNoTouched(true); set('connNo', e.target.value) }} placeholder={`e.g. ${suggestNextConnNo(clients)}`} />
             </FieldGroup>
+            <div style={{ fontSize: 10, color: 'var(--text-secondary)', marginTop: 2 }}>Auto-allocated as the next available number — change it if you need to.</div>
             {err('connNo')}
           </div>
           <FieldGroup label="Stream">
