@@ -635,7 +635,7 @@ export default function Dashboard({ clients, onImport, onUpdateClients }) {
   // Offset counts months back from the most recent; 0 is "latest". The two
   // charts scroll independently — one is about balances, the other about
   // income, and they're rarely interrogated for the same period.
-  const WINDOW = 12, STEP = 6
+  const WINDOW = 12, STEP = 1
   const maxOffset = Math.max(0, COMM.length - WINDOW)
   const windowOf = off => {
     const end = COMM.length - off
