@@ -4,7 +4,7 @@ import { fmtDate, rollingYTD, quarterlyIncome, expiryBadge, daysUntil, daysSince
 import { Panel, PanelTitle, DayBadge } from '../components/UI'
 import { sbSaveTicked, sbLoadTicked } from '../lib/supabase'
 import { loadDirectIncomeLocal, syncDirectIncomeFromSupabase, invoiceTotals } from '../lib/directIncome'
-import { assetFinanceCurrentBalance, facilityUtilized } from '../lib/mafFacilities'
+import { assetFinanceCurrentBalance, facilityUtilized, assetFinanceBalanceAt, facilityUtilizedAt, monthKeyOf } from '../lib/mafFacilities'
 import { useNavigate } from 'react-router-dom'
 
 // A loan flagged `direct` is tracked by Cameron directly in Rradar rather
@@ -24,6 +24,31 @@ import { useNavigate } from 'react-router-dom'
 function directLoanValue(loan) {
   if (loan.type === 'MAF') return facilityUtilized(loan)
   if (loan.type === 'Asset Finance') return assetFinanceCurrentBalance(loan)
+  return Number(loan.balance) || 0
+}
+
+// The same loan's value at the end of a past month ('YYYY-MM') — what the
+// Portfolio Split's Direct ribbons show when a month on the Portfolio
+// Balances chart is hovered, so they move month to month like everything
+// else rather than repeating today's figure. Mirrors directLoanValue():
+//  - MAF: its parcels as they stood that month (Asset Finance parcels on
+//    their amortisation schedule, Progress by invoices paid by then, Import
+//    Lease by bills booked and not yet matured).
+//  - Asset Finance: the amortisation schedule's figure for that month.
+//  - Anything else: the recorded balance for that month (balanceHistory —
+//    e.g. the lender's remittance table loaded via Import History) or the
+//    latest recorded one before it; 0 if the loan hadn't settled yet; the
+//    earliest recorded balance if the month predates the history; and only
+//    when there's no history at all, today's balance.
+function directLoanValueAt(loan, monthKey) {
+  if (loan.type === 'MAF') return facilityUtilizedAt(loan, monthKey)
+  if (loan.type === 'Asset Finance') return assetFinanceBalanceAt(loan, monthKey)
+  const hist = (loan.balanceHistory || []).filter(h => h.month).sort((a, b) => a.month.localeCompare(b.month))
+  const upTo = hist.filter(h => h.month <= monthKey)
+  if (upTo.length) return Number(upTo[upTo.length - 1].balance) || 0
+  const settledKey = monthKeyOf(loan.settled)
+  if (settledKey && settledKey > monthKey) return 0
+  if (hist.length) return Number(hist[0].balance) || 0
   return Number(loan.balance) || 0
 }
 
@@ -567,9 +592,16 @@ export default function Dashboard({ clients, onImport, onUpdateClients }) {
   const last12 = COMM.slice(-12)
   const balData = last12.map(d => ({
     month: d.month,
+    _key: d._key,
     private: Math.round(d.balance * pwRatio),
     commercial: Math.round(d.balance * (1 - pwRatio)),
   }))
+  // Direct-tracked balances as they stood in a given past month, per stream —
+  // only needed for the hovered month, so computed on demand.
+  const directAt = (monthKey) => ({
+    pw: pwLoansAll.filter(l => l.direct).reduce((s, l) => s + directLoanValueAt(l, monthKey), 0),
+    comm: commLoansAll.filter(l => l.direct).reduce((s, l) => s + directLoanValueAt(l, monthKey), 0),
+  })
 
   // Build all rows
   const annualRows = buildAnnualRows(clients)
@@ -662,7 +694,10 @@ export default function Dashboard({ clients, onImport, onUpdateClients }) {
             // rather than being pinned to the last statement month's balance.
             if (hoveredMonthIdx != null) {
               const point = balData[hoveredMonthIdx]
-              if (point) return <PieChart pw={point.private} comm={point.commercial} pwDirect={pwDirectTotal} commDirect={commDirectTotal} label={point.month} />
+              if (point) {
+                const d = point._key ? directAt(point._key) : { pw: pwDirectTotal, comm: commDirectTotal }
+                return <PieChart pw={point.private} comm={point.commercial} pwDirect={Math.round(d.pw)} commDirect={Math.round(d.comm)} label={point.month} />
+              }
             }
             return <PieChart pw={Math.round(pwTotal)} comm={Math.round(commTotal)} pwDirect={pwDirectTotal} commDirect={commDirectTotal} />
           })()}

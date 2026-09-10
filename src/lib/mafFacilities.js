@@ -304,3 +304,75 @@ export function facilityUtilized(facility) {
 export function facilityHeadroom(facility) {
   return (Number(facility.amount) || 0) - facilityUtilized(facility)
 }
+
+// ─── Point-in-time values ─────────────────────────────────────────────────
+// Everything above answers "what is this worth right now". These answer
+// "what was this worth at the end of month X" ('YYYY-MM'), so the
+// Dashboard's Portfolio Split can show Direct-tracked balances moving month
+// to month when a past month is hovered — an Asset Finance parcel amortising
+// down, a Progress facility drawing up as invoices are paid, an Import Lease
+// bill appearing at its book date and dropping off at maturity — instead of
+// pinning today's figure on every month.
+export function monthKeyOf(dateStr) {
+  if (!dateStr) return null
+  const d = new Date(dateStr)
+  if (isNaN(d)) return null
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+}
+function monthEndISO(monthKey) {
+  const [y, m] = monthKey.split('-').map(Number)
+  return `${y}-${String(m).padStart(2, '0')}-${String(new Date(y, m, 0).getDate()).padStart(2, '0')}`
+}
+
+// Balance at the end of `monthKey` from the same amortisation schedule the
+// loan page shows: 0 before settlement, the schedule's figure for that month
+// once running, and whatever it had amortised to if the month is past the
+// last scheduled entry. No settlement date/amount → same answer as today.
+export function assetFinanceBalanceAt(parcel, monthKey) {
+  const amount = Number(parcel.amount) || 0
+  if (!parcel.settled || !amount) return amount
+  const settledKey = monthKeyOf(parcel.settled)
+  if (settledKey && settledKey > monthKey) return 0
+  const upTo = assetFinanceBalanceHistory(parcel).filter(h => {
+    const [mm, yy] = h.date.split('/')
+    return `${yy}-${mm}` <= monthKey
+  })
+  if (!upTo.length) return amount
+  return upTo[upTo.length - 1].balance
+}
+
+// Invoices that had actually been paid by the end of the month (payment
+// date, falling back to due date when none was recorded).
+export function progressDrawnAt(parcel, monthKey) {
+  const end = monthEndISO(monthKey)
+  return getSupplierGroups(parcel).reduce((s, g) => s + (g.invoices || []).reduce((t, inv) => {
+    if (!inv.paid) return t
+    const d = inv.paymentDate || inv.dueDate || ''
+    return (!d || d <= end) ? t + (Number(inv.amount) || 0) : t
+  }, 0), 0)
+}
+
+// Bills booked on or before the end of the month and not yet matured/repaid
+// by then. A bill marked repaid with no maturity date is treated as already
+// gone (we've no date to say otherwise).
+export function importLeaseDrawnAt(parcel, monthKey) {
+  const end = monthEndISO(monthKey)
+  return getCustomerGroups(parcel).reduce((s, g) => s + (g.bills || []).reduce((t, b) => {
+    if (b.bookDate && b.bookDate > end) return t
+    if (b.repaid && (!b.maturityDate || b.maturityDate <= end)) return t
+    return t + (Number(b.billAmt) || 0)
+  }, 0), 0)
+}
+
+// Closed parcels count as 0 for every month — there's no closed-date on a
+// parcel to know when it stopped counting, same as parcelCurrentValue.
+export function parcelValueAt(parcel, monthKey) {
+  if (parcel.closed) return 0
+  if (parcel.kind === 'progress') return progressDrawnAt(parcel, monthKey)
+  if (parcel.kind === 'importLease') return importLeaseDrawnAt(parcel, monthKey)
+  return assetFinanceBalanceAt(parcel, monthKey)
+}
+
+export function facilityUtilizedAt(facility, monthKey) {
+  return (facility.parcels || []).reduce((s, p) => s + parcelValueAt(p, monthKey), 0)
+}
