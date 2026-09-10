@@ -654,12 +654,17 @@ export default function Dashboard({ clients, onImport, onUpdateClients }) {
         </Panel>
         <Panel style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '10px 6px' }}>
           {(() => {
-            const idx = hoveredMonthIdx != null ? hoveredMonthIdx : balData.length - 1
-            const point = balData[idx]
-            if (point) return <PieChart pw={point.private} comm={point.commercial} pwDirect={pwDirectTotal} commDirect={commDirectTotal} label={hoveredMonthIdx != null ? point.month : null} />
-            const latestBal = last12[last12.length - 1]?.balance || (pwTotal + commTotal)
-            const ratio = pwTotal / (pwTotal + commTotal || 1)
-            return <PieChart pw={Math.round(latestBal * ratio)} comm={Math.round(latestBal * (1 - ratio))} pwDirect={pwDirectTotal} commDirect={commDirectTotal} />
+            // Hovering a specific month on the Portfolio Balances bar chart shows
+            // that month's historical split (derived from the commission-statement
+            // balance history). The default (non-hovered) view instead shows today's
+            // live totals — pwTotal/commTotal already include Direct-flagged loans/
+            // MAFs, so this total moves as soon as something is flagged Direct,
+            // rather than being pinned to the last statement month's balance.
+            if (hoveredMonthIdx != null) {
+              const point = balData[hoveredMonthIdx]
+              if (point) return <PieChart pw={point.private} comm={point.commercial} pwDirect={pwDirectTotal} commDirect={commDirectTotal} label={point.month} />
+            }
+            return <PieChart pw={Math.round(pwTotal)} comm={Math.round(commTotal)} pwDirect={pwDirectTotal} commDirect={commDirectTotal} />
           })()}
         </Panel>
         <Panel style={{ display: 'flex', flexDirection: 'column' }}>
