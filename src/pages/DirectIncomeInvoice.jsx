@@ -76,6 +76,20 @@ export default function DirectIncomeInvoice() {
     const items = invoiceItems(entry).filter(it => it.id !== itemId)
     updateEntry({ items: items.length ? items : [mkLineItem()] })
   }
+  // Client + loan link is metadata about the payment, not the money itself,
+  // so it can still be set on a locked (closed-month) invoice — that's the
+  // whole point for historic entries that predate the link existing.
+  function updateLink(patch) {
+    persist(entries.map(e => e.id === id ? { ...e, ...patch } : e))
+  }
+  const linkedClient = clients.find(c => c.name === entry?.clientName)
+  const linkedLoans = (linkedClient?.loans || [])
+  const loanKey = l => `${l.acc || ''}|${l.lname || ''}`
+  const currentLoanKey = entry ? `${entry.loanAcc || ''}|${entry.loanName || ''}` : '|'
+  function selectLoan(key) {
+    const l = linkedLoans.find(x => loanKey(x) === key)
+    updateLink({ loanAcc: l ? (l.acc || '') : '', loanName: l ? (l.lname || '') : '' })
+  }
   function selectDeal(dealName) {
     const deal = settledDealsThisMonth.find(d => d['Transaction Name'] === dealName)
     const clientName = deal ? (deal['RradarClient'] || deal.Contacts?.[0]?.name || '') : ''
@@ -175,10 +189,24 @@ export default function DirectIncomeInvoice() {
           </div>
           <div>
             {label('Client (optional)')}
-            <input disabled={locked} value={entry.clientName || ''} onChange={e => updateEntry({ clientName: e.target.value })}
+            <input value={entry.clientName || ''} onChange={e => updateLink({ clientName: e.target.value, loanAcc: '', loanName: '' })}
               list="direct-income-invoice-clients" placeholder="Start typing…" style={inputStyle} />
           </div>
+          {linkedClient && (
+            <div>
+              {label('Loan (optional)')}
+              <select value={linkedLoans.some(l => loanKey(l) === currentLoanKey) ? currentLoanKey : '|'} onChange={e => selectLoan(e.target.value)} style={inputStyle}>
+                <option value="|">— Whole client, no specific loan —</option>
+                {linkedLoans.map(l => <option key={loanKey(l)} value={loanKey(l)}>{[l.lname || l.type, l.acc ? `#${l.acc}` : null, l.bank].filter(Boolean).join(' · ')}</option>)}
+              </select>
+            </div>
+          )}
         </div>
+        {linkedClient && (
+          <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 8 }}>
+            Linking to a client (and loan) shows this payment on the client's Commission History page — it's read from this invoice, not copied, so it's never counted twice.
+          </div>
+        )}
 
         {billToRows.length > 0 && (
           <div style={{ marginTop: 16, paddingTop: 14, borderTop: '0.5px solid #e8eaed' }}>

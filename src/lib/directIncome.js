@@ -76,6 +76,36 @@ export function directIncomeTotalForMonth(entries, month) {
     .reduce((s, e) => s + invoiceTotals(e).total, 0)
 }
 
+// ─── Linking an entry back to a client's loan ────────────────────────────
+// An entry can carry clientName (which client it relates to) and, within
+// that client, loanAcc/loanName (which loan). The link is how a Direct
+// payment shows up on the client's Commission History page alongside the
+// statement-fed commissionHistory — read-only, from this one record, so the
+// money is never stored twice (the Dashboard already counts Direct Income
+// separately from statement commission; copying it into commissionHistory
+// would double it there).
+export function entryMatchesLoan(entry, loan) {
+  if (!entry || !loan) return false
+  const acc = String(entry.loanAcc || '').trim()
+  if (acc && String(loan.acc || '').trim()) return acc === String(loan.acc).trim()
+  const nm = String(entry.loanName || '').trim()
+  return !!nm && nm === String(loan.lname || '').trim()
+}
+export function directIncomeForClient(entries, clientName) {
+  return (entries || []).filter(e => e.clientName && e.clientName === clientName)
+}
+// Splits an entry's line items into the trail/upfront buckets the client
+// Commission History page uses — 'Direct Trail' is trail, everything else
+// (Direct Upfront, Mandate, Other) is upfront-style one-off income.
+export function entryCommissionSplit(entry) {
+  return invoiceItems(entry).reduce((acc, it) => {
+    const amt = Number(it.amount) || 0, gst = Number(it.taxAmount) || 0
+    if (it.item === 'Direct Trail') acc.trail += amt; else acc.upfront += amt
+    acc.gst += gst; acc.total += amt + gst
+    return acc
+  }, { trail: 0, upfront: 0, gst: 0, total: 0 })
+}
+
 // ─── Multi-line invoice shape ─────────────────────────────────────────────
 // Going forward an entry can carry an `items` array — one invoice, several
 // line items (e.g. a commission line + a doc fee line on the same Asset

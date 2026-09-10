@@ -169,7 +169,8 @@ export default function LoanHistoryImport({ client, loan, loanIdx, updateClient,
             id: mkId(), month,
             items: [{ id: mkId(), item, description, qty: 1, price: amount, account: DEFAULT_ACCOUNT, taxRate, taxAmount, amount }],
             issueDate, dueDate: plus14Days(issueDate),
-            invoiceNumber: '', supplierName: payer.trim(), dealName: '', clientName: client.name, closed: true,
+            invoiceNumber: '', supplierName: payer.trim(), dealName: '', clientName: client.name,
+            loanAcc: loan.acc || '', loanName: loan.lname || '', closed: true,
           }
         }
         const newEntries = []

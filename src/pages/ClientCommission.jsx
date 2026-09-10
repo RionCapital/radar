@@ -1,5 +1,6 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { loadDirectIncomeLocal, syncDirectIncomeFromSupabase, directIncomeForClient, entryMatchesLoan, entryCommissionSplit } from '../lib/directIncome'
 
 const NAVY = '#3D4F6B'
 const PINK = '#EB99C2'
@@ -18,31 +19,61 @@ export default function ClientCommission({ clients }) {
   const loans = client.loans || []
   const [view, setView] = useState('summary')
 
-  // Build monthly commission data from all loans
+  // Direct Income entries linked to this client (Direct Income page → Client /
+  // Loan fields, or created by a loan's Import History). Read straight from
+  // the Direct Income records and merged into the tables below — never
+  // copied into loan.commissionHistory — so each dollar exists once.
+  const [directEntries, setDirectEntries] = useState(() => loadDirectIncomeLocal())
+  useEffect(() => {
+    syncDirectIncomeFromSupabase().then(cloud => { if (cloud) setDirectEntries(cloud.entries) })
+  }, [])
+  const clientDirect = directIncomeForClient(directEntries, client.name)
+
+  // Build monthly commission data from all loans (statement-fed) …
   const monthMap = {}
+  const ensureMonth = m => { if (!monthMap[m]) monthMap[m] = { month: m, trail: 0, upfront: 0, totalPaid: 0, gst: 0, direct: 0 }; return monthMap[m] }
   loans.forEach(loan => {
     ;(loan.commissionHistory || []).forEach(h => {
-      if (!monthMap[h.month]) monthMap[h.month] = { month: h.month, trail: 0, upfront: 0, totalPaid: 0, gst: 0 }
-      monthMap[h.month].trail     += h.trailComm   || 0
-      monthMap[h.month].upfront   += h.upfrontComm || 0
-      monthMap[h.month].totalPaid += h.totalPaid   || 0
-      monthMap[h.month].gst       += h.gst         || 0
+      const row = ensureMonth(h.month)
+      row.trail     += h.trailComm   || 0
+      row.upfront   += h.upfrontComm || 0
+      row.totalPaid += h.totalPaid   || 0
+      row.gst       += h.gst         || 0
     })
   })
+  // … plus the linked Direct Income for each month.
+  clientDirect.forEach(e => {
+    if (!e.month) return
+    const sp = entryCommissionSplit(e)
+    const row = ensureMonth(e.month)
+    row.trail += sp.trail; row.upfront += sp.upfront; row.gst += sp.gst; row.totalPaid += sp.total; row.direct += sp.trail + sp.upfront
+  })
   const months = Object.values(monthMap).sort((a,b) => b.month.localeCompare(a.month))
+  const hasDirect = clientDirect.length > 0
 
   const totalTrail   = months.reduce((s,m) => s + m.trail,    0)
   const totalUpfront = months.reduce((s,m) => s + m.upfront,  0)
   const totalPaid    = months.reduce((s,m) => s + m.totalPaid, 0)
   const totalGst     = months.reduce((s,m) => s + m.gst,       0)
+  const totalDirect  = months.reduce((s,m) => s + m.direct,    0)
 
   const loanTotals = loans.map(l => {
     const hist = l.commissionHistory || []
-    const trail   = hist.reduce((s,h) => s + (h.trailComm   || 0), 0)
-    const upfront = hist.reduce((s,h) => s + (h.upfrontComm || 0), 0)
-    const paid    = hist.reduce((s,h) => s + (h.totalPaid   || 0), 0)
-    return { name: l.lname || l.acc || 'Loan', acc: l.acc, bank: l.bank, trail, upfront, paid, months: hist.length }
+    const linked = clientDirect.filter(e => entryMatchesLoan(e, l))
+    const dsum = linked.reduce((a, e) => { const sp = entryCommissionSplit(e); a.trail += sp.trail; a.upfront += sp.upfront; a.paid += sp.total; return a }, { trail: 0, upfront: 0, paid: 0 })
+    const trail   = hist.reduce((s,h) => s + (h.trailComm   || 0), 0) + dsum.trail
+    const upfront = hist.reduce((s,h) => s + (h.upfrontComm || 0), 0) + dsum.upfront
+    const paid    = hist.reduce((s,h) => s + (h.totalPaid   || 0), 0) + dsum.paid
+    const monthsSeen = new Set([...hist.map(h => h.month), ...linked.map(e => e.month)])
+    return { name: l.lname || l.acc || 'Loan', acc: l.acc, bank: l.bank, trail, upfront, paid, months: monthsSeen.size, direct: dsum.paid > 0, statement: hist.length > 0 }
   }).filter(l => l.paid > 0).sort((a,b) => b.paid - a.paid)
+  // Direct Income linked to this client but not to any specific loan.
+  const unallocated = clientDirect.filter(e => !loans.some(l => entryMatchesLoan(e, l)))
+  if (unallocated.length) {
+    const a = unallocated.reduce((acc, e) => { const sp = entryCommissionSplit(e); acc.trail += sp.trail; acc.upfront += sp.upfront; acc.paid += sp.total; return acc }, { trail: 0, upfront: 0, paid: 0 })
+    loanTotals.push({ name: 'Direct — not allocated to a loan', acc: '', bank: [...new Set(unallocated.map(e => e.supplierName).filter(Boolean))].join(', '), trail: a.trail, upfront: a.upfront, paid: a.paid, months: new Set(unallocated.map(e => e.month)).size, direct: true, statement: false })
+  }
+  const directTag = <span style={{ marginLeft: 6, fontSize: 8, fontWeight: 700, color: '#7C8CA0', background: '#eef1f5', padding: '1px 6px', borderRadius: 10, textTransform: 'uppercase', letterSpacing: '0.04em', verticalAlign: 'middle' }}>Direct</span>
 
   const th = { padding:'7px 10px', fontSize:10, color:'#64748b', fontWeight:600, textTransform:'uppercase', letterSpacing:'0.05em', borderBottom:'1px solid #e2e8f0' }
   const td = (extra={}) => ({ padding:'8px 10px', fontSize:11, borderBottom:'0.5px solid #f1f5f9', ...extra })
@@ -69,7 +100,7 @@ export default function ClientCommission({ clients }) {
             <div key={s.label} style={{ background:s.bg, borderRadius:8, padding:'12px 16px', border:'0.5px solid #e2e8f0' }}>
               <div style={{ fontSize:10, color:'#64748b', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:4 }}>{s.label}</div>
               <div style={{ fontSize:20, fontWeight:700, color:s.color }}>{s.val}</div>
-              <div style={{ fontSize:10, color:'#94a3b8', marginTop:2 }}>All time · {months.length} months</div>
+              <div style={{ fontSize:10, color:'#94a3b8', marginTop:2 }}>All time · {months.length} months{s.label === 'Total paid' && totalDirect > 0 ? ` · incl. ${fmtc(totalDirect)} direct (excl. GST)` : ''}</div>
             </div>
           ))}
         </div>
@@ -87,13 +118,13 @@ export default function ClientCommission({ clients }) {
         <div style={{ background:'#fff', borderRadius:8, border:'0.5px solid #e2e8f0', overflow:'hidden' }}>
           {view === 'summary' && (months.length === 0 ? (
             <div style={{ padding:'40px 20px', textAlign:'center', color:'#94a3b8', fontSize:12, fontStyle:'italic' }}>
-              No commission data yet — import your commission statements to populate this section.
+              No commission data yet — import your commission statements, or link Direct Income entries to this client, to populate this section.
             </div>
           ) : (
             <table style={{ width:'100%', borderCollapse:'collapse' }}>
               <thead style={{ background:'#f8fafc' }}>
                 <tr>
-                  {['Month','Trail (excl. GST)','Upfront (excl. GST)','GST','Total Paid'].map((h,i) => (
+                  {['Month','Trail (excl. GST)','Upfront (excl. GST)',...(hasDirect?['of which Direct']:[]),'GST','Total Paid'].map((h,i) => (
                     <th key={h} style={{ ...th, textAlign:i>0?'right':'left' }}>{h}</th>
                   ))}
                 </tr>
@@ -104,6 +135,7 @@ export default function ClientCommission({ clients }) {
                     <td style={td({ fontWeight:500, color:NAVY })}>{fmtMonth(m.month)}</td>
                     <td style={td({ textAlign:'right', color:'#22c55e' })}>{fmtc(m.trail)}</td>
                     <td style={td({ textAlign:'right', color:NAVY })}>{m.upfront>0?fmtc(m.upfront):'—'}</td>
+                    {hasDirect && <td style={td({ textAlign:'right', color:'#7C8CA0' })}>{m.direct>0?fmtc(m.direct):'—'}</td>}
                     <td style={td({ textAlign:'right', color:'#64748b' })}>{fmtc(m.gst)}</td>
                     <td style={td({ textAlign:'right', fontWeight:600, color:PINK })}>{fmtc(m.totalPaid)}</td>
                   </tr>
@@ -114,6 +146,7 @@ export default function ClientCommission({ clients }) {
                   <td style={{ ...td(), color:'#fff', fontWeight:700 }}>Total</td>
                   <td style={{ ...td(), color:'#86efac', fontWeight:600, textAlign:'right' }}>{fmtc(totalTrail)}</td>
                   <td style={{ ...td(), color:'#bfdbfe', fontWeight:600, textAlign:'right' }}>{fmtc(totalUpfront)}</td>
+                  {hasDirect && <td style={{ ...td(), color:'rgba(255,255,255,0.75)', textAlign:'right' }}>{fmtc(totalDirect)}</td>}
                   <td style={{ ...td(), color:'rgba(255,255,255,0.6)', textAlign:'right' }}>{fmtc(totalGst)}</td>
                   <td style={{ ...td(), color:PINK, fontWeight:700, textAlign:'right' }}>{fmtc(totalPaid)}</td>
                 </tr>
@@ -135,7 +168,7 @@ export default function ClientCommission({ clients }) {
               <tbody>
                 {loanTotals.map((l,i) => (
                   <tr key={i} style={{ background:i%2===0?'#fff':'#fafbfc' }}>
-                    <td style={td({ fontWeight:500, color:NAVY })}>{l.name}</td>
+                    <td style={td({ fontWeight:500, color:NAVY })}>{l.name}{l.direct && directTag}</td>
                     <td style={td({ color:'#64748b' })}>{l.bank||'—'}</td>
                     <td style={td({ textAlign:'right', color:'#64748b' })}>{l.months}</td>
                     <td style={td({ textAlign:'right', color:'#22c55e' })}>{fmtc(l.trail)}</td>
