@@ -4,12 +4,15 @@ import { totalBal, fmt } from '../lib/data'
 import { daysSinceReview } from '../lib/dateUtils'
 import { Panel, ClientRow } from '../components/UI'
 import AddClient from './AddClient'
+import LoanBulkImport from '../components/LoanBulkImport'
+import { downloadPortfolioCsv } from '../lib/portfolioExport'
 
-export default function ClientList({ clients, onAddClient }) {
+export default function ClientList({ clients, onAddClient, onUpdateClients }) {
   const navigate = useNavigate()
   const [search, setSearch] = useState('')
   const [stream, setStream] = useState('all')
   const [showAdd, setShowAdd] = useState(false)
+  const [showImport, setShowImport] = useState(false)
 
   // Default A-Z, filtered by search and stream
   let list = [...clients].sort((a,b) => a.name.localeCompare(b.name))
@@ -52,6 +55,9 @@ export default function ClientList({ clients, onAddClient }) {
             <div style={{ fontSize:10, fontWeight:500, color:'var(--text-secondary)', textTransform:'uppercase', letterSpacing:'0.06em' }}>
               All connections <span style={{ fontWeight:400 }}>({list.length})</span>
             </div>
+            <button onClick={()=>downloadPortfolioCsv(clients)} title="Download every connection and its loans as a CSV"
+              style={{...sel, background:'transparent', color:'var(--text-secondary)', border:'0.5px solid var(--border)', fontWeight:500}}>⬇ Export portfolio</button>
+            {onUpdateClients && <button onClick={()=>setShowImport(true)} style={{...sel, background:'transparent', color:'var(--pk)', border:'0.5px solid var(--pk)', fontWeight:500}}>⬆ Import loans</button>}
             <button onClick={()=>setShowAdd(true)} style={{...sel, background:'var(--pk)', color:'#fff', border:'none', fontWeight:500}}>+ Add client</button>
           </div>
         </div>
@@ -95,6 +101,7 @@ export default function ClientList({ clients, onAddClient }) {
         )}
       </Panel>
       {showAdd && <AddClient clients={clients} onSave={c=>{onAddClient&&onAddClient(c);setShowAdd(false)}} onClose={()=>setShowAdd(false)}/>}
+      {showImport && <LoanBulkImport clients={clients} onUpdateClients={onUpdateClients} onClose={()=>setShowImport(false)}/>}
     </div>
   )
 }

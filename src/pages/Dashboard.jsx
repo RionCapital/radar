@@ -6,6 +6,7 @@ import { sbSaveTicked, sbLoadTicked } from '../lib/supabase'
 import { loadDirectIncomeLocal, syncDirectIncomeFromSupabase, invoiceTotals } from '../lib/directIncome'
 import { assetFinanceCurrentBalance, facilityUtilized, assetFinanceBalanceAt, facilityUtilizedAt, monthKeyOf } from '../lib/mafFacilities'
 import { useNavigate } from 'react-router-dom'
+import { loanStream, loadSettings } from '../lib/settings'
 
 // A loan flagged `direct` is tracked by Cameron directly in Rradar rather
 // than fed by a commission statement — mainly manually-added Asset Finance
@@ -264,7 +265,22 @@ function buildMaturingRows(clients) {
   return rows.sort((a, b) => new Date(a.expiryDate) - new Date(b.expiryDate)).slice(0, 30)
 }
 
-function BarChart({ data, keys, colors, title, formatY, tickStep, onBarHover, onBarLeave, hoveredIdx }) {
+const navBtn = {
+  width: 18, height: 18, lineHeight: 1, padding: 0, borderRadius: 4,
+  border: '0.5px solid var(--border)', background: 'transparent',
+  fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center',
+}
+
+const SERIES_LABELS = {
+  trail: 'Trail', upfront: 'Upfront', direct: 'Direct',
+  private: 'Private Wealth', pwDirect: 'PW (Direct)',
+  commercial: 'Commercial', commDirect: 'Comm. (Direct)',
+}
+
+// `nav` (optional) turns on the ‹ › time controls beside the title:
+// { onPrev, onNext, onLatest, canPrev, canNext, range } — the chart itself
+// stays dumb about which months it's showing, it just renders what it's given.
+function BarChart({ data, keys, colors, title, formatY, tickStep, onBarHover, onBarLeave, hoveredIdx, nav }) {
   const rawMax = Math.max(...data.map(d => keys.reduce((s, k) => s + (d[k] || 0), 0))) || 1
   // Default: 5 gridlines evenly splitting whatever the tallest bar happens to
   // be — the labels land on whatever number that produces (e.g. $11k/$23k),
@@ -282,7 +298,24 @@ function BarChart({ data, keys, colors, title, formatY, tickStep, onBarHover, on
   const h = 120, barW = Math.max(12, Math.floor(420 / data.length) - 3)
   return (
     <div style={{ flex: 1 }}>
-      <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-secondary)', textAlign: 'center', marginBottom: 6 }}>{title}</div>
+      {nav ? (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, marginBottom: 6 }}>
+          <button onClick={nav.onPrev} disabled={!nav.canPrev} title="Earlier months"
+            style={{ ...navBtn, cursor: nav.canPrev ? 'pointer' : 'default', color: nav.canPrev ? 'var(--text-secondary)' : 'var(--border)' }}>‹</button>
+          <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-secondary)', textAlign: 'center' }}>
+            {title}
+            {nav.range && <span style={{ fontSize: 9, color: 'var(--text-tertiary)', marginLeft: 5 }}>{nav.range}</span>}
+          </div>
+          <button onClick={nav.onNext} disabled={!nav.canNext} title="Later months"
+            style={{ ...navBtn, cursor: nav.canNext ? 'pointer' : 'default', color: nav.canNext ? 'var(--text-secondary)' : 'var(--border)' }}>›</button>
+          {nav.canNext && (
+            <button onClick={nav.onLatest} title="Back to the most recent months"
+              style={{ ...navBtn, width: 'auto', padding: '0 6px', fontSize: 9, color: 'var(--pk)' }}>Latest</button>
+          )}
+        </div>
+      ) : (
+        <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-secondary)', textAlign: 'center', marginBottom: 6 }}>{title}</div>
+      )}
       <svg width="100%" viewBox={`0 0 ${data.length * (barW + 3) + 42} ${h + 34}`} style={{ overflow: 'visible', display: 'block' }}>
         {tickValues.map(tv => {
           const p = maxVal > 0 ? tv / maxVal : 0
@@ -313,7 +346,7 @@ function BarChart({ data, keys, colors, title, formatY, tickStep, onBarHover, on
         {keys.map((k, i) => (
           <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, color: 'var(--text-secondary)' }}>
             <div style={{ width: 10, height: 10, borderRadius: 2, background: colors[i] }} />
-            {k === 'trail' ? 'Trail' : k === 'upfront' ? 'Upfront' : k === 'direct' ? 'Direct' : k === 'private' ? 'Private Wealth' : 'Commercial'}
+            {SERIES_LABELS[k] || k}
           </div>
         ))}
       </div>
@@ -540,6 +573,9 @@ export default function Dashboard({ clients, onImport, onUpdateClients }) {
   const [showImport, setShowImport] = useState(false)
   const [hoveredMonthIdx, setHoveredMonthIdx] = useState(null)
   const [hoveredCommIdx,  setHoveredCommIdx]  = useState(null)
+  // Months back from the latest that each chart is scrolled to (0 = latest).
+  const [balOffset,  setBalOffset]  = useState(0)
+  const [commOffset, setCommOffset] = useState(0)
   const hasPendingImport = !!localStorage.getItem('rion-pending-import')
   // Ticked rows stored as Set of unique keys: `${panelKey}-${conn}-${acc}`
   const [tickedKeys, setTickedKeys] = useState(() => {
@@ -571,8 +607,13 @@ export default function Dashboard({ clients, onImport, onUpdateClients }) {
   const COMM = mergeCommission(clients, directByMonth)
   const latest = COMM[COMM.length - 1]
   const allLoans = clients.flatMap(c => c.loans)
-  const pwLoansAll = clients.filter(c => c.stream === 'Private Wealth' && !c._demo).flatMap(c => c.loans).filter(l => !l.closed)
-  const commLoansAll = clients.filter(c => c.stream === 'Commercial' && !c._demo).flatMap(c => c.loans).filter(l => !l.closed)
+  // A loan's stream comes from its loan type's assignment in Settings > CRM
+  // > Loan Types, falling back to the client's stream (see loanStream) — so
+  // one client can have loans counting toward both streams.
+  const streamSettings = loadSettings()
+  const activeLoans = clients.filter(c => !c._demo).flatMap(c => (c.loans || []).filter(l => !l.closed).map(l => ({ l, stream: loanStream(l, c, streamSettings) })))
+  const pwLoansAll = activeLoans.filter(x => x.stream === 'Private Wealth').map(x => x.l)
+  const commLoansAll = activeLoans.filter(x => x.stream === 'Commercial').map(x => x.l)
   // Statement-driven loans keep using their commission-statement `.balance`
   // exactly as before; Direct-flagged loans (manually tracked, not from a
   // statement) use directLoanValue() instead, so a manually-added Asset
@@ -589,18 +630,73 @@ export default function Dashboard({ clients, onImport, onUpdateClients }) {
   const quarters = quarterlyIncome(COMM)
 
   const pwRatio = pwTotal / (pwTotal + commTotal || 1)
-  const last12 = COMM.slice(-12)
-  const balData = last12.map(d => ({
-    month: d.month,
-    _key: d._key,
-    private: Math.round(d.balance * pwRatio),
-    commercial: Math.round(d.balance * (1 - pwRatio)),
-  }))
-  // Direct-tracked balances as they stood in a given past month, per stream —
-  // only needed for the hovered month, so computed on demand.
+
+  // ── Which 12 months each chart is showing ────────────────────────────────
+  // Offset counts months back from the most recent; 0 is "latest". The two
+  // charts scroll independently — one is about balances, the other about
+  // income, and they're rarely interrogated for the same period.
+  const WINDOW = 12, STEP = 6
+  const maxOffset = Math.max(0, COMM.length - WINDOW)
+  const windowOf = off => {
+    const end = COMM.length - off
+    return COMM.slice(Math.max(0, end - WINDOW), end)
+  }
+  const rangeLabel = win => win.length ? `${win[0].month} – ${win[win.length - 1].month}` : ''
+  const mkNav = (off, setOff, win) => ({
+    onPrev: () => setOff(o => Math.min(maxOffset, o + STEP)),
+    onNext: () => setOff(o => Math.max(0, o - STEP)),
+    onLatest: () => setOff(0),
+    canPrev: off < maxOffset, canNext: off > 0, range: rangeLabel(win),
+  })
+  const balWindow = windowOf(balOffset)
+  const commWindow = windowOf(commOffset)
+  const last12 = commWindow
+
+  // Per-month, per-stream balances straight from each loan's balanceHistory.
+  // Closed loans are included: a facility discharged last year still carried
+  // a balance in the months before that, and dropping it would make the older
+  // bars understate the book. Direct loans are kept separate so their history
+  // can be subtracted from the statement total below rather than double-counted.
+  const streamHistory = {}
+  clients.filter(c => !c._demo).forEach(c => {
+    ;(c.loans || []).forEach(l => {
+      const isPw = loanStream(l, c, streamSettings) === 'Private Wealth'
+      ;(l.balanceHistory || []).forEach(h => {
+        if (!h.month) return
+        const row = streamHistory[h.month] || (streamHistory[h.month] = { pw: 0, comm: 0, dpw: 0, dcomm: 0 })
+        const bal = Number(h.balance) || 0
+        if (l.direct) row[isPw ? 'dpw' : 'dcomm'] += bal
+        else row[isPw ? 'pw' : 'comm'] += bal
+      })
+    })
+  })
+
+  // Direct-tracked balances as they stood in a given month, per stream — the
+  // same figures the Portfolio Split's Direct ribbons use.
   const directAt = (monthKey) => ({
     pw: pwLoansAll.filter(l => l.direct).reduce((s, l) => s + directLoanValueAt(l, monthKey), 0),
     comm: commLoansAll.filter(l => l.direct).reduce((s, l) => s + directLoanValueAt(l, monthKey), 0),
+  })
+
+  // Four stacked series per month: each stream's statement balance plus its
+  // Direct balance, in the Portfolio Split's colours. The month's reported
+  // total (d.balance) stays the anchor for statement money — any Direct loan
+  // whose own history already fed into it is subtracted first, so nothing is
+  // counted twice — and the PW/Commercial split uses that month's real
+  // statement history where there is one, rather than today's ratio.
+  const balData = balWindow.map(d => {
+    const hist = streamHistory[d._key]
+    const direct = directAt(d._key || '')
+    const stmtTotal = Math.max(0, (d.balance || 0) - (hist ? hist.dpw + hist.dcomm : 0))
+    const stmtSplit = hist && (hist.pw + hist.comm) > 0 ? hist.pw / (hist.pw + hist.comm) : pwRatio
+    return {
+      month: d.month,
+      _key: d._key,
+      private: Math.round(stmtTotal * stmtSplit),
+      pwDirect: Math.round(direct.pw),
+      commercial: Math.round(stmtTotal * (1 - stmtSplit)),
+      commDirect: Math.round(direct.comm),
+    }
   })
 
   // Build all rows
@@ -682,7 +778,7 @@ export default function Dashboard({ clients, onImport, onUpdateClients }) {
       {/* TOP ROW */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 180px 1fr 200px', gap: 14, marginBottom: 14, alignItems: 'start' }}>
         <Panel style={{ display: 'flex', flexDirection: 'column' }}>
-          <BarChart data={balData} keys={['private', 'commercial']} colors={['#EB99C2', '#3D5570']} title="Portfolio Balances" formatY={v => v >= 1e6 ? `$${Math.round(v / 5e6) * 5}m` : `$${Math.round(v / 5000) * 5}k`} onBarHover={setHoveredMonthIdx} onBarLeave={()=>setHoveredMonthIdx(null)} hoveredIdx={hoveredMonthIdx} />
+          <BarChart data={balData} keys={['private', 'pwDirect', 'commercial', 'commDirect']} colors={['#EB99C2', '#F7D3E4', '#3D5570', '#7C8CA0']} title="Portfolio Balances" formatY={v => v >= 1e6 ? `$${Math.round(v / 5e6) * 5}m` : `$${Math.round(v / 5000) * 5}k`} onBarHover={setHoveredMonthIdx} onBarLeave={()=>setHoveredMonthIdx(null)} hoveredIdx={hoveredMonthIdx} nav={mkNav(balOffset, setBalOffset, balWindow)} />
         </Panel>
         <Panel style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '10px 6px' }}>
           {(() => {
@@ -694,16 +790,15 @@ export default function Dashboard({ clients, onImport, onUpdateClients }) {
             // rather than being pinned to the last statement month's balance.
             if (hoveredMonthIdx != null) {
               const point = balData[hoveredMonthIdx]
-              if (point) {
-                const d = point._key ? directAt(point._key) : { pw: pwDirectTotal, comm: commDirectTotal }
-                return <PieChart pw={point.private} comm={point.commercial} pwDirect={Math.round(d.pw)} commDirect={Math.round(d.comm)} label={point.month} />
-              }
+              // balData already carries that month's statement + Direct split
+              // per stream, so the pie and the hovered bar always agree.
+              if (point) return <PieChart pw={point.private + point.pwDirect} comm={point.commercial + point.commDirect} pwDirect={point.pwDirect} commDirect={point.commDirect} label={point.month} />
             }
             return <PieChart pw={Math.round(pwTotal)} comm={Math.round(commTotal)} pwDirect={pwDirectTotal} commDirect={commDirectTotal} />
           })()}
         </Panel>
         <Panel style={{ display: 'flex', flexDirection: 'column' }}>
-          <BarChart data={last12} keys={['trail', 'upfront', 'direct']} colors={['#3D5570', '#EB99C2', '#7A8090']} title="Commission Income" formatY={v => `$${Math.round(v / 1000)}k`} tickStep={10000} onBarHover={setHoveredCommIdx} onBarLeave={() => setHoveredCommIdx(null)} hoveredIdx={hoveredCommIdx} />
+          <BarChart data={last12} keys={['trail', 'upfront', 'direct']} colors={['#3D5570', '#EB99C2', '#7A8090']} title="Commission Income" formatY={v => `$${Math.round(v / 1000)}k`} tickStep={10000} onBarHover={setHoveredCommIdx} onBarLeave={() => setHoveredCommIdx(null)} hoveredIdx={hoveredCommIdx} nav={mkNav(commOffset, setCommOffset, commWindow)} />
         </Panel>
         <Panel style={{ padding: '12px 14px' }}>
           {hoveredCommIdx != null ? (() => {
