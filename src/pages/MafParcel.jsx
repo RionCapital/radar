@@ -7,6 +7,8 @@ import {
   assetFinanceBalanceHistory, assetFinanceCurrentBalance, assetFinanceMonthlyRepayment,
   assetFinanceTotalMonthlyCost, progressDrawn, progressRemaining,
   PROGRESS_PAYMENT_STATUSES, getSupplierGroups, mkSupplierGroup, mkProgressInvoice, groupSubtotal,
+  getCustomerGroups, mkCustomerGroup, mkImportLeaseBill, billGroupSubtotal, importLeaseDrawn,
+  importLeaseSubLimitUtilized, importLeaseSubLimitHeadroom,
 } from '../lib/mafFacilities'
 
 const NAVY = '#3D4F6B'
@@ -69,6 +71,8 @@ export default function MafParcel({ clients, updateClient }) {
 
       {parcel.kind === 'progress'
         ? <ProgressParcelView parcel={parcel} updateParcel={updateParcel} inputStyle={inputStyle} label={label} />
+        : parcel.kind === 'importLease'
+        ? <ImportLeaseParcelView parcel={parcel} facility={facility} updateParcel={updateParcel} inputStyle={inputStyle} />
         : <AssetFinanceParcelView parcel={parcel} facility={facility} updateParcel={updateParcel} inputStyle={inputStyle} />}
     </div>
   )
@@ -670,6 +674,219 @@ function ProgressParcelView({ parcel: p, updateParcel, inputStyle }) {
             <div style={{ background: '#F4F6FA', borderRadius: 8, padding: '10px 16px', flex: '1 1 160px' }}>
               <div style={{ fontSize: 10, color: '#7A8090', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Outstanding</div>
               <div style={{ fontSize: 17, fontWeight: 700, color: totalOutstanding > 0 ? '#c0392b' : '#2A3545' }}>{fmt(totalOutstanding)}</div>
+            </div>
+          </div>
+        </Panel>
+      )}
+    </>
+  )
+}
+
+// Same shape as ProgressParcelView above — one table per customer instead
+// of per supplier — but the columns are trade-finance bill fields (book/
+// maturity date, currency, tenor, interest) rather than invoice fields,
+// and a bill counts as drawn while OUTSTANDING (not yet repaid), the
+// opposite polarity from a Progress invoice (which counts as drawn once
+// PAID) — see the comment on billGroupSubtotal in lib/mafFacilities.js.
+// Unlike Progress, there's no per-parcel approved limit here: every Import
+// Lease parcel under this MAF shares the one Import Lease sub-limit set on
+// the facility itself (Sub limits panel on the MAF Facility page), so the
+// summary below reads that shared limit via `facility` rather than a
+// field on this parcel.
+function ImportLeaseParcelView({ parcel: p, facility, updateParcel, inputStyle }) {
+  const drawn = importLeaseDrawn(p)
+  const groups = getCustomerGroups(p)
+  const totalBillCount = groups.reduce((s, g) => s + (g.bills || []).length, 0)
+  const totalFaceValue = groups.reduce((s, g) => s + billGroupSubtotal(g.bills).total, 0)
+  const totalRepaid = groups.reduce((s, g) => s + billGroupSubtotal(g.bills).repaid, 0)
+  const totalOutstanding = groups.reduce((s, g) => s + billGroupSubtotal(g.bills).outstanding, 0)
+  const subLimitUtilized = importLeaseSubLimitUtilized(facility)
+  const subLimitHeadroom = importLeaseSubLimitHeadroom(facility)
+
+  function addCustomer() {
+    updateParcel({ customerGroups: [...groups, mkCustomerGroup()] })
+  }
+  function updateGroup(groupId, patch) {
+    updateParcel({ customerGroups: groups.map(g => g.id === groupId ? { ...g, ...patch } : g) })
+  }
+  function removeGroup(groupId) {
+    if (!window.confirm('Remove this customer and all its bills? This can\'t be undone.')) return
+    updateParcel({ customerGroups: groups.filter(g => g.id !== groupId) })
+  }
+  function addBill(groupId) {
+    updateParcel({ customerGroups: groups.map(g => g.id === groupId ? { ...g, bills: [...(g.bills || []), mkImportLeaseBill()] } : g) })
+  }
+  function updateBill(groupId, billId, patch) {
+    updateParcel({ customerGroups: groups.map(g => g.id === groupId ? { ...g, bills: g.bills.map(b => b.id === billId ? { ...b, ...patch } : b) } : g) })
+  }
+  function removeBill(groupId, billId) {
+    if (!window.confirm('Remove this bill line? This can\'t be undone.')) return
+    updateParcel({ customerGroups: groups.map(g => g.id === groupId ? { ...g, bills: g.bills.filter(b => b.id !== billId) } : g) })
+  }
+
+  const cellIn = { ...inputStyle, fontSize: 11, padding: '5px 6px' }
+  const BILL_COLS = ['Our ref #', 'Book date', 'Maturity date', 'Ccy', 'Bill amount', 'Tenor (d)', 'Int rate %', 'Int due amt', 'Amount due at maturity (P+I)', 'Repaid', 'Notes', '']
+
+  return (
+    <>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 18, flexWrap: 'wrap', gap: 12 }}>
+        <div>
+          <h1 style={{ fontSize: 20, fontWeight: 700, color: '#2A3545', margin: 0 }}>{p.name || 'Import Lease'}</h1>
+          <div style={{ fontSize: 12, color: '#7A8090', marginTop: 4 }}>Import Lease · Under {facility.bank || 'MAF'} facility</div>
+        </div>
+      </div>
+
+      <Panel style={{ marginBottom: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 14 }}>
+          <FieldGroup label="Name">
+            <input style={inputStyle} value={p.name || ''} onChange={e => updateParcel({ name: e.target.value })} placeholder="e.g. Import Lease Facility" />
+          </FieldGroup>
+          <FieldGroup label="Status">
+            <select style={inputStyle} value={p.closed ? 'closed' : 'active'} onChange={e => updateParcel({ closed: e.target.value === 'closed' })}>
+              <option value="active">Active</option>
+              <option value="closed">Closed</option>
+            </select>
+          </FieldGroup>
+        </div>
+        <div style={{ marginTop: 14 }}>
+          <FieldGroup label="Notes">
+            <textarea style={{ ...inputStyle, resize: 'vertical' }} rows={2} value={p.notes || ''} onChange={e => updateParcel({ notes: e.target.value })} />
+          </FieldGroup>
+        </div>
+
+        <div style={{ display: 'flex', gap: 10, marginTop: 16, paddingTop: 14, borderTop: '0.5px solid #e8eaed', flexWrap: 'wrap' }}>
+          <div style={{ background: '#F4F6FA', borderRadius: 8, padding: '10px 16px', flex: '1 1 160px' }}>
+            <div style={{ fontSize: 10, color: '#7A8090', textTransform: 'uppercase', letterSpacing: '0.04em' }}>This parcel's outstanding (drawn)</div>
+            <div style={{ fontSize: 17, fontWeight: 700, color: '#2A3545' }}>{fmt(drawn)}</div>
+          </div>
+          <div style={{ background: '#F4F6FA', borderRadius: 8, padding: '10px 16px', flex: '1 1 160px' }}>
+            <div style={{ fontSize: 10, color: '#7A8090', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Shared Import Lease limit</div>
+            <div style={{ fontSize: 17, fontWeight: 700, color: '#2A3545' }}>{fmt(Number(facility.importLeaseLimit) || 0)}</div>
+          </div>
+          <div style={{ background: subLimitHeadroom < 0 ? '#fef2f2' : '#eefaf2', borderRadius: 8, padding: '10px 16px', flex: '1 1 160px' }}>
+            <div style={{ fontSize: 10, color: '#7A8090', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Sub-limit headroom (all Import Lease parcels)</div>
+            <div style={{ fontSize: 17, fontWeight: 700, color: subLimitHeadroom < 0 ? '#dc2626' : '#22c55e' }}>{fmt(subLimitHeadroom)}</div>
+          </div>
+        </div>
+        <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 8 }}>
+          The Import Lease limit is shared across every Import Lease parcel under this MAF (currently {fmt(subLimitUtilized)} drawn in total) — set it on the MAF Facility page's Sub limits panel, not per parcel.
+        </div>
+      </Panel>
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, gap: 12, flexWrap: 'wrap' }}>
+        <div style={{ fontSize: 10.5, color: '#94a3b8', lineHeight: 1.5, maxWidth: 640 }}>
+          Each customer gets its own table below — add a customer, then add that customer's bills underneath it, same layout as a Progress facility's supplier tables.
+        </div>
+        <button onClick={addCustomer} style={{ fontSize: 10, padding: '5px 12px', borderRadius: 6, border: `0.5px solid ${PINK}`, background: 'transparent', color: PINK, cursor: 'pointer', fontWeight: 600, whiteSpace: 'nowrap' }}>+ Add customer</button>
+      </div>
+
+      {!groups.length ? (
+        <Panel style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 12, color: '#94a3b8', padding: '18px 0', textAlign: 'center' }}>No customers added yet — click "+ Add customer" to start tracking bills.</div>
+        </Panel>
+      ) : groups.map(g => {
+        const sub = billGroupSubtotal(g.bills)
+        return (
+          <Panel key={g.id} style={{ marginBottom: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, gap: 10, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 200 }}>
+                <div style={{ fontSize: 10, fontWeight: 600, color: '#7A8090', textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>Customer</div>
+                <input style={{ ...inputStyle, fontSize: 13, fontWeight: 600, maxWidth: 260 }} value={g.customer || ''} onChange={e => updateGroup(g.id, { customer: e.target.value })} placeholder="Customer name" />
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{sub.count} bill{sub.count !== 1 ? 's' : ''} · <span style={{ fontWeight: 600, color: '#2A3545' }}>{fmt(sub.total)}</span></div>
+                <button onClick={() => addBill(g.id)} style={{ fontSize: 10, padding: '4px 10px', borderRadius: 6, border: `0.5px solid ${PINK}`, background: 'transparent', color: PINK, cursor: 'pointer', fontWeight: 600, whiteSpace: 'nowrap' }}>+ Add bill</button>
+                <button onClick={() => removeGroup(g.id)} style={{ fontSize: 10, padding: '4px 10px', borderRadius: 6, border: '1px solid #fecaca', background: '#fef2f2', color: '#dc2626', cursor: 'pointer', fontWeight: 600, whiteSpace: 'nowrap' }}>Remove customer</button>
+              </div>
+            </div>
+
+            {!g.bills.length ? (
+              <div style={{ fontSize: 12, color: '#94a3b8', padding: '14px 0', textAlign: 'center' }}>No bills for this customer yet.</div>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+                  <thead><tr>
+                    {BILL_COLS.map(h => (
+                      <th key={h} style={{ padding: '6px 6px', background: '#3D5570', color: '#fff', fontSize: 9.5, textAlign: ['Bill amount', 'Tenor (d)', 'Int rate %', 'Int due amt', 'Amount due at maturity (P+I)'].includes(h) ? 'right' : 'left', whiteSpace: 'nowrap' }}>{h}</th>
+                    ))}
+                  </tr></thead>
+                  <tbody>
+                    {g.bills.map(b => {
+                      const days = !b.repaid ? daysUntil(b.maturityDate) : null
+                      // Same red/amber/plain colour rule as a Progress
+                      // invoice's due date — red once matured and unpaid,
+                      // amber inside the final 2 weeks, blank once repaid.
+                      const dueColor = days == null ? undefined : days < 0 ? '#dc2626' : days <= 14 ? '#854F0B' : undefined
+                      return (
+                        <tr key={b.id}>
+                          <td style={{ padding: '5px 6px', borderBottom: '0.5px solid var(--border-light)' }}>
+                            <input style={{ ...cellIn, width: 100 }} value={b.refNum || ''} onChange={e => updateBill(g.id, b.id, { refNum: e.target.value })} />
+                          </td>
+                          <td style={{ padding: '5px 6px', borderBottom: '0.5px solid var(--border-light)' }}>
+                            <DateInput value={b.bookDate || ''} onChange={v => updateBill(g.id, b.id, { bookDate: v })} style={{ ...cellIn, width: 108 }} />
+                          </td>
+                          <td style={{ padding: '5px 6px', borderBottom: '0.5px solid var(--border-light)' }}>
+                            <DateInput value={b.maturityDate || ''} onChange={v => updateBill(g.id, b.id, { maturityDate: v })} style={{ ...cellIn, width: 108, color: dueColor, fontWeight: dueColor ? 600 : 400 }} />
+                          </td>
+                          <td style={{ padding: '5px 6px', borderBottom: '0.5px solid var(--border-light)' }}>
+                            <input style={{ ...cellIn, width: 54 }} value={b.billCcy || ''} onChange={e => updateBill(g.id, b.id, { billCcy: e.target.value.toUpperCase() })} placeholder="AUD" />
+                          </td>
+                          <td style={{ padding: '5px 6px', borderBottom: '0.5px solid var(--border-light)', textAlign: 'right' }}>
+                            <AmountInput style={{ ...cellIn, width: 100, textAlign: 'right', color: b.repaid ? '#166534' : undefined, fontWeight: b.repaid ? 600 : 400 }} value={b.billAmt} onChange={val => updateBill(g.id, b.id, { billAmt: val })} />
+                          </td>
+                          <td style={{ padding: '5px 6px', borderBottom: '0.5px solid var(--border-light)', textAlign: 'right' }}>
+                            <input style={{ ...cellIn, width: 60, textAlign: 'right' }} type="number" value={b.tenor || ''} onChange={e => updateBill(g.id, b.id, { tenor: e.target.value })} placeholder="days" />
+                          </td>
+                          <td style={{ padding: '5px 6px', borderBottom: '0.5px solid var(--border-light)', textAlign: 'right' }}>
+                            <input style={{ ...cellIn, width: 60, textAlign: 'right' }} type="number" step="0.01" value={b.intRate || ''} onChange={e => updateBill(g.id, b.id, { intRate: e.target.value })} placeholder="%" />
+                          </td>
+                          <td style={{ padding: '5px 6px', borderBottom: '0.5px solid var(--border-light)', textAlign: 'right' }}>
+                            <AmountInput style={{ ...cellIn, width: 90, textAlign: 'right' }} value={b.intDueAmt} onChange={val => updateBill(g.id, b.id, { intDueAmt: val })} />
+                          </td>
+                          <td style={{ padding: '5px 6px', borderBottom: '0.5px solid var(--border-light)', textAlign: 'right' }}>
+                            <AmountInput style={{ ...cellIn, width: 110, textAlign: 'right', color: b.repaid ? '#166534' : undefined, fontWeight: b.repaid ? 600 : 400 }} value={b.amountDueAtMaturity} onChange={val => updateBill(g.id, b.id, { amountDueAtMaturity: val })} />
+                          </td>
+                          <td style={{ padding: '5px 6px', borderBottom: '0.5px solid var(--border-light)', textAlign: 'center' }}>
+                            <input type="checkbox" checked={!!b.repaid} onChange={e => updateBill(g.id, b.id, { repaid: e.target.checked })} />
+                          </td>
+                          <td style={{ padding: '5px 6px', borderBottom: '0.5px solid var(--border-light)' }}>
+                            <input style={{ ...cellIn, width: 130 }} value={b.notes || ''} onChange={e => updateBill(g.id, b.id, { notes: e.target.value })} />
+                          </td>
+                          <td style={{ padding: '5px 6px', borderBottom: '0.5px solid var(--border-light)' }}>
+                            <button onClick={() => removeBill(g.id, b.id)} style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', borderRadius: 5, padding: '3px 8px', cursor: 'pointer', fontSize: 11 }}>✕</button>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                  <tfoot>
+                    <tr style={{ background: '#f0f4f8' }}>
+                      <td colSpan={4} style={{ padding: '7px 6px', fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)' }}>Subtotal — {g.customer || 'Customer'} ({sub.count} bill{sub.count !== 1 ? 's' : ''})</td>
+                      <td style={{ padding: '7px 6px', fontSize: 11, fontWeight: 700, color: '#2A3545', textAlign: 'right' }}>{fmt(sub.total)}</td>
+                      <td colSpan={7}></td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            )}
+          </Panel>
+        )
+      })}
+
+      {groups.length > 0 && (
+        <Panel>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <div style={{ background: '#F4F6FA', borderRadius: 8, padding: '10px 16px', flex: '1 1 160px' }}>
+              <div style={{ fontSize: 10, color: '#7A8090', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Total face value — all customers ({totalBillCount} bill{totalBillCount !== 1 ? 's' : ''})</div>
+              <div style={{ fontSize: 17, fontWeight: 700, color: '#2A3545' }}>{fmt(totalFaceValue)}</div>
+            </div>
+            <div style={{ background: '#F4F6FA', borderRadius: 8, padding: '10px 16px', flex: '1 1 160px' }}>
+              <div style={{ fontSize: 10, color: '#7A8090', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Outstanding (drawn)</div>
+              <div style={{ fontSize: 17, fontWeight: 700, color: totalOutstanding > 0 ? '#c0392b' : '#2A3545' }}>{fmt(totalOutstanding)}</div>
+            </div>
+            <div style={{ background: '#F4F6FA', borderRadius: 8, padding: '10px 16px', flex: '1 1 160px' }}>
+              <div style={{ fontSize: 10, color: '#7A8090', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Repaid</div>
+              <div style={{ fontSize: 17, fontWeight: 700, color: '#166534' }}>{fmt(totalRepaid)}</div>
             </div>
           </div>
         </Panel>
