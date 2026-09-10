@@ -153,6 +153,17 @@ export default function MafFacility({ clients, updateClient }) {
                 </select>
               : <div>{facility.closed ? 'Closed' : 'Active'}</div>}
           </FieldGroup>
+          <FieldGroup label="Direct">
+            {editing
+              ? <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--text-primary)', cursor: 'pointer', marginTop: 6 }}>
+                  <input type="checkbox" checked={!!f.direct} onChange={e => set('direct', e.target.checked)} />
+                  Tracked directly (not from a statement)
+                </label>
+              : <div>{facility.direct ? 'Yes — tracked directly, not from a statement' : '—'}</div>}
+          </FieldGroup>
+        </div>
+        <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 8 }}>
+          Ticking Direct marks this whole MAF — and every parcel drawn under it (Asset Finance, Progress, Import Lease) — as tracked directly in Rradar rather than from a commission statement. The Portfolio Split chart on the Dashboard will then use the live utilised total shown below instead of a statement balance.
         </div>
         <div style={{ marginTop: 14 }}>
           <FieldGroup label="Notes">

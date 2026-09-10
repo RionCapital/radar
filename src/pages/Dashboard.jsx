@@ -4,16 +4,25 @@ import { fmtDate, rollingYTD, quarterlyIncome, expiryBadge, daysUntil, daysSince
 import { Panel, PanelTitle, DayBadge } from '../components/UI'
 import { sbSaveTicked, sbLoadTicked } from '../lib/supabase'
 import { loadDirectIncomeLocal, syncDirectIncomeFromSupabase, invoiceTotals } from '../lib/directIncome'
-import { assetFinanceCurrentBalance } from '../lib/mafFacilities'
+import { assetFinanceCurrentBalance, facilityUtilized } from '../lib/mafFacilities'
 import { useNavigate } from 'react-router-dom'
 
 // A loan flagged `direct` is tracked by Cameron directly in Rradar rather
 // than fed by a commission statement — mainly manually-added Asset Finance
-// (and, potentially, Personal) loans. Those never get a live `.balance`
-// from an import, so for Asset Finance specifically the current value has
-// to come from the same amortisation estimate LoanAccount.jsx already uses
-// (assetFinanceCurrentBalance) rather than the (unset) balance field.
+// (and, potentially, Personal) loans, plus whole MAF facilities whose
+// parcels (Asset Finance, Progress, Import Lease) he tracks by hand. Those
+// never get a live `.balance` from an import, so the current value has to
+// come from the same live calculations the loan/facility's own page
+// already uses, rather than the (unset) balance field:
+//  - MAF: facilityUtilized() — the live sum across every parcel drawn
+//    under it, exactly what the MAF Facility page's own "Utilized" tile
+//    shows, so ticking Direct on a MAF sweeps in all its parcels at once.
+//  - Standalone Asset Finance: assetFinanceCurrentBalance() — the same
+//    amortisation estimate LoanAccount.jsx shows.
+//  - Anything else (e.g. a manually-tracked Personal loan): the balance
+//    field, same as a normal statement-driven loan, just not statement-fed.
 function directLoanValue(loan) {
+  if (loan.type === 'MAF') return facilityUtilized(loan)
   if (loan.type === 'Asset Finance') return assetFinanceCurrentBalance(loan)
   return Number(loan.balance) || 0
 }
