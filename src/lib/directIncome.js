@@ -7,7 +7,10 @@ import { sbLoadMarketing, sbSaveMarketing } from './supabase'
 const ROW_ID = 5
 const STORAGE_KEY = 'rion-direct-income'
 
-export const ITEM_TYPES = ['Direct Upfront', 'Mandate', 'Other']
+// 'Direct Trail' is the ongoing monthly commission a lender pays straight to
+// us on a Direct loan (one that doesn't come through an aggregator
+// statement) — created in bulk by the loan page's Import History tool.
+export const ITEM_TYPES = ['Direct Upfront', 'Direct Trail', 'Mandate', 'Other']
 export const TAX_RATES = ['GST on Income', 'BAS Excluded', 'GST Free']
 export const DEFAULT_ACCOUNT = '002 - Upfront Business - Commission'
 export const FIRST_INVOICE_NUMBER = 1150

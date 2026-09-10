@@ -4,6 +4,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { fmt } from '../lib/data'
 import { fmtDate, dateCellStyle, expiryBadge, calcRepayment, effectiveRpmt, buildBalanceHistory, calcMaturityDate } from '../lib/dateUtils'
 import { Panel, PanelTitle, EditBtn, SaveBtn, CancelBtn, FieldGroup, Pill, DateInput } from '../components/UI'
+import LoanHistoryImport from '../components/LoanHistoryImport'
 
 export default function LoanAccount({ clients, updateClient }) {
   const { name, loanIdx } = useParams()
@@ -12,6 +13,7 @@ export default function LoanAccount({ clients, updateClient }) {
   const idx = parseInt(loanIdx)
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(null)
+  const [showImport, setShowImport] = useState(false)
 
   if (!client) return <div style={{padding:24}}>Client not found.</div>
   const loan = client.loans[idx]
@@ -276,7 +278,7 @@ export default function LoanAccount({ clients, updateClient }) {
         const prevBal = i>0 ? arr[i-1].balance : (loan.amount||h.balance)
         const d = new Date(h.month+'-15')
         const label = `${MO[d.getMonth()]}-${String(d.getFullYear()).slice(2)}`
-        return { date: label, balance: h.balance, movement: Math.max(0, Math.round(prevBal - h.balance)), interest: loan.rate ? Math.round(prevBal*loan.rate/100/12) : 0, type:'Statement' }
+        return { date: label, balance: h.balance, movement: Math.max(0, Math.round(prevBal - h.balance)), interest: loan.rate ? Math.round(prevBal*loan.rate/100/12) : 0, type: loan.direct ? 'Direct' : 'Statement' }
       })
     : []
   const tableProjRows = isAssetFinance
@@ -319,6 +321,7 @@ export default function LoanAccount({ clients, updateClient }) {
             </div>
           </div>
           <div style={{display:'flex',gap:6}}>
+            {!editing && !isAssetFinance && <EditBtn label="Import history" onClick={()=>setShowImport(true)}/>}
             {!editing?<EditBtn onClick={startEdit}/>:<><SaveBtn onClick={save}/><CancelBtn onClick={cancel}/></>}
           </div>
         </div>
@@ -744,7 +747,7 @@ export default function LoanAccount({ clients, updateClient }) {
                       <td style={td({textAlign:'right',color:'#166534'})}>${(row.movement||0).toLocaleString()}</td>
                       <td style={td({textAlign:'right',color:'#c0392b'})}>{row.interest?'$'+row.interest.toLocaleString():'—'}</td>
                       <td style={td({fontSize:9})}>
-                        <span style={{background:(row.type==='Statement'||row.type==='Estimated')?'rgba(235,153,194,0.2)':'#f3f4f6',color:(row.type==='Statement'||row.type==='Estimated')?'#9b2c6e':'#5a6370',padding:'1px 6px',borderRadius:10,fontSize:9}}>{row.type}</span>
+                        <span style={{background:(row.type==='Statement'||row.type==='Direct'||row.type==='Estimated')?'rgba(235,153,194,0.2)':'#f3f4f6',color:(row.type==='Statement'||row.type==='Direct'||row.type==='Estimated')?'#9b2c6e':'#5a6370',padding:'1px 6px',borderRadius:10,fontSize:9}}>{row.type}</span>
                       </td>
                     </tr>
                   ))}
@@ -780,6 +783,7 @@ export default function LoanAccount({ clients, updateClient }) {
 
         </div>
       </div>
+      {showImport && <LoanHistoryImport client={client} loan={loan} loanIdx={idx} updateClient={updateClient} onClose={()=>setShowImport(false)} />}
     </div>
   )
 }
