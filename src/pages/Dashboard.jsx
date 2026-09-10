@@ -4,7 +4,19 @@ import { fmtDate, rollingYTD, quarterlyIncome, expiryBadge, daysUntil, daysSince
 import { Panel, PanelTitle, DayBadge } from '../components/UI'
 import { sbSaveTicked, sbLoadTicked } from '../lib/supabase'
 import { loadDirectIncomeLocal, syncDirectIncomeFromSupabase, invoiceTotals } from '../lib/directIncome'
+import { assetFinanceCurrentBalance } from '../lib/mafFacilities'
 import { useNavigate } from 'react-router-dom'
+
+// A loan flagged `direct` is tracked by Cameron directly in Rradar rather
+// than fed by a commission statement — mainly manually-added Asset Finance
+// (and, potentially, Personal) loans. Those never get a live `.balance`
+// from an import, so for Asset Finance specifically the current value has
+// to come from the same amortisation estimate LoanAccount.jsx already uses
+// (assetFinanceCurrentBalance) rather than the (unset) balance field.
+function directLoanValue(loan) {
+  if (loan.type === 'Asset Finance') return assetFinanceCurrentBalance(loan)
+  return Number(loan.balance) || 0
+}
 
 const COMMISSION = [
   { month:'Jun 22', _key:'2022-06', trail:98.52, upfront:4018.98, total:4117.5, balance:1629518 },
@@ -275,11 +287,21 @@ function BarChart({ data, keys, colors, title, formatY, tickStep, onBarHover, on
   )
 }
 
-function PieChart({ pw, comm, label }) {
+// pwDirect/commDirect are each stream's Direct (manually-tracked, not
+// statement-fed) share — always today's live figures, since Direct loans
+// have no month-by-month history the way a commission statement does. That
+// means the Direct sliver shown here doesn't change when hovering an older
+// month on the Portfolio Balances chart; it's always "as of today".
+function PieChart({ pw, comm, pwDirect = 0, commDirect = 0, label }) {
   const total = pw + comm
   if (!total) return null
   const pwAngle = (pw / total) * 360
-  const r = 70, cx = 90, cy = 80
+  // Clamped so a hovered historical month (whose pw/comm reflect that
+  // month's statement balance, not today's) can never make the Direct
+  // ribbon wider than the stream slice it's meant to sit inside of.
+  const pwDirectAngle = Math.min((pwDirect / total) * 360, pwAngle)
+  const commDirectAngle = Math.min((commDirect / total) * 360, 360 - pwAngle)
+  const r = 60, cx = 90, cy = 95
   function polarToXY(deg, radius) {
     const rad = (deg - 90) * Math.PI / 180
     return { x: cx + radius * Math.cos(rad), y: cy + radius * Math.sin(rad) }
@@ -290,21 +312,58 @@ function PieChart({ pw, comm, label }) {
     const large = (endDeg - startDeg) > 180 ? 1 : 0
     return <path d={`M${cx},${cy} L${start.x},${start.y} A${r},${r} 0 ${large},1 ${end.x},${end.y} Z`} fill={color} />
   }
-  const mid1 = polarToXY(pwAngle / 2 - 90 + 90, r * 0.6)
-  const mid2 = polarToXY(pwAngle + (360 - pwAngle) / 2 - 90 + 90, r * 0.6)
+  // Direct is drawn as a thin flat-ended ribbon floated just outside the
+  // pie's edge, sitting at the trailing edge of its stream's arc (right
+  // where that stream meets the other one) — a filled ring segment rather
+  // than a stroked line, so the ends come out flat/square, not rounded.
+  const ribbonGap = 6, ribbonThick = 3
+  function ribbon(startDeg, endDeg, color) {
+    if (endDeg <= startDeg) return null
+    const rIn = r + ribbonGap, rOut = r + ribbonGap + ribbonThick
+    const i0 = polarToXY(startDeg, rIn), i1 = polarToXY(endDeg, rIn)
+    const o0 = polarToXY(startDeg, rOut), o1 = polarToXY(endDeg, rOut)
+    const large = (endDeg - startDeg) > 180 ? 1 : 0
+    return <path d={`M${i0.x},${i0.y} L${o0.x},${o0.y} A${rOut},${rOut} 0 ${large},1 ${o1.x},${o1.y} L${i1.x},${i1.y} A${rIn},${rIn} 0 ${large},0 ${i0.x},${i0.y} Z`} fill={color} />
+  }
+  function ribbonLabel(startDeg, endDeg, value) {
+    if (endDeg <= startDeg || !value) return null
+    const mid = (startDeg + endDeg) / 2
+    const p1 = polarToXY(mid, r + ribbonGap + ribbonThick)
+    const p2 = polarToXY(mid, r + ribbonGap + ribbonThick + 12)
+    return (
+      <g>
+        <line x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke="#2A3D54" strokeWidth={0.75} strokeDasharray="2,2" opacity={0.35} />
+        <text x={p2.x} y={p2.y + (p2.y >= cy ? 9 : -3)} textAnchor="middle" fontSize={8.5} fontWeight={600} fill="#2A3D54">{`$${(value / 1e6).toFixed(1)}m`}</text>
+      </g>
+    )
+  }
+  const mid1 = polarToXY(pwAngle / 2, r * 0.6)
+  const mid2 = polarToXY(pwAngle + (360 - pwAngle) / 2, r * 0.6)
+  const pwdA0 = pwAngle - pwDirectAngle, pwdA1 = pwAngle
+  const cmdA0 = 360 - commDirectAngle, cmdA1 = 360
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
       <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-secondary)', marginBottom: label ? 0 : 8 }}>Portfolio Split</div>
       {label && <div style={{ fontSize: 9, color: 'var(--pk)', fontWeight: 600, marginBottom: 6 }}>{label}</div>}
-      <svg width={180} height={160} viewBox="0 0 180 160">
+      <svg width={180} height={190} viewBox="0 0 180 190" style={{ overflow: 'visible' }}>
         {arc(0, pwAngle, '#EB99C2')}
         {arc(pwAngle, 360, '#2A3D54')}
+        {ribbon(pwdA0, pwdA1, '#F7D3E4')}
+        {ribbon(cmdA0, cmdA1, '#7C8CA0')}
+        {ribbonLabel(pwdA0, pwdA1, pwDirect)}
+        {ribbonLabel(cmdA0, cmdA1, commDirect)}
         <text x={mid1.x} y={mid1.y} textAnchor="middle" fontSize={9} fill="#fff" fontWeight={500}>{`$${(pw / 1e6).toFixed(1)}m`}</text>
         <text x={mid2.x} y={mid2.y} textAnchor="middle" fontSize={9} fill="#fff" fontWeight={500}>{`$${(comm / 1e6).toFixed(1)}m`}</text>
       </svg>
-      <div style={{ display: 'flex', gap: 10, justifyContent: 'center', fontSize: 10, color: 'var(--text-secondary)', marginTop: -8 }}>
+      <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap', fontSize: 10, color: 'var(--text-secondary)', marginTop: -8 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}><div style={{ width: 8, height: 8, borderRadius: 2, background: '#EB99C2' }} /> Private Wealth</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}><div style={{ width: 8, height: 8, borderRadius: 2, background: '#2A3D54' }} /> Commercial</div>
+        {pwDirect > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}><div style={{ width: 8, height: 8, borderRadius: 2, background: '#F7D3E4' }} /> PW (Direct)</div>
+        )}
+        {commDirect > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}><div style={{ width: 8, height: 8, borderRadius: 2, background: '#7C8CA0' }} /> Comm. (Direct)</div>
+        )}
       </div>
       <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-primary)', marginTop: 6 }}>Total: ${(total / 1e6).toFixed(1)}m</div>
     </div>
@@ -478,8 +537,18 @@ export default function Dashboard({ clients, onImport, onUpdateClients }) {
   const COMM = mergeCommission(clients, directByMonth)
   const latest = COMM[COMM.length - 1]
   const allLoans = clients.flatMap(c => c.loans)
-  const pwTotal = clients.filter(c => c.stream === 'Private Wealth' && !c._demo).flatMap(c => c.loans).filter(l => !l.closed).reduce((s, l) => s + (l.balance || 0), 0)
-  const commTotal = clients.filter(c => c.stream === 'Commercial' && !c._demo).flatMap(c => c.loans).filter(l => !l.closed).reduce((s, l) => s + (l.balance || 0), 0)
+  const pwLoansAll = clients.filter(c => c.stream === 'Private Wealth' && !c._demo).flatMap(c => c.loans).filter(l => !l.closed)
+  const commLoansAll = clients.filter(c => c.stream === 'Commercial' && !c._demo).flatMap(c => c.loans).filter(l => !l.closed)
+  // Statement-driven loans keep using their commission-statement `.balance`
+  // exactly as before; Direct-flagged loans (manually tracked, not from a
+  // statement) use directLoanValue() instead, so a manually-added Asset
+  // Finance loan actually counts toward the total rather than showing $0.
+  const pwDirectTotal = pwLoansAll.filter(l => l.direct).reduce((s, l) => s + directLoanValue(l), 0)
+  const commDirectTotal = commLoansAll.filter(l => l.direct).reduce((s, l) => s + directLoanValue(l), 0)
+  const pwStatementTotal = pwLoansAll.filter(l => !l.direct).reduce((s, l) => s + (l.balance || 0), 0)
+  const commStatementTotal = commLoansAll.filter(l => !l.direct).reduce((s, l) => s + (l.balance || 0), 0)
+  const pwTotal = pwStatementTotal + pwDirectTotal
+  const commTotal = commStatementTotal + commDirectTotal
   const overdue = clients.filter(c => !c._demo && daysSinceReview(c) >= 365).length
   const triggers = clients.filter(c => !c._demo && c.loans.some(l => l.io || l.fixed || l.balloon)).length
   const rolling12 = rollingYTD(COMM)
@@ -578,10 +647,10 @@ export default function Dashboard({ clients, onImport, onUpdateClients }) {
           {(() => {
             const idx = hoveredMonthIdx != null ? hoveredMonthIdx : balData.length - 1
             const point = balData[idx]
-            if (point) return <PieChart pw={point.private} comm={point.commercial} label={hoveredMonthIdx != null ? point.month : null} />
+            if (point) return <PieChart pw={point.private} comm={point.commercial} pwDirect={pwDirectTotal} commDirect={commDirectTotal} label={hoveredMonthIdx != null ? point.month : null} />
             const latestBal = last12[last12.length - 1]?.balance || (pwTotal + commTotal)
             const ratio = pwTotal / (pwTotal + commTotal || 1)
-            return <PieChart pw={Math.round(latestBal * ratio)} comm={Math.round(latestBal * (1 - ratio))} />
+            return <PieChart pw={Math.round(latestBal * ratio)} comm={Math.round(latestBal * (1 - ratio))} pwDirect={pwDirectTotal} commDirect={commDirectTotal} />
           })()}
         </Panel>
         <Panel style={{ display: 'flex', flexDirection: 'column' }}>

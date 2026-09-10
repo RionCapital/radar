@@ -436,6 +436,12 @@ export default function LoanAccount({ clients, updateClient }) {
                 <FieldGroup label="Security #"><input style={inp} value={l.security||''} onChange={e=>set('security',e.target.value)}/></FieldGroup>
                 <FieldGroup label="Original limit ($)"><input style={inp} type="number" value={l.amount||''} onChange={e=>set('amount',+e.target.value)}/></FieldGroup>
                 <FieldGroup label="Current balance ($)"><input style={inp} type="number" value={l.balance||''} onChange={e=>set('balance',+e.target.value)}/></FieldGroup>
+                <FieldGroup label="Direct">
+                  <label style={{display:'flex',alignItems:'center',gap:6,fontSize:11,color:'var(--text-primary)',cursor:'pointer'}}>
+                    <input type="checkbox" checked={!!l.direct} onChange={e=>set('direct',e.target.checked)}/>
+                    Tracked directly in Rradar (not fed by a commission statement)
+                  </label>
+                </FieldGroup>
                 <FieldGroup label="Interest rate (%)">
                   <input style={inp} type="number" step="0.01" value={l.rate||''} onChange={e=>set('rate',+e.target.value)}/>
                   {l.rate!==loan.rate&&<div style={{fontSize:10,color:'#e8a020',marginTop:3}}>⚠ Rate changed — will be logged</div>}
@@ -487,6 +493,7 @@ export default function LoanAccount({ clients, updateClient }) {
                   ['Borrowing entity',loan.borrowingEntity||'—'],
                   ['Original limit',fmt(loan.amount)],
                   ['Current balance',isAssetFinance?fmt(afCurrentBalance):fmt(loan.balance)],
+                  ...(loan.direct?[['Direct','Yes — tracked directly, not from a statement']]:[]),
                   ['_offset_note',''],
                   ['Interest rate',loan.rate>0?loan.rate.toFixed(2)+'%':'—'],
                   ['Rate type',loan.rateType||'Variable'],
