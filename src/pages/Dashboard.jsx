@@ -109,14 +109,17 @@ function computeImportedCommission(clients) {
     ;(c.loans || []).forEach(l => {
       ;(l.commissionHistory || []).forEach(h => {
         if (!monthMap[h.month]) monthMap[h.month] = { trail: 0, upfront: 0, total: 0 }
+        // Every figure on this dashboard is EX-GST. Trail and Upfront are the
+        // statement's own ex-GST commission lines, and Total is their sum
+        // rather than totalPaid (which is GST-inclusive) — otherwise Trail +
+        // Upfront + Direct wouldn't add up to the Total shown beside them.
+        // The hardcoded historical months above follow the same convention
+        // (their total is exactly trail + upfront), so live months and
+        // historical ones are directly comparable. GST is still recorded per
+        // loan and is shown, broken out, on the client Commission page.
         monthMap[h.month].trail   += h.trailComm   || 0
-        // GST isn't shown as its own line anywhere Cameron looks at this
-        // data — it was only ever inside `total` (the actual amount paid),
-        // invisible in the Trail/Upfront breakdown. That made Trail +
-        // Upfront/Direct look like it didn't add up to Total. Folding it
-        // into Upfront here means the visible figures reconcile exactly.
-        monthMap[h.month].upfront += (h.upfrontComm || 0) + (h.gst || 0)
-        monthMap[h.month].total   += h.totalPaid   || 0
+        monthMap[h.month].upfront += h.upfrontComm || 0
+        monthMap[h.month].total   += (h.trailComm || 0) + (h.upfrontComm || 0)
       })
     })
   })
@@ -280,8 +283,12 @@ const SERIES_LABELS = {
 // `nav` (optional) turns on the ‹ › time controls beside the title:
 // { onPrev, onNext, onLatest, canPrev, canNext, range } — the chart itself
 // stays dumb about which months it's showing, it just renders what it's given.
-function BarChart({ data, keys, colors, title, formatY, tickStep, onBarHover, onBarLeave, hoveredIdx, nav }) {
-  const rawMax = Math.max(...data.map(d => keys.reduce((s, k) => s + (d[k] || 0), 0))) || 1
+function BarChart({ data, keys, colors, title, formatY, tickStep, onBarHover, onBarLeave, hoveredIdx, nav, axisMax }) {
+  // axisMax pins the scale across every window the ‹ › arrows can reach, so
+  // scrolling back genuinely shows shorter bars — the growth is the point.
+  // Without it each window rescales to its own tallest bar and every period
+  // looks identical.
+  const rawMax = axisMax || Math.max(...data.map(d => keys.reduce((s, k) => s + (d[k] || 0), 0))) || 1
   // Default: 5 gridlines evenly splitting whatever the tallest bar happens to
   // be — the labels land on whatever number that produces (e.g. $11k/$23k),
   // which reads as arbitrary. Passing tickStep (e.g. 10000) switches to
@@ -299,19 +306,19 @@ function BarChart({ data, keys, colors, title, formatY, tickStep, onBarHover, on
   return (
     <div style={{ flex: 1 }}>
       {nav ? (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, marginBottom: 6 }}>
-          <button onClick={nav.onPrev} disabled={!nav.canPrev} title="Earlier months"
-            style={{ ...navBtn, cursor: nav.canPrev ? 'pointer' : 'default', color: nav.canPrev ? 'var(--text-secondary)' : 'var(--border)' }}>‹</button>
-          <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-secondary)', textAlign: 'center' }}>
-            {title}
-            {nav.range && <span style={{ fontSize: 9, color: 'var(--text-tertiary)', marginLeft: 5 }}>{nav.range}</span>}
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 6 }}>
+          {/* Spacer matching the arrow pair, so the title sits dead centre and
+              nothing on this row moves as you page through the months. */}
+          <div style={{ width: 40, flexShrink: 0 }} />
+          <div onClick={nav.canNext ? nav.onLatest : undefined}
+            title={nav.canNext ? 'Click to jump back to the latest months' : undefined}
+            style={{ flex: 1, fontSize: 11, fontWeight: 500, color: 'var(--text-secondary)', textAlign: 'center', cursor: nav.canNext ? 'pointer' : 'default' }}>{title}</div>
+          <div style={{ width: 40, flexShrink: 0, display: 'flex', gap: 2, justifyContent: 'flex-end' }}>
+            <button onClick={nav.onPrev} disabled={!nav.canPrev} title="Earlier month"
+              style={{ ...navBtn, cursor: nav.canPrev ? 'pointer' : 'default', color: nav.canPrev ? 'var(--text-secondary)' : 'var(--border)' }}>‹</button>
+            <button onClick={nav.onNext} disabled={!nav.canNext} title="Later month"
+              style={{ ...navBtn, cursor: nav.canNext ? 'pointer' : 'default', color: nav.canNext ? 'var(--text-secondary)' : 'var(--border)' }}>›</button>
           </div>
-          <button onClick={nav.onNext} disabled={!nav.canNext} title="Later months"
-            style={{ ...navBtn, cursor: nav.canNext ? 'pointer' : 'default', color: nav.canNext ? 'var(--text-secondary)' : 'var(--border)' }}>›</button>
-          {nav.canNext && (
-            <button onClick={nav.onLatest} title="Back to the most recent months"
-              style={{ ...navBtn, width: 'auto', padding: '0 6px', fontSize: 9, color: 'var(--pk)' }}>Latest</button>
-          )}
         </div>
       ) : (
         <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-secondary)', textAlign: 'center', marginBottom: 6 }}>{title}</div>
@@ -600,7 +607,8 @@ export default function Dashboard({ clients, onImport, onUpdateClients }) {
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const directByMonth = directEntries.reduce((acc, e) => {
-    acc[e.month] = (acc[e.month] || 0) + invoiceTotals(e).total
+    // .amount, not .total — ex-GST, to match Trail and Upfront.
+    acc[e.month] = (acc[e.month] || 0) + invoiceTotals(e).amount
     return acc
   }, {})
 
@@ -641,14 +649,12 @@ export default function Dashboard({ clients, onImport, onUpdateClients }) {
     const end = COMM.length - off
     return COMM.slice(Math.max(0, end - WINDOW), end)
   }
-  const rangeLabel = win => win.length ? `${win[0].month} – ${win[win.length - 1].month}` : ''
-  const mkNav = (off, setOff, win) => ({
+  const mkNav = (off, setOff) => ({
     onPrev: () => setOff(o => Math.min(maxOffset, o + STEP)),
     onNext: () => setOff(o => Math.max(0, o - STEP)),
     onLatest: () => setOff(0),
-    canPrev: off < maxOffset, canNext: off > 0, range: rangeLabel(win),
+    canPrev: off < maxOffset, canNext: off > 0,
   })
-  const balWindow = windowOf(balOffset)
   const commWindow = windowOf(commOffset)
   const last12 = commWindow
 
@@ -684,7 +690,7 @@ export default function Dashboard({ clients, onImport, onUpdateClients }) {
   // whose own history already fed into it is subtracted first, so nothing is
   // counted twice — and the PW/Commercial split uses that month's real
   // statement history where there is one, rather than today's ratio.
-  const balData = balWindow.map(d => {
+  const buildBalRow = d => {
     const hist = streamHistory[d._key]
     const direct = directAt(d._key || '')
     const stmtTotal = Math.max(0, (d.balance || 0) - (hist ? hist.dpw + hist.dcomm : 0))
@@ -697,7 +703,14 @@ export default function Dashboard({ clients, onImport, onUpdateClients }) {
       commercial: Math.round(stmtTotal * (1 - stmtSplit)),
       commDirect: Math.round(direct.comm),
     }
-  })
+  }
+  const stackTotal = r => r.private + r.pwDirect + r.commercial + r.commDirect
+  // Every month, so the y-axis can be pinned to the whole history rather than
+  // rescaling to whichever 12 months happen to be on screen.
+  const allBalData = COMM.map(buildBalRow)
+  const balData = allBalData.slice(Math.max(0, COMM.length - balOffset - WINDOW), COMM.length - balOffset)
+  const balAxisMax = Math.max(...allBalData.map(stackTotal), 1)
+  const commAxisMax = Math.max(...COMM.map(m => (m.trail || 0) + (m.upfront || 0) + (m.direct || 0)), 1)
 
   // Build all rows
   const annualRows = buildAnnualRows(clients)
@@ -778,7 +791,7 @@ export default function Dashboard({ clients, onImport, onUpdateClients }) {
       {/* TOP ROW */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 180px 1fr 200px', gap: 14, marginBottom: 14, alignItems: 'start' }}>
         <Panel style={{ display: 'flex', flexDirection: 'column' }}>
-          <BarChart data={balData} keys={['private', 'pwDirect', 'commercial', 'commDirect']} colors={['#EB99C2', '#F7D3E4', '#3D5570', '#7C8CA0']} title="Portfolio Balances" formatY={v => v >= 1e6 ? `$${Math.round(v / 5e6) * 5}m` : `$${Math.round(v / 5000) * 5}k`} onBarHover={setHoveredMonthIdx} onBarLeave={()=>setHoveredMonthIdx(null)} hoveredIdx={hoveredMonthIdx} nav={mkNav(balOffset, setBalOffset, balWindow)} />
+          <BarChart data={balData} keys={['private', 'pwDirect', 'commercial', 'commDirect']} colors={['#EB99C2', '#F7D3E4', '#3D5570', '#7C8CA0']} title="Portfolio Balances" formatY={v => v >= 1e6 ? `$${Math.round(v / 5e6) * 5}m` : `$${Math.round(v / 5000) * 5}k`} onBarHover={setHoveredMonthIdx} onBarLeave={()=>setHoveredMonthIdx(null)} hoveredIdx={hoveredMonthIdx} nav={mkNav(balOffset, setBalOffset)} axisMax={balAxisMax} />
         </Panel>
         <Panel style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '10px 6px' }}>
           {(() => {
@@ -798,7 +811,7 @@ export default function Dashboard({ clients, onImport, onUpdateClients }) {
           })()}
         </Panel>
         <Panel style={{ display: 'flex', flexDirection: 'column' }}>
-          <BarChart data={last12} keys={['trail', 'upfront', 'direct']} colors={['#3D5570', '#EB99C2', '#7A8090']} title="Commission Income" formatY={v => `$${Math.round(v / 1000)}k`} tickStep={10000} onBarHover={setHoveredCommIdx} onBarLeave={() => setHoveredCommIdx(null)} hoveredIdx={hoveredCommIdx} nav={mkNav(commOffset, setCommOffset, commWindow)} />
+          <BarChart data={last12} keys={['trail', 'upfront', 'direct']} colors={['#3D5570', '#EB99C2', '#7A8090']} title="Commission Income (excl. GST)" formatY={v => `$${Math.round(v / 1000)}k`} tickStep={10000} onBarHover={setHoveredCommIdx} onBarLeave={() => setHoveredCommIdx(null)} hoveredIdx={hoveredCommIdx} nav={mkNav(commOffset, setCommOffset)} axisMax={commAxisMax} />
         </Panel>
         <Panel style={{ padding: '12px 14px' }}>
           {hoveredCommIdx != null ? (() => {
