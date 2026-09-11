@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { loadSettings, saveSettings, syncSettingsFromSupabase, DEFAULT_SETTINGS, getCurrentUser, getDealStages, getLoanTypes, PROTECTED_LOAN_TYPES, getLoanTypeStreams, STREAMS, getTrainingCategories, getTrainingExercises } from '../lib/settings'
 import { loadDeals, saveDeals as libSaveDeals } from '../lib/deals'
 import { icon_crm, icon_radar, icon_marketing, icon_planner, icon_studio } from '../lib/icons'
+import StatementHistory from '../components/StatementHistory'
 
 const inp = { border:'1px solid #e8eaed', borderRadius:6, padding:'6px 10px', fontSize:12, width:'100%', boxSizing:'border-box', fontFamily:'inherit' }
 const Card = ({ children, style }) => <div style={{ background:'#fff', borderRadius:8, border:'0.5px solid #e8eaed', padding:'16px 18px', ...style }}>{children}</div>
@@ -32,7 +33,7 @@ const MENU_SYSTEM = [
 // A section with no settings yet still gets its own row in the menu (so the
 // structure is visible ahead of time) but shows a simple placeholder instead
 // of an empty tab bar.
-const PLACEHOLDER_SECTIONS = new Set(['radar', 'marketing', 'studio', 'other'])
+const PLACEHOLDER_SECTIONS = new Set(['marketing', 'studio', 'other'])
 
 // Stage ids that other pages depend on for real logic (Direct Income
 // commission recognition, the CRM Dashboard's settled totals, Marketing's
@@ -418,6 +419,9 @@ export default function AdminSettings({ clients, onUpdateClients }) {
       { id:'plannerTargets', label:'Planner Targets' },
       { id:'exercises', label:'Exercises' },
     ],
+    radar: [
+      { id:'statements', label:'Commission Statements' },
+    ],
     crm: [
       { id:'stages', label:'Stages' },
       { id:'loanTypes', label:'Loan Types' },
@@ -544,6 +548,14 @@ export default function AdminSettings({ clients, onUpdateClients }) {
 
           {PLACEHOLDER_SECTIONS.has(section) && (
             <SectionPlaceholder label={sectionLabel} />
+          )}
+
+          {/* Rradar > Commission Statements */}
+          {section==='radar' && tab==='statements' && (
+            <Card style={{ marginBottom:16 }}>
+              <CardTitle>Commission statements</CardTitle>
+              <StatementHistory clients={clients} onUpdateClients={onUpdateClients} />
+            </Card>
           )}
 
           {/* CRM > Stages */}

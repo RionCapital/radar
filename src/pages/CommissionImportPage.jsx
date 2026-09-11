@@ -443,7 +443,10 @@ function CommissionImportPageInner({ clients, onImport }) {
     // after the user had already moved on. Now "done" only shows once the
     // data is actually confirmed to be sitting in the cloud.
     setApplyStatusText('Verifying…')
-    await onImport(pending.matched, pending.stmtMap, month, allocations)
+    await onImport(pending.matched, pending.stmtMap, month, allocations, {
+      fileName: pending.fileName,
+      counts: { matched: pending.matched.length, allocated: allocatedCount, deleted: deletedCount, missing: (pending.missing || []).length },
+    })
 
     // Direct Income entries for this month are now folded into the
     // finalized commission record for the month — lock them so they can't

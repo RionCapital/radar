@@ -37,6 +37,7 @@ import DirectIncome from './pages/DirectIncome'
 import DirectIncomeInvoice from './pages/DirectIncomeInvoice'
 import MafFacility from './pages/MafFacility'
 import MafParcel from './pages/MafParcel'
+import { loadStatementHistoryLocal, saveStatementHistory, buildStatementRecord } from './lib/statementHistory'
 
 // Top-level error boundary — prevents one broken page crashing the whole app
 class AppErrorBoundary extends React.Component {
@@ -250,7 +251,7 @@ export default function App() {
     })
   }
 
-  async function handleImport(updates, stmtMap, statementMonth, allocations = []) {
+  async function handleImport(updates, stmtMap, statementMonth, allocations = [], meta = {}) {
     // Sanitise month — catch bad keys like '2026-30' from the old filename bug
     const month = (() => {
       const raw = statementMonth || ''
@@ -264,8 +265,12 @@ export default function App() {
     // Captured from inside the updater below so we have the exact saved
     // shape to both persist AND verify against afterward.
     let savedNext = null
+    // The clients as they stood BEFORE this import — the history record's
+    // "before" balances come from here, so the import can be undone later.
+    let beforeClients = null
 
     setClients(prev => {
+      beforeClients = prev
       let next = prev.map(c => ({
         ...c,
         loans: c.loans.map(l => {
@@ -357,6 +362,17 @@ export default function App() {
         return
       }
     }
+
+    // Log the import so it can be reviewed — and undone — from
+    // Settings > Rradar > Commission Statements.
+    try {
+      const record = buildStatementRecord({
+        clients: beforeClients || [], stmtMap, month, allocations,
+        fileName: meta.fileName, counts: meta.counts,
+        user: JSON.parse(sessionStorage.getItem('rion-auth') || 'null')?.name || '',
+      })
+      await saveStatementHistory([...loadStatementHistoryLocal(), record])
+    } catch {}
 
     const totalUpdated = updates.length + allocations.length
     showToast(`Import applied and verified — ${totalUpdated} accounts updated for ${month}`)
