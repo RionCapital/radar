@@ -59,7 +59,7 @@ export function mkStatementId() {
 // Everything needed to describe an import and, later, reverse it. Built from
 // the clients array as it stood BEFORE the import was applied, so the "before"
 // balances are the real ones.
-export function buildStatementRecord({ clients, stmtMap, month, allocations, fileName, counts, user }) {
+export function buildStatementRecord({ clients, stmtMap, month, allocations, fileName, counts, user, unresolved }) {
   const touched = []
   ;(clients || []).forEach(c => {
     ;(c.loans || []).forEach((l, idx) => {
@@ -113,6 +113,13 @@ export function buildStatementRecord({ clients, stmtMap, month, allocations, fil
       totalPaid: Math.round(totals.totalPaid * 100) / 100,
     },
     counts: counts || {},
+    // Rows skipped at import — kept so they can be matched later from
+    // Settings > Rradar > Commission Statements rather than being lost.
+    unresolved: (unresolved || []).map(u => ({
+      acc: String(u.acc || ''), name: u.name || '', lender: u.lender || '', month,
+      bal: Number(u.bal) || 0, trailComm: Number(u.trailComm) || 0,
+      upfrontComm: Number(u.upfrontComm) || 0, gst: Number(u.gst) || 0, totalPaid: Number(u.totalPaid) || 0,
+    })),
     undo: { prevBalances: touched, createdLoans, dischargedLoans, mergedLoans },
   }
 }
@@ -164,5 +171,68 @@ export function undoStatementImport(clients, record) {
         return next
       })
     return { ...c, loans }
+  })
+}
+
+// ─── Unmatched rows carried forward ──────────────────────────────────────────
+// A statement row whose account number matches no loan in Rradar has to go
+// somewhere. Skipping it at import time used to drop it on the floor: the
+// commission never landed and there was no record it existed. Skipped rows are
+// now kept on the import's record so they can be matched later — which is the
+// normal case for a deal settled through the CRM, where the bank's real
+// account number isn't known until its first commission statement arrives.
+
+export function mkLoanFromRow(row, month) {
+  return {
+    acc: row.acc || '', lname: row.name || '', bank: row.lender || '',
+    balance: row.bal || 0, amount: row.bal || 0, rate: 0, rpmt: 'P&I',
+    rateType: 'Var', type: 'Home Loan (OO)', term: 30,
+    settled: new Date().toISOString().slice(0, 10), closed: false,
+    commissionHistory: [{ month, trailComm: row.trailComm || 0, upfrontComm: row.upfrontComm || 0, gst: row.gst || 0, totalPaid: row.totalPaid || 0 }],
+    balanceHistory: [{ month, balance: row.bal || 0 }],
+  }
+}
+
+// Applies one previously-unmatched row to a client — either as a brand new
+// loan, or merged onto an existing one (the CRM-settled case: same loan, now
+// gaining the bank's account number, balance and first commission). Pure.
+export function applyUnmatchedRow(clients, row, { clientName, mode }) {
+  const month = row.month
+  const entry = { month, trailComm: row.trailComm || 0, upfrontComm: row.upfrontComm || 0, gst: row.gst || 0, totalPaid: row.totalPaid || 0 }
+  const balEntry = { month, balance: row.bal || 0 }
+  return (clients || []).map(c => {
+    if (c.name !== clientName) return c
+    let loans = [...(c.loans || [])]
+    if (mode === 'new') {
+      loans = [...loans, mkLoanFromRow(row, month)]
+    } else {
+      const idx = typeof mode === 'number' ? mode : parseInt(String(mode).replace('merge-', ''), 10)
+      loans = loans.map((l, i) => i !== idx ? l : {
+        ...l,
+        acc: row.acc || l.acc,
+        lname: l.lname || row.name || '',
+        bank: l.bank || row.lender || '',
+        balance: row.bal != null ? row.bal : l.balance,
+        amount: l.amount || row.bal || 0,
+        commissionHistory: [...(l.commissionHistory || []).filter(h => h.month !== month), entry].sort((a, b) => a.month.localeCompare(b.month)),
+        balanceHistory: [...(l.balanceHistory || []).filter(h => h.month !== month), balEntry].sort((a, b) => a.month.localeCompare(b.month)),
+      })
+    }
+    return { ...c, loans }
+  })
+}
+
+// Every still-unmatched row across every logged import, newest month first,
+// each tagged with the import it came from.
+export function allUnresolvedRows(records) {
+  return (records || [])
+    .flatMap(r => (r.unresolved || []).map(u => ({ ...u, month: u.month || r.month, recordId: r.id, fileName: r.fileName })))
+    .sort((a, b) => (b.month || '').localeCompare(a.month || ''))
+}
+
+export function clearUnresolvedRow(records, recordId, acc) {
+  return (records || []).map(r => r.id !== recordId ? r : {
+    ...r,
+    unresolved: (r.unresolved || []).filter(u => String(u.acc) !== String(acc)),
   })
 }

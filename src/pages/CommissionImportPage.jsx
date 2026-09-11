@@ -162,10 +162,18 @@ function UnmatchedRow({ a, idx, clients, onAllocate, onDelete, navigate }) {
                   {client.loans.filter(l => !l.closed).map((l, li) => {
                     const realIdx = client.loans.indexOf(l)
                     const mergeKey = `merge-${realIdx}`
+                    // A loan settled through the CRM has no bank account number
+                    // until its first commission statement — merging is exactly
+                    // how it gets one. That used to be offered only for loans
+                    // that "looked unbanked" (no acc or no balance), which hid
+                    // the option on plenty of loans that genuinely needed it and
+                    // left the only choices as duplicate-or-discharge. It's
+                    // always offered now; the hint below still calls out the
+                    // ones that look like they're waiting for bank details.
                     const looksUnbanked = !l.acc || !l.balance
                     return (
                       <div key={li} style={{ marginBottom: 6 }}>
-                        {looksUnbanked && (
+                        {true && (
                           <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '8px 10px', borderRadius: 6, border: `1.5px solid ${replaceMode === mergeKey ? '#166534' : '#e2e8f0'}`, background: replaceMode === mergeKey ? '#f0fdf4' : '#fff', cursor: 'pointer', marginBottom: 4 }}>
                             <input type="radio" name={`mode-${idx}`} style={{ marginTop: 2 }} checked={replaceMode === mergeKey} onChange={() => setReplaceMode(mergeKey)} />
                             <div>
@@ -174,7 +182,9 @@ function UnmatchedRow({ a, idx, clients, onAllocate, onDelete, navigate }) {
                                 <span style={{ fontSize: 10, color: '#166534', fontWeight: 400, marginLeft: 6 }}>→ same loan, adds bank account &amp; balance — not discharged</span>
                               </div>
                               <div style={{ fontSize: 10, color: '#64748b' }}>
-                                Settled via CRM {l.settled ? `on ${l.settled}` : '(no date on file)'} — {l.bank || 'lender not set'} · currently missing account/balance from the bank
+                                {looksUnbanked
+                                  ? `Settled via CRM ${l.settled ? `on ${l.settled}` : '(no date on file)'} — ${l.bank || 'lender not set'} · currently missing account/balance from the bank`
+                                  : `${l.acc ? `Acc: ${l.acc} · ` : ''}${l.bank || 'lender not set'} · Bal: ${fmt(l.balance)} — the statement's account number and balance will replace what's on this loan`}
                               </div>
                             </div>
                           </label>
@@ -446,6 +456,7 @@ function CommissionImportPageInner({ clients, onImport }) {
     await onImport(pending.matched, pending.stmtMap, month, allocations, {
       fileName: pending.fileName,
       counts: { matched: pending.matched.length, allocated: allocatedCount, deleted: deletedCount, missing: (pending.missing || []).length },
+      unresolved: pending.unmatched.filter(a => a.status === 'deleted'),
     })
 
     // Direct Income entries for this month are now folded into the

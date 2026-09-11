@@ -368,7 +368,7 @@ export default function App() {
     try {
       const record = buildStatementRecord({
         clients: beforeClients || [], stmtMap, month, allocations,
-        fileName: meta.fileName, counts: meta.counts,
+        fileName: meta.fileName, counts: meta.counts, unresolved: meta.unresolved,
         user: JSON.parse(sessionStorage.getItem('rion-auth') || 'null')?.name || '',
       })
       await saveStatementHistory([...loadStatementHistoryLocal(), record])
