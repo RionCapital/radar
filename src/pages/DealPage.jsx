@@ -3196,6 +3196,45 @@ export default function DealPage({ onUpdateDeals, clients = [], onUpdateClients 
     navigate(`/crm/deal/${encodeURIComponent(trimmed)}`, { replace: true })
   }
 
+  // ── Clone deal ────────────────────────────────────────────────────────────
+  // Copies the work that took thinking — the funding table, structure,
+  // contacts, lender and loan details — and deliberately leaves behind
+  // everything that belongs to the original deal's own life: its stage, its
+  // dates, its status notes, its attachments and file notes. The result is a
+  // fresh deal at the first stage, ready to be renamed and reworked (a second
+  // facility for the same client, or the same scenario priced with another
+  // lender), rather than a duplicate carrying a settled deal's history.
+  const CLONE_RESET_FIELDS = [
+    'Date Settled', 'Finance Due Date', 'Deposit Due Date', 'Fixed Rate Expiry',
+    'Interest Only Expiry', 'Discharge Date', 'Discharge Reason',
+    'Month of Settlement', 'Status Notes',
+  ]
+  function uniqueCloneName(sourceName) {
+    // Strip any existing "(Copy)" / "(Copy 3)" suffix first, so cloning a
+    // clone gives "… (Copy 2)" rather than "… (Copy) (Copy)".
+    const base = sourceName.replace(/\s*\(Copy(?:\s+\d+)?\)\s*$/i, '').trim() || sourceName
+    const taken = new Set(deals.map(x => x['Transaction Name']))
+    let name = `${base} (Copy)`
+    for (let i = 2; taken.has(name); i++) name = `${base} (Copy ${i})`
+    return name
+  }
+  function cloneDeal() {
+    const source = deals.find(x => x['Transaction Name'] === decodedName) || deal
+    const copy = JSON.parse(JSON.stringify(source))
+    CLONE_RESET_FIELDS.forEach(k => { delete copy[k] })
+    // Attachments and file notes are the original deal's record — a clone
+    // starts clean rather than duplicating documents against a new deal.
+    delete copy._attachments
+    delete copy._fileNotes
+    copy['Transaction Name'] = uniqueCloneName(decodedName)
+    copy.Status = STAGES[0]
+    const updated = [...deals, copy]
+    setDeals(updated)
+    saveDeals(updated)
+    if (onUpdateDeals) onUpdateDeals(updated)
+    navigate(`/crm/deal/${encodeURIComponent(copy['Transaction Name'])}`)
+  }
+
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   async function deleteDeal() {
     const updated = deals.filter(x => x['Transaction Name'] !== decodedName)
@@ -3252,6 +3291,10 @@ export default function DealPage({ onUpdateDeals, clients = [], onUpdateClients 
             ) : (
               <>
                 <button onClick={()=>setConfirmingDelete(true)} style={{ padding:'8px 16px', borderRadius:8, border:'1px solid #fecaca', background:'#fff', color:'#b91c1c', fontSize:12, cursor:'pointer' }}>Delete deal</button>
+                {!editing && (
+                  <button onClick={cloneDeal} title="Create a copy of this deal — funding table, structure and contacts carried over; stage, dates and attachments start fresh"
+                    style={{ padding:'8px 16px', borderRadius:8, border:'1px solid #e8eaed', background:'#fff', color:'#3D4F6B', fontSize:12, cursor:'pointer' }}>Clone deal</button>
+                )}
                 {!editing
                   ? <button onClick={startEdit} style={{ padding:'8px 20px', borderRadius:8, border:'1.5px solid #EB99C2', background:'#fff', color:'#EB99C2', fontSize:12, fontWeight:500, cursor:'pointer' }}>Edit deal</button>
                   : <>
