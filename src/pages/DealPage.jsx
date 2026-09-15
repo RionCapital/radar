@@ -1199,13 +1199,21 @@ function calcFunding(strat, dealType) {
   const totalLVRBase = lvrBase + crossCollateralValue
   const totalLVR = totalLVRBase ? (loanFromLender / totalLVRBase) : 0
 
-  // Sale fees are entered as a percentage of the sale price (Cameron's
+  // Each property being sold gets its own proceeds calculation; the funding
+  // table then carries one contribution row per property. Sale fees are
+  // entered as a percentage of that property's sale price (Cameron's
   // request) rather than a flat dollar figure.
-  const saleFeesPercent = n(strat.sale?.feesPercent)
-  const saleFeesAmount = strat.includeSaleProceeds ? (n(strat.sale?.estSalePrice) * saleFeesPercent / 100) : 0
-  const netSaleProceeds = strat.includeSaleProceeds
-    ? (n(strat.sale?.estSalePrice) - n(strat.sale?.existingLoanPayout) - saleFeesAmount)
-    : 0
+  const saleRows = getSales(strat).map((sl, i) => {
+    const price = n(sl.estSalePrice)
+    const feesAmount = price * n(sl.feesPercent) / 100
+    return {
+      id: sl.id || `sale-${i}`, label: sl.label || '', index: i,
+      feesAmount: strat.includeSaleProceeds ? feesAmount : 0,
+      net: strat.includeSaleProceeds ? (price - n(sl.existingLoanPayout) - feesAmount) : 0,
+    }
+  })
+  const saleFeesAmount = saleRows.reduce((sum, r) => sum + r.feesAmount, 0)
+  const netSaleProceeds = saleRows.reduce((sum, r) => sum + r.net, 0)
 
   const contributionsTotal = (strat.contributions||[]).reduce((sum,c)=>sum+n(c.amount),0)
   const totalFundsAvailable = loanFromLender + n(strat.equity) + n(strat.savings) + contributionsTotal + netSaleProceeds
@@ -1221,7 +1229,23 @@ function calcFunding(strat, dealType) {
     constructionCalc = { additionalPurchaseCosts, less20PercentLand, constructionFundsAvailable, constructionSurplusDeficit }
   }
 
-  return { fields, legals, settlementAdj, hasStampDuty, stampDuty, stampDutyEstimate, lmiIncluded, lmi, estimatedValue, lvrBase, totalCosts, loanFromLender, totalLVR, crossCollateralIncluded, crossCollateralValue, capitaliseLMI, showBaseLoan, baseLoan, baseLoanLVR, saleFeesAmount, netSaleProceeds, totalFundsAvailable, surplusDeficit, constructionCalc }
+  return { fields, legals, settlementAdj, hasStampDuty, stampDuty, stampDutyEstimate, lmiIncluded, lmi, estimatedValue, lvrBase, totalCosts, loanFromLender, totalLVR, crossCollateralIncluded, crossCollateralValue, capitaliseLMI, showBaseLoan, baseLoan, baseLoanLVR, saleRows, saleFeesAmount, netSaleProceeds, totalFundsAvailable, surplusDeficit, constructionCalc }
+}
+
+function mkSale() { return { id: `sale-${Date.now()}-${Math.random().toString(36).slice(2,6)}`, label: '', estSalePrice: '', feesPercent: '', existingLoanPayout: '' } }
+
+// A deal can have several properties being sold, each with its own proceeds
+// calculation. They live in strat.sales[]. Deals saved before that existed
+// carry a single strat.sale object instead — it's read here as property one
+// and migrated to the array the first time anything is edited, so nothing
+// entered under the old shape is lost.
+function getSales(strat) {
+  if (Array.isArray(strat?.sales) && strat.sales.length) return strat.sales
+  const legacy = strat?.sale
+  if (legacy && (legacy.estSalePrice || legacy.feesPercent || legacy.existingLoanPayout)) {
+    return [{ id: 'sale-legacy', label: '', ...legacy }]
+  }
+  return [mkSale()]
 }
 
 function fmtM(v) { return v==='' || v===undefined || v===null || isNaN(v) ? '—' : `$${Math.round(Number(v)).toLocaleString()}` }
@@ -1404,7 +1428,13 @@ function StrategyTab({ deal, updateDeal }) {
   const navigate = useNavigate()
   const strat = deal._strategy || {}
   const s = (k, v) => updateDeal({ _strategy: { ...strat, [k]: v } })
-  const setSale = (k, v) => updateDeal({ _strategy: { ...strat, sale: { ...(strat.sale||{}), [k]: v } } })
+  // Writing to sales[] also migrates a legacy single `sale` object across,
+  // since getSales() seeds the array from it.
+  const sales = getSales(strat)
+  const writeSales = (list) => updateDeal({ _strategy: { ...strat, sales: list.length ? list : [mkSale()] } })
+  const setSaleAt = (i, k, v) => writeSales(sales.map((sl, j) => j === i ? { ...sl, [k]: v } : sl))
+  const addSale = () => writeSales([...sales, mkSale()])
+  const rmSale = (i) => writeSales(sales.filter((_, j) => j !== i))
 
   const dealType = deriveDealType(deal['Transaction Type'])
   const calc = calcFunding(strat, dealType)
@@ -1553,7 +1583,12 @@ function StrategyTab({ deal, updateDeal }) {
                 <div style={{ marginTop:10, paddingTop:10, borderTop:'1px solid #e8eaed' }}>
                   <LiveRowCurrency label="Equity" value={strat.equity} onCommit={v=>s('equity', v)} />
                   <LiveRowCurrency label="Savings" value={strat.savings} onCommit={v=>s('savings', v)} />
-                  {strat.includeSaleProceeds && <ComputedRow label="Proceeds from Sale of Property" value={fmtM(calc.netSaleProceeds)} tone="yellow" />}
+                  {strat.includeSaleProceeds && calc.saleRows.map((r, i) => (
+                    <ComputedRow key={r.id} tone="yellow" value={fmtM(r.net)}
+                      label={r.label
+                        ? `Proceeds from Sale — ${r.label}`
+                        : calc.saleRows.length > 1 ? `Proceeds from Sale of Property ${i + 1}` : 'Proceeds from Sale of Property'} />
+                  ))}
                 </div>
 
                 <div style={{ marginTop:10 }}>
@@ -1601,22 +1636,43 @@ function StrategyTab({ deal, updateDeal }) {
                   })()}
                 </TabCard>
 
-                {strat.includeSaleProceeds && (
-                  <TabCard title="Estimated Proceeds From Sale">
-                    <LiveRowCurrency label="Estimated Sale Price" value={strat.sale?.estSalePrice} onCommit={v=>setSale('estSalePrice', v)} />
-                    <LiveRowNumber label="Sale Fees" value={strat.sale?.feesPercent} onCommit={v=>setSale('feesPercent', v)} suffix="%" step="0.1" />
-                    <LiveRowCurrency label="Existing Loan Payout" value={strat.sale?.existingLoanPayout} onCommit={v=>setSale('existingLoanPayout', v)} />
-                    <ComputedRow label="Sale Fees ($)" value={fmtM(calc.saleFeesAmount)} tone="navy" />
-                    <ComputedRow label="Estimated Proceeds from Sale" value={fmtM(calc.netSaleProceeds)} tone="yellow" />
-                    <div style={{ fontSize:11, color:'#9ca3af', marginTop:6 }}>Flows automatically into the funding table's contributions.</div>
-                  </TabCard>
-                )}
+                {strat.includeSaleProceeds && sales.map((sl, i) => {
+                  const row = calc.saleRows[i] || { feesAmount: 0, net: 0 }
+                  const isLast = i === sales.length - 1
+                  return (
+                    <TabCard key={sl.id || i}
+                      title={sales.length > 1 ? `Estimated Proceeds From Sale — Property ${i + 1}` : 'Estimated Proceeds From Sale'}
+                      right={(
+                        <div style={{ display:'flex', gap:6 }}>
+                          {sales.length > 1 && (
+                            <button onClick={()=>rmSale(i)} title="Remove this property"
+                              style={{ fontSize:10, padding:'3px 9px', borderRadius:5, border:'1px solid #fecaca', background:'#fff', color:'#dc2626', cursor:'pointer' }}>Remove</button>
+                          )}
+                          {isLast && (
+                            <button onClick={addSale} title="Add another property being sold"
+                              style={{ fontSize:10, padding:'3px 9px', borderRadius:5, border:'1px solid #3D4F6B', background:'#fff', color:'#3D4F6B', cursor:'pointer', fontWeight:600 }}>+ Add</button>
+                          )}
+                        </div>
+                      )}>
+                      <LiveRow label="Property" value={sl.label} onCommit={v=>setSaleAt(i,'label', v)} placeholder="e.g. 12 Smith St (optional)" />
+                      <LiveRowCurrency label="Estimated Sale Price" value={sl.estSalePrice} onCommit={v=>setSaleAt(i,'estSalePrice', v)} />
+                      <LiveRowNumber label="Sale Fees" value={sl.feesPercent} onCommit={v=>setSaleAt(i,'feesPercent', v)} suffix="%" step="0.1" />
+                      <LiveRowCurrency label="Existing Loan Payout" value={sl.existingLoanPayout} onCommit={v=>setSaleAt(i,'existingLoanPayout', v)} />
+                      <ComputedRow label="Sale Fees ($)" value={fmtM(row.feesAmount)} tone="navy" />
+                      <ComputedRow label="Estimated Proceeds from Sale" value={fmtM(row.net)} tone="yellow" />
+                      <div style={{ fontSize:11, color:'#9ca3af', marginTop:6 }}>
+                        Flows automatically into the funding table's contributions.
+                        {sales.length > 1 && isLast && <> Combined proceeds across all {sales.length} properties: <strong style={{color:'#2A3545'}}>{fmtM(calc.netSaleProceeds)}</strong>.</>}
+                      </div>
+                    </TabCard>
+                  )
+                })}
 
                 {dealType === 'Construction' && strat.includeConstructionFunding && calc.constructionCalc && (
                   <TabCard title="Funding Available for Construction">
                     <LiveRowCurrency label="Fixed Price Contract" value={strat.fixedPriceContract} onCommit={v=>s('fixedPriceContract', v)} />
                     <LiveRowCurrency label="Portion — Construction Loan (this request)" value={strat.constructionLoanPortionRequested} onCommit={v=>s('constructionLoanPortionRequested', v)} />
-                    {strat.includeSaleProceeds && <ComputedRow label="Proceeds from Sale" value={fmtM(calc.netSaleProceeds)} tone="navy" />}
+                    {strat.includeSaleProceeds && <ComputedRow label={calc.saleRows.length > 1 ? `Proceeds from Sale (${calc.saleRows.length} properties)` : 'Proceeds from Sale'} value={fmtM(calc.netSaleProceeds)} tone="navy" />}
                     <LiveRowCurrency label="Savings (Offset Accounts)" value={strat.savingsOffset} onCommit={v=>s('savingsOffset', v)} />
                     <ComputedRow label="Less 20% of Land" value={fmtM(-calc.constructionCalc.less20PercentLand)} tone="red" />
                     <ComputedRow label="Less Additional Purchase Costs" value={fmtM(-calc.constructionCalc.additionalPurchaseCosts)} tone="red" />
@@ -1636,7 +1692,7 @@ function StrategyTab({ deal, updateDeal }) {
                   {strat.lmiIncluded && (
                     <LiveRowCheckbox label="Is LMI to be capitalised into the loan?" checked={strat.lmiCapitalised !== false} onChange={v=>s('lmiCapitalised', v)} />
                   )}
-                  <LiveRowCheckbox label="Also selling an existing property as part of this deal?" checked={strat.includeSaleProceeds} onChange={v=>s('includeSaleProceeds', v)} />
+                  <LiveRowCheckbox label="Also selling existing properties as part of this deal?" checked={strat.includeSaleProceeds} onChange={v=>s('includeSaleProceeds', v)} />
                   {dealType === 'Construction' && (
                     <LiveRowCheckbox label="Include construction funding portion (drawdown vs. fixed price contract)" checked={strat.includeConstructionFunding} onChange={v=>s('includeConstructionFunding', v)} />
                   )}
