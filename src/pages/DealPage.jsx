@@ -1184,7 +1184,19 @@ function calcFunding(strat, dealType) {
   // LVR-only portion, excluding the capitalised LMI) is only meaningful —
   // and only shown — when LMI is actually being capitalised.
   const capitaliseLMI = lmiIncluded && strat.lmiCapitalised !== false
-  const loanFromLender = lvrBase * lvrPct + (capitaliseLMI ? lmi : 0)
+  // Plenty of commercial facilities — working capital, trade finance, an
+  // unsecured business loan — have no property value to measure an LVR
+  // against, so lvrBase is 0 and an LVR-driven loan can only ever be 0.
+  // In that case the loan amount is typed straight in and stored as
+  // strat.loanAmount. It's also used when there IS a security value but no
+  // LVR has been set yet, so adding a property value later doesn't silently
+  // knock an already-entered amount back to zero.
+  const loanAmountEntered = n(strat.loanAmount)
+  const lvrSet = strat.baseLvr !== undefined && strat.baseLvr !== '' && strat.baseLvr !== null
+  const loanBase = lvrBase
+    ? (lvrSet ? lvrBase * lvrPct : loanAmountEntered)
+    : loanAmountEntered
+  const loanFromLender = loanBase + (capitaliseLMI ? lmi : 0)
   const showBaseLoan = capitaliseLMI && lmi > 0
   const baseLoan = loanFromLender - (capitaliseLMI ? lmi : 0)
   const baseLoanLVR = (showBaseLoan && lvrBase) ? (baseLoan / lvrBase) : 0
@@ -1281,7 +1293,7 @@ function ComputedRow({ label, value, tone='navy', big, side }) {
 // loan amount and the (total) LVR% is solved backwards from it. Both
 // directions convert back to the underlying stored baseLvr field internally
 // — the amount and the total-LVR% are never stored themselves, just derived.
-function LoanAmountRow({ label, lvrBase, amountValue, lmiAddOn=0, onLvrCommit, tone='navy' }) {
+function LoanAmountRow({ label, lvrBase, amountValue, lmiAddOn=0, onLvrCommit, onAmountCommit, tone='navy' }) {
   const tones = {
     navy:  { bg:'#EEF2F6', fg:'#3D4F6B' },
     green: { bg:'#F0FDF4', fg:'#16a34a' },
@@ -1306,7 +1318,16 @@ function LoanAmountRow({ label, lvrBase, amountValue, lmiAddOn=0, onLvrCommit, t
   function commitAmount() {
     setAmtFocused(false)
     const num = amtEdit === '' ? '' : Number(amtEdit)
-    if (num === '' || !lvrBase) return
+    if (num === '') return
+    // With no security value to measure against, there's no LVR to derive —
+    // the amount itself is the figure, so it's stored directly. Previously
+    // this returned early and the typed amount was silently thrown away,
+    // which made the funding table impossible to use for a commercial deal
+    // with no property behind it.
+    if (!lvrBase) {
+      if (onAmountCommit) onAmountCommit(Math.max(0, num - lmiAddOn))
+      return
+    }
     const impliedBaseLvr = Math.round((((num - lmiAddOn) / lvrBase) * 100) * 100) / 100
     onLvrCommit(impliedBaseLvr)
   }
@@ -1319,6 +1340,8 @@ function LoanAmountRow({ label, lvrBase, amountValue, lmiAddOn=0, onLvrCommit, t
           <input
             type="text" inputMode="decimal" placeholder="—"
             value={lvrFocused ? lvrEdit : displayLvr}
+            disabled={!lvrBase}
+            title={!lvrBase ? 'No property or security value entered, so there’s no LVR to calculate — enter the loan amount instead' : undefined}
             onFocus={()=>{ setLvrFocused(true); setLvrEdit(displayLvr) }}
             onChange={e=>setLvrEdit(e.target.value.replace(/[^0-9.]/g,''))}
             onBlur={commitLvr}
@@ -1571,6 +1594,7 @@ function StrategyTab({ deal, updateDeal }) {
                 <LoanAmountRow
                   label="Loan From Lender"
                   onLvrCommit={v=>s('baseLvr', v)}
+                  onAmountCommit={v=>s('loanAmount', v)}
                   amountValue={calc.loanFromLender}
                   lvrBase={calc.lvrBase}
                   lmiAddOn={calc.capitaliseLMI ? calc.lmi : 0}
