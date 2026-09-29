@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { loadSettings, saveSettings, syncSettingsFromSupabase, DEFAULT_SETTINGS, getCurrentUser, getDealStages, getLoanTypes, PROTECTED_LOAN_TYPES, getLoanTypeStreams, STREAMS, getTrainingCategories, getTrainingExercises } from '../lib/settings'
+import { loadSettings, saveSettings, syncSettingsFromSupabase, DEFAULT_SETTINGS, getCurrentUser, getDealStages, getLoanTypes, PROTECTED_LOAN_TYPES, getLoanTypeStreams, STREAMS, getAccountingPackage, getTrainingCategories, getTrainingExercises } from '../lib/settings'
 import { loadDeals, saveDeals as libSaveDeals } from '../lib/deals'
 import { icon_crm, icon_radar, icon_marketing, icon_planner, icon_studio } from '../lib/icons'
 import StatementHistory from '../components/StatementHistory'
+import { ACCOUNTING_PACKAGES, getFormat } from '../lib/accountingExport'
 
 const inp = { border:'1px solid #e8eaed', borderRadius:6, padding:'6px 10px', fontSize:12, width:'100%', boxSizing:'border-box', fontFamily:'inherit' }
 const Card = ({ children, style }) => <div style={{ background:'#fff', borderRadius:8, border:'0.5px solid #e8eaed', padding:'16px 18px', ...style }}>{children}</div>
@@ -421,6 +422,7 @@ export default function AdminSettings({ clients, onUpdateClients }) {
     ],
     radar: [
       { id:'statements', label:'Commission Statements' },
+      { id:'accounting', label:'Accounting' },
     ],
     crm: [
       { id:'stages', label:'Stages' },
@@ -548,6 +550,49 @@ export default function AdminSettings({ clients, onUpdateClients }) {
 
           {PLACEHOLDER_SECTIONS.has(section) && (
             <SectionPlaceholder label={sectionLabel} />
+          )}
+
+          {/* Rradar > Accounting */}
+          {section==='radar' && tab==='accounting' && (
+            <Card style={{ marginBottom:16 }}>
+              <CardTitle>Accounting package</CardTitle>
+              <div style={{ fontSize:11, color:'#7A8090', marginBottom:14, lineHeight:1.5 }}>
+                Sets the file format used by <strong>Export for accounting</strong> on the Direct Income page. Each package wants its own column names and tax codes, so picking the right one here means the file imports without being reshaped by hand.
+                <br /><br />
+                Only an admin can change this — it affects every export for the whole business, not just one person's.
+              </div>
+
+              <div style={{ display:'flex', alignItems:'center', gap:12, flexWrap:'wrap' }}>
+                <select
+                  value={getAccountingPackage(settings)}
+                  disabled={!isAdmin}
+                  onChange={e => setSettings(s2 => ({ ...s2, accountingPackage: e.target.value }))}
+                  style={{ ...inp, width:240, background: isAdmin ? '#fff' : '#f8f9fa', color: isAdmin ? '#2A3545' : '#9ca3af', cursor: isAdmin ? 'pointer' : 'not-allowed' }}>
+                  {ACCOUNTING_PACKAGES.map(p2 => <option key={p2} value={p2}>{p2}</option>)}
+                </select>
+                {!isAdmin && (
+                  <span style={{ fontSize:11, color:'#92600A', background:'#FEF9E7', border:'1px solid #f5e6a8', borderRadius:6, padding:'5px 10px' }}>
+                    🔒 Admin only — ask an admin to change this.
+                  </span>
+                )}
+              </div>
+
+              <div style={{ marginTop:16, paddingTop:14, borderTop:'0.5px solid #e8eaed' }}>
+                <div style={{ fontSize:10, color:'#7A8090', fontWeight:600, textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:6 }}>Columns this produces</div>
+                <div style={{ fontSize:10.5, color:'#64748b', fontFamily:'DM Mono, monospace', background:'#f8fafc', border:'0.5px solid #e8eaed', borderRadius:6, padding:'9px 11px', lineHeight:1.7, wordBreak:'break-word' }}>
+                  {getFormat(getAccountingPackage(settings)).headers.join(', ')}
+                </div>
+                <div style={{ fontSize:11, color:'#7A8090', marginTop:10, lineHeight:1.5 }}>
+                  One row per invoice line — invoice-level fields repeat on each line, which is how these importers group a multi-line invoice. Dates are written dd/mm/yyyy and amounts to two decimals.
+                  <br />
+                  <strong>Rion Standard</strong> is our own layout and is identical to the Xero template.
+                </div>
+              </div>
+
+              <div style={{ marginTop:14, fontSize:11, color:'#7A8090' }}>
+                Changes here are saved with the page's main "Save changes" button, top right.
+              </div>
+            </Card>
           )}
 
           {/* Rradar > Commission Statements */}

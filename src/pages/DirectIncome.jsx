@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { loadClients } from '../lib/data'
-import { loadSettings } from '../lib/settings'
+import { loadSettings, getAccountingPackage } from '../lib/settings'
 import {
   DEFAULT_ACCOUNT,
   loadDirectIncomeLocal, loadNextInvoiceNumberLocal, saveDirectIncome, syncDirectIncomeFromSupabase,
   invoiceItems, invoiceTotals, invoiceSummaryDescription, mkLineItem, loadPayeeOptions,
 } from '../lib/directIncome'
 import { downloadTaxInvoicePdf, fmt2 as fmt2Pdf, fmtDateAU } from '../lib/directIncomePdf'
+import { downloadAccountingCsv, getFormat } from '../lib/accountingExport'
 
 const NAVY = '#3D4F6B'
 const PINK = '#EB99C2'
@@ -206,6 +207,17 @@ export default function DirectIncome() {
 
   function downloadTaxInvoice(e) { downloadTaxInvoicePdf(e, payeeOptions) }
 
+  // Exports the month currently on screen in whatever format Settings >
+  // Rradar > Accounting is set to, ready to upload into the accounting
+  // package. Invoice-level fields repeat per line, which is what those
+  // importers expect for a multi-line invoice.
+  const accountingPackage = getAccountingPackage(settings)
+  function exportForAccounting() {
+    const rows = entries.filter(e => e.month === month)
+    const lines = downloadAccountingCsv(rows, accountingPackage, payeeOptions, monthLabel(month))
+    if (!lines) window.alert(`Nothing to export for ${monthLabel(month)} — there are no invoice lines with an amount or description in this month.`)
+  }
+
   return (
     <div style={{ padding: '24px 32px', maxWidth: 1500, margin: '0 auto', fontFamily: 'Montserrat, sans-serif' }}>
       <button onClick={() => navigate('/radar/dashboard')} style={{ background: 'none', border: 'none', color: PINK, fontSize: 12, cursor: 'pointer', padding: 0, marginBottom: 10 }}>← Back to dashboard</button>
@@ -228,11 +240,18 @@ export default function DirectIncome() {
           <button onClick={() => setView('current')} style={{ padding: '7px 16px', borderRadius: 7, border: `1px solid ${view === 'current' ? NAVY : '#e8eaed'}`, background: view === 'current' ? NAVY : '#fff', color: view === 'current' ? '#fff' : '#7A8090', fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>Current</button>
           <button onClick={() => setView('history')} style={{ padding: '7px 16px', borderRadius: 7, border: `1px solid ${view === 'history' ? NAVY : '#e8eaed'}`, background: view === 'history' ? NAVY : '#fff', color: view === 'history' ? '#fff' : '#7A8090', fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>History</button>
         </div>
+        <div style={{ display: 'flex', gap: 6 }}>
+        <button onClick={exportForAccounting}
+          title={`Download ${monthLabel(month)} as a ${accountingPackage} import file (${getFormat(accountingPackage).headers.length} columns). Change the package in Settings > Rradar > Accounting.`}
+          style={{ padding: '7px 16px', borderRadius: 7, border: '1px solid #e8eaed', background: '#fff', color: '#3D4F6B', fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>
+          ⬇ Export for {accountingPackage}
+        </button>
         <label style={{ padding: '7px 16px', borderRadius: 7, border: `1px solid ${NAVY}`, background: '#fff', color: NAVY, fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>
           ⬆ Import CSV
           <input type="file" accept=".csv,text/csv" style={{ display: 'none' }}
             onChange={ev => { const f = ev.target.files?.[0]; if (f) handleImportFile(f); ev.target.value = '' }} />
         </label>
+        </div>
       </div>
 
       {importPreview && (

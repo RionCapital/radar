@@ -63,6 +63,10 @@ export const DEFAULT_SETTINGS = {
   // explicitly assigned here. Read through loanStream() below rather than
   // this map directly.
   loanTypeStreams: {},
+  // Which accounting package Direct Income invoices are exported for —
+  // editable in Settings > Rradar > Accounting, by an admin only. Read it
+  // through getAccountingPackage() rather than off settings directly.
+  accountingPackage: 'Xero',
   // Categories the Planner's Training & Fitness weekly/monthly rollups are
   // grouped into — editable in Settings > Planner > Exercises. `id` is
   // permanent (what each exercise's categoryId points at, see
@@ -343,6 +347,11 @@ export function getLoanTypes(settingsArg) {
 }
 
 export const STREAMS = ['Private Wealth', 'Commercial']
+
+export function getAccountingPackage(settingsArg) {
+  const settings = settingsArg || loadSettings()
+  return settings.accountingPackage || DEFAULT_SETTINGS.accountingPackage
+}
 
 export function getLoanTypeStreams(settingsArg) {
   const settings = settingsArg || loadSettings()
