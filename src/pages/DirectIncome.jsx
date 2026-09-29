@@ -8,7 +8,7 @@ import {
   invoiceItems, invoiceTotals, invoiceSummaryDescription, mkLineItem, loadPayeeOptions,
 } from '../lib/directIncome'
 import { downloadTaxInvoicePdf, fmt2 as fmt2Pdf, fmtDateAU } from '../lib/directIncomePdf'
-import { downloadAccountingCsv, getFormat } from '../lib/accountingExport'
+import AccountingExportModal from '../components/AccountingExportModal'
 
 const NAVY = '#3D4F6B'
 const PINK = '#EB99C2'
@@ -207,16 +207,10 @@ export default function DirectIncome() {
 
   function downloadTaxInvoice(e) { downloadTaxInvoicePdf(e, payeeOptions) }
 
-  // Exports the month currently on screen in whatever format Settings >
-  // Rradar > Accounting is set to, ready to upload into the accounting
-  // package. Invoice-level fields repeat per line, which is what those
-  // importers expect for a multi-line invoice.
+  // Export opens a dialog so a range of months can be picked — a BAS quarter
+  // or a whole financial year in one file, not just the month on screen.
   const accountingPackage = getAccountingPackage(settings)
-  function exportForAccounting() {
-    const rows = entries.filter(e => e.month === month)
-    const lines = downloadAccountingCsv(rows, accountingPackage, payeeOptions, monthLabel(month))
-    if (!lines) window.alert(`Nothing to export for ${monthLabel(month)} — there are no invoice lines with an amount or description in this month.`)
-  }
+  const [exportOpen, setExportOpen] = useState(false)
 
   return (
     <div style={{ padding: '24px 32px', maxWidth: 1500, margin: '0 auto', fontFamily: 'Montserrat, sans-serif' }}>
@@ -241,8 +235,8 @@ export default function DirectIncome() {
           <button onClick={() => setView('history')} style={{ padding: '7px 16px', borderRadius: 7, border: `1px solid ${view === 'history' ? NAVY : '#e8eaed'}`, background: view === 'history' ? NAVY : '#fff', color: view === 'history' ? '#fff' : '#7A8090', fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>History</button>
         </div>
         <div style={{ display: 'flex', gap: 6 }}>
-        <button onClick={exportForAccounting}
-          title={`Download ${monthLabel(month)} as a ${accountingPackage} import file (${getFormat(accountingPackage).headers.length} columns). Change the package in Settings > Rradar > Accounting.`}
+        <button onClick={() => setExportOpen(true)}
+          title={`Export Direct Income as a ${accountingPackage} import file. Pick any range of months. Change the package in Settings > Rradar > Accounting.`}
           style={{ padding: '7px 16px', borderRadius: 7, border: '1px solid #e8eaed', background: '#fff', color: '#3D4F6B', fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>
           ⬇ Export for {accountingPackage}
         </button>
@@ -253,6 +247,16 @@ export default function DirectIncome() {
         </label>
         </div>
       </div>
+
+      {exportOpen && (
+        <AccountingExportModal
+          entries={entries}
+          pkg={accountingPackage}
+          payees={payeeOptions}
+          defaultMonth={month}
+          onClose={() => setExportOpen(false)}
+        />
+      )}
 
       {importPreview && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(20,24,32,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20 }}>
