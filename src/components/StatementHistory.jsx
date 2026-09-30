@@ -139,6 +139,7 @@ export default function StatementHistory({ clients, onUpdateClients }) {
       `• ${(rec.undo?.prevBalances || []).length} loan balances will go back to what they were before this import`,
       created ? `• ${created} loan${created === 1 ? '' : 's'} this import created will be deleted` : null,
       (rec.undo?.dischargedLoans || []).length ? `• ${(rec.undo.dischargedLoans).length} loan(s) it discharged will be reopened` : null,
+      (rec.unresolved || []).length ? `• ${(rec.unresolved).length} row(s) still waiting to be matched will be discarded` : null,
       '', 'You can re-import the statement afterwards. Continue?',
     ].filter(Boolean).join('\n')
     if (!window.confirm(warn)) return
@@ -168,7 +169,9 @@ export default function StatementHistory({ clients, onUpdateClients }) {
   }
 
   function forgetStatement(rec) {
-    if (!window.confirm(`Remove the ${monthLabel(rec.month)} entry from this list only?\n\nThe imported data STAYS exactly as it is — this just clears the log entry, so it can no longer be undone from here.`)) return
+    const pending = (rec.unresolved || []).length
+    const extra = pending ? `\n\n⚠ ${pending} row(s) still waiting to be matched will be discarded with it.` : ''
+    if (!window.confirm(`Remove the ${monthLabel(rec.month)} entry from this list only?\n\nThe imported data STAYS exactly as it is — this just clears the log entry, so it can no longer be undone from here.${extra}`)) return
     const next = records.filter(r => r.id !== rec.id)
     setRecords(next)
     setNote(`${monthLabel(rec.month)} removed from the log. No client data was changed.`)
@@ -191,6 +194,8 @@ export default function StatementHistory({ clients, onUpdateClients }) {
         <strong>Remove statement</strong> reverses an import: it strips that month's commission and balance history from every loan it touched, puts each balance back to what it was beforehand, deletes any loans the import created, and reopens any it discharged. Use it when a statement went in wrong — then re-import it cleanly.
         <br />
         <strong>Forget entry</strong> only clears the row from this list and changes no client data.
+        <br /><br />
+        Any statement row whose account number matched no loan is held below until you match it — typically a deal settled through the CRM that doesn't have the bank's account number yet.
       </div>
 
       {note && (
@@ -241,6 +246,17 @@ export default function StatementHistory({ clients, onUpdateClients }) {
                       {[c.matched != null ? `${c.matched} matched` : null,
                         c.allocated ? `${c.allocated} allocated` : null,
                         c.deleted ? `${c.deleted} skipped` : null].filter(Boolean).join(' · ') || '—'}
+                      {(r.unresolved || []).length > 0 && (
+                        <div style={{ color: '#92600A', fontWeight: 600, marginTop: 2 }}>
+                          ⚠ {(r.unresolved).length} still to match
+                        </div>
+                      )}
+                      {r.unapplied?.accounts > 0 && (
+                        <div style={{ color: '#dc2626', marginTop: 2 }}
+                          title="Commission on this statement whose account number matched no loan, so it isn't on any client — it is still counted in the Trail/Upfront columns here.">
+                          {r.unapplied.accounts} acct{r.unapplied.accounts === 1 ? '' : 's'} landed nowhere · {money(r.unapplied.trail + r.unapplied.upfront)}
+                        </div>
+                      )}
                     </td>
                     <td style={td({ textAlign: 'right' })}>
                       <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>

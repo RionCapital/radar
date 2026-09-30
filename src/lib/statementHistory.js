@@ -103,8 +103,35 @@ export function buildStatementRecord({ clients, stmtMap, month, allocations, fil
     return acc
   }, { trail: 0, upfront: 0, gst: 0, totalPaid: 0 })
 
+  // An account only "lands" if a loan already carried that number, or this
+  // import created/merged one for it. Anything else contributed to the totals
+  // above without reaching a single loan — worth saying out loud.
+  const landed = new Set()
+  ;(clients || []).forEach(c => (c.loans || []).forEach(l => {
+    const a = String(l.acc || '').trim()
+    if (a) landed.add(a)
+  }))
+  ;(allocations || []).forEach(a => {
+    const acc = String(a.newLoan?.acc || '').trim()
+    if (acc) landed.add(acc)
+  })
+  const unappliedAccs = applied.filter(acc => !landed.has(String(acc).trim()))
+  const unappliedTotals = unappliedAccs.reduce((acc, k) => {
+    const r = stmtMap[k] || {}
+    acc.trail += Number(r.trailComm) || 0
+    acc.upfront += Number(r.upfrontComm) || 0
+    acc.gst += Number(r.gst) || 0
+    return acc
+  }, { trail: 0, upfront: 0, gst: 0 })
+
   return {
     id: mkStatementId(), fileName: fileName || '', month, appliedAt: new Date().toISOString(),
+    unapplied: {
+      accounts: unappliedAccs.length,
+      trail: Math.round(unappliedTotals.trail * 100) / 100,
+      upfront: Math.round(unappliedTotals.upfront * 100) / 100,
+      gst: Math.round(unappliedTotals.gst * 100) / 100,
+    },
     appliedBy: user || '', accounts: applied.length,
     totals: {
       trail: Math.round(totals.trail * 100) / 100,
@@ -117,7 +144,7 @@ export function buildStatementRecord({ clients, stmtMap, month, allocations, fil
     // Settings > Rradar > Commission Statements rather than being lost.
     unresolved: (unresolved || []).map(u => ({
       acc: String(u.acc || ''), name: u.name || '', lender: u.lender || '', month,
-      bal: Number(u.bal) || 0, trailComm: Number(u.trailComm) || 0,
+      bal: Number(u.bal) || 0, amt: Number(u.amt) || 0, trailComm: Number(u.trailComm) || 0,
       upfrontComm: Number(u.upfrontComm) || 0, gst: Number(u.gst) || 0, totalPaid: Number(u.totalPaid) || 0,
     })),
     undo: { prevBalances: touched, createdLoans, dischargedLoans, mergedLoans },
@@ -185,7 +212,7 @@ export function undoStatementImport(clients, record) {
 export function mkLoanFromRow(row, month) {
   return {
     acc: row.acc || '', lname: row.name || '', bank: row.lender || '',
-    balance: row.bal || 0, amount: row.bal || 0, rate: 0, rpmt: 'P&I',
+    balance: row.bal || 0, amount: row.bal || row.amt || 0, rate: 0, rpmt: 'P&I',
     rateType: 'Var', type: 'Home Loan (OO)', term: 30,
     settled: new Date().toISOString().slice(0, 10), closed: false,
     commissionHistory: [{ month, trailComm: row.trailComm || 0, upfrontComm: row.upfrontComm || 0, gst: row.gst || 0, totalPaid: row.totalPaid || 0 }],
@@ -213,7 +240,7 @@ export function applyUnmatchedRow(clients, row, { clientName, mode }) {
         lname: l.lname || row.name || '',
         bank: l.bank || row.lender || '',
         balance: row.bal != null ? row.bal : l.balance,
-        amount: l.amount || row.bal || 0,
+        amount: l.amount || row.bal || row.amt || 0,
         commissionHistory: [...(l.commissionHistory || []).filter(h => h.month !== month), entry].sort((a, b) => a.month.localeCompare(b.month)),
         balanceHistory: [...(l.balanceHistory || []).filter(h => h.month !== month), balEntry].sort((a, b) => a.month.localeCompare(b.month)),
       })

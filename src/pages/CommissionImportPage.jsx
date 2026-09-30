@@ -79,7 +79,7 @@ function UnmatchedRow({ a, idx, clients, onAllocate, onDelete, navigate }) {
   if (a.status === 'deleted') {
     return (
       <div style={{ padding: '8px 12px', background: '#f8fafc', borderRadius: 7, border: '0.5px solid #e2e8f0', marginBottom: 6, opacity: 0.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span style={{ fontSize: 11, color: '#94a3b8', textDecoration: 'line-through' }}>{a.name} — {a.acc} — Removed</span>
+        <span style={{ fontSize: 11, color: '#94a3b8' }}>{a.name} — {a.acc} — <strong style={{ color: '#92600A' }}>skipped</strong>, held for matching in Settings → Commission Statements</span>
         <button onClick={() => onDelete(idx, false)} style={{ fontSize: 10, color: '#64748b', background: 'none', border: 'none', cursor: 'pointer' }}>Undo</button>
       </div>
     )
@@ -118,7 +118,7 @@ function UnmatchedRow({ a, idx, clients, onAllocate, onDelete, navigate }) {
           )}
           <button onClick={() => onDelete(idx, true)}
             style={{ fontSize: 10, padding: '5px 8px', borderRadius: 6, border: '1px solid #fecaca', color: '#dc2626', background: '#fff', cursor: 'pointer' }}>
-            ✕ Remove
+            ✕ Skip for now
           </button>
         </div>
       </div>
@@ -362,7 +362,11 @@ function CommissionImportPageInner({ clients, onImport }) {
         if (existingMap[acc]) {
           const old = existingMap[acc].loan.balance
           matched.push({ acc, client: existingMap[acc].client, name: stmtMap[acc].name, lender: stmtMap[acc].lender, oldBal: old, newBal: stmtMap[acc].bal, diff: stmtMap[acc].bal - old })
-        } else if (stmtMap[acc].bal > 0) {
+        } else {
+          // Every account that matched no loan is surfaced, whatever its
+          // balance. A new settlement often reports a zero or blank balance on
+          // its first statement and pays upfront only; gating on bal > 0 threw
+          // those away silently.
           unmatched.push({ ...stmtMap[acc], status: 'pending' })
         }
       })
@@ -426,7 +430,7 @@ function CommissionImportPageInner({ clients, onImport }) {
           lname: a.name || '',
           bank: a.lender || '',
           balance: a.bal || 0,
-          amount: a.bal || 0,
+          amount: a.bal || a.amt || 0,
           rate: 0,
           rpmt: 'P&I',
           rateType: 'Var',
@@ -606,7 +610,7 @@ function CommissionImportPageInner({ clients, onImport }) {
               { label: 'Matched', val: pending.matched.length, color: '#22c55e', bg: '#f0fdf4' },
               { label: 'Unresolved', val: pendingCount, color: '#e8a020', bg: '#fffbeb' },
               { label: 'Allocated', val: allocatedCount, color: '#22c55e', bg: '#f0fdf4' },
-              { label: 'Removed', val: deletedCount, color: '#94a3b8', bg: '#f8fafc' },
+              { label: 'Skipped', val: deletedCount, color: '#92600A', bg: '#FEF9E7' },
             ].map(s => (
               <div key={s.label} style={{ background: s.bg, border: '0.5px solid #e2e8f0', borderRadius: 8, padding: '10px 14px', textAlign: 'center' }}>
                 <div style={{ fontSize: 22, fontWeight: 700, color: s.color }}>{s.val}</div>
@@ -625,7 +629,7 @@ function CommissionImportPageInner({ clients, onImport }) {
                 </span>
               </div>
               <div style={{ fontSize: 11, color: '#64748b', marginBottom: 12 }}>
-                No automatic allocation has been attempted. Link each account to an existing client, create a new one, or remove it from this import.
+                No automatic allocation has been attempted. Link each account to an existing client, create a new one, or skip it — a skipped account is held in Settings → Rradar → Commission Statements so it can be matched once you know where it belongs.
               </div>
               {pending.unmatched.map((a, i) => (
                 <UnmatchedRow key={i} a={a} idx={i} clients={clients}
