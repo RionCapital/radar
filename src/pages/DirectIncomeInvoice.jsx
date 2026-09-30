@@ -6,7 +6,7 @@ import { loadSettings, getDealStages } from '../lib/settings'
 import {
   ITEM_TYPES, TAX_RATES, DEFAULT_ACCOUNT,
   loadDirectIncomeLocal, loadNextInvoiceNumberLocal, saveDirectIncome,
-  invoiceItems, invoiceTotals, mkLineItem, recalcLineItem, loadPayeeOptions,
+  invoiceItems, invoiceTotals, mkLineItem, recalcLineItem, loadPayeeOptions, taxRateFraction,
 } from '../lib/directIncome'
 import { downloadTaxInvoicePdf, fmt2 } from '../lib/directIncomePdf'
 import PayeePicker from '../components/PayeePicker'
@@ -33,7 +33,14 @@ export default function DirectIncomeInvoice() {
   const payeeOptions = useMemo(() => loadPayeeOptions(clients), [clients])
 
   const entry = entries.find(e => e.id === id)
-  const locked = !!entry?.closed
+  // A closed invoice is read-only by default — its month has already been
+  // reconciled against a commission statement, so an accidental keystroke
+  // shouldn't move a finalised figure. But mistakes do get found later (a
+  // figure entered ex-GST that was actually GST-inclusive, say), so it can
+  // be deliberately unlocked for this visit. The entry stays closed and
+  // stays in History; only the edit guard lifts.
+  const [unlocked, setUnlocked] = useState(false)
+  const locked = !!entry?.closed && !unlocked
 
   const settledDisplay = useMemo(() => getDealStages(loadSettings()).find(s => s.id === 'settled')?.display, [])
   const settledDealsThisMonth = useMemo(() =>
@@ -95,6 +102,40 @@ export default function DirectIncomeInvoice() {
     const clientName = deal ? (deal['RradarClient'] || deal.Contacts?.[0]?.name || '') : ''
     updateEntry({ dealName, clientName })
   }
+  // "I entered these as ex-GST but the figures already included GST."
+  // Re-bases each GST-bearing line so the GST is taken OUT of the amount
+  // instead of added on top, leaving the total equal to what was actually
+  // received. Only lines that carry GST are touched — a GST Free or BAS
+  // Excluded line has nothing to unwind.
+  function recalcAsGstInclusive() {
+    const items = invoiceItems(entry)
+    const affected = items.filter(it => taxRateFraction(it.taxRate) > 0 && Number(it.amount) > 0)
+    if (!affected.length) {
+      window.alert('Nothing to change — no line on this invoice carries GST.')
+      return
+    }
+    const before = invoiceTotals(entry).total
+    const next = items.map(it => {
+      const frac = taxRateFraction(it.taxRate)
+      const amount = Number(it.amount) || 0
+      if (!frac || amount <= 0) return it
+      const qty = Number(it.qty) || 1
+      // recalcLineItem derives amount and GST from qty x price, so putting
+      // the GST-exclusive figure into price makes both come out right.
+      return recalcLineItem({ ...it, price: Math.round((amount / (1 + frac) / qty) * 100) / 100 })
+    })
+    const after = next.reduce((s2, it) => s2 + (Number(it.amount) || 0) + (Number(it.taxAmount) || 0), 0)
+    const ok = window.confirm(
+      `Treat this invoice's figures as GST-inclusive?\n\n` +
+      `${affected.length} line${affected.length === 1 ? '' : 's'} will have the GST taken out of the amount rather than added on top.\n\n` +
+      `Total now:  $${fmt3(before)}\n` +
+      `Total after: $${fmt3(after)}\n\n` +
+      `Use this when the figures entered already included GST.`
+    )
+    if (!ok) return
+    updateEntry({ items: next })
+  }
+
   function deleteInvoice() {
     const totals = invoiceTotals(entry)
     const label = `${entry.supplierName || 'this invoice'} — $${fmt3(totals.total)} (${monthLabel(entry.month)})`
@@ -150,15 +191,34 @@ export default function DirectIncomeInvoice() {
           <button onClick={() => downloadTaxInvoicePdf(entry, payeeOptions)}
             style={{ background: '#fff', color: NAVY, border: `1px solid ${NAVY}`, borderRadius: 7, padding: '8px 16px', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>📄 Download PDF</button>
           {!locked && (
+            <button onClick={recalcAsGstInclusive} title="Use when the figures entered already included GST — takes the GST out of the amount instead of adding it on top"
+              style={{ background: '#fff', color: '#92600A', border: '1px solid #f5e6a8', borderRadius: 7, padding: '8px 16px', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>Figures include GST</button>
+          )}
+          {!locked && (
             <button onClick={deleteInvoice}
               style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', borderRadius: 7, padding: '8px 16px', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>Delete invoice</button>
           )}
         </div>
       </div>
 
-      {locked && (
-        <div style={{ background: '#FEF9E7', border: '1px solid #f5e6a8', borderRadius: 8, padding: '10px 14px', marginBottom: 16, fontSize: 12, color: '#92600A' }}>
-          🔒 This invoice's month is closed and locked — its commission statement has already been imported. You can still download the PDF, just can't edit or delete it here.
+      {entry.closed && locked && (
+        <div style={{ background: '#FEF9E7', border: '1px solid #f5e6a8', borderRadius: 8, padding: '10px 14px', marginBottom: 16, fontSize: 12, color: '#92600A', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <span>🔒 This invoice's month is closed — its commission statement has already been imported, so it's read-only by default.</span>
+          <button
+            onClick={() => { if (window.confirm('Unlock this closed invoice for editing?\n\nIts month has already been reconciled against a commission statement. Correcting a genuine mistake here is fine, but the change will not flow back into that statement — check the month still reconciles afterwards.')) setUnlocked(true) }}
+            style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid #92600A', background: '#fff', color: '#92600A', fontSize: 11, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+            Unlock to edit
+          </button>
+        </div>
+      )}
+
+      {entry.closed && unlocked && (
+        <div style={{ background: '#FEF2F2', border: '1px solid #fecaca', borderRadius: 8, padding: '10px 14px', marginBottom: 16, fontSize: 12, color: '#b91c1c', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <span>✏️ Editing a closed record. Changes save immediately and won't flow back into the commission statement this month was reconciled against.</span>
+          <button onClick={() => setUnlocked(false)}
+            style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid #b91c1c', background: '#fff', color: '#b91c1c', fontSize: 11, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+            Re-lock
+          </button>
         </div>
       )}
 

@@ -379,6 +379,8 @@ export default function DirectIncome() {
                     <span style={{ width: 80, color: '#7A8090' }}>{e.invoiceNumber}</span>
                     <span style={{ flex: 1, color: '#2A3545' }}>{e.supplierName || '—'} — {invoiceSummaryDescription(e)}</span>
                     <span style={{ width: 90, textAlign: 'right', fontWeight: 600 }}>${fmt2(invoiceTotals(e).total)}</span>
+                    <button onClick={() => navigate(`/radar/direct-income/${e.id}`)} title="Open this invoice — closed records can be unlocked there if something needs correcting"
+                      style={{ background: '#fff', color: '#7A8090', border: '1px solid #e8eaed', borderRadius: 5, padding: '3px 8px', cursor: 'pointer', fontSize: 10.5, whiteSpace:'nowrap' }}>Open</button>
                     <button onClick={() => downloadTaxInvoice(e)} style={{ background: '#fff', color: NAVY, border: `1px solid ${NAVY}`, borderRadius: 5, padding: '3px 8px', cursor: 'pointer', fontSize: 10.5, whiteSpace:'nowrap' }}>📄 Invoice</button>
                     <button onClick={() => removeClosedEntry(e)} title="Delete this entry" style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', borderRadius: 5, padding: '3px 8px', cursor: 'pointer', fontSize: 11 }}>✕</button>
                   </div>
