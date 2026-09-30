@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { loadClients } from '../lib/data'
 import { sbLoadMarketing, sbSaveMarketing } from '../lib/supabase'
 import { loadSettings, getDealStages, dealUpfrontCommission } from '../lib/settings'
+import { loadDirectIncomeLocal, syncDirectIncomeFromSupabase, directIncomeForClient, entryMatchesLoan, entryCommissionSplit } from '../lib/directIncome'
 
 // Dot colour per CRM stage, keyed by permanent stage id (Settings > CRM >
 // Stages) rather than the editable label, so a rename doesn't lose its
@@ -443,10 +444,28 @@ function TouchPoints({ contact, onSave }) {
   )
 }
 
+// The first month of the trailing 12, as a 'YYYY-MM' key — trail is banked
+// monthly, so a referrer's annual worth is the last twelve of those, not the
+// lifetime pile.
+function twelveMonthsAgoKey() {
+  const d = new Date()
+  d.setMonth(d.getMonth() - 11)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+}
+
 function ReferrerClientsPanel({ contact, rradarClients, allClients, onSave }) {
   const referrerName = contact.name
   const fmt  = v => `$${Math.round(v).toLocaleString()}`
   const fmtD = v => `$${Number(v).toFixed(2)}`
+
+  // Direct Income is real commission that never appears on an aggregator
+  // statement, so it isn't in loan.commissionHistory. Leaving it out made a
+  // referrer whose clients are Direct-only read $0 — see clientComm below.
+  const [diEntries, setDiEntries] = useState(() => loadDirectIncomeLocal())
+  useEffect(() => {
+    syncDirectIncomeFromSupabase().then(cloud => { if (cloud) setDiEntries(cloud.entries) })
+  }, [])
+  const since12 = useMemo(twelveMonthsAgoKey, [])
 
   // Stage names/order come from Settings > CRM > Stages.
   const dealStagesFull = useMemo(() => getDealStages(loadSettings()), [])
@@ -490,23 +509,50 @@ function ReferrerClientsPanel({ contact, rradarClients, allClients, onSave }) {
   const inflightDeals = allCrmDeals.filter(d => d.Status !== settledDisplay && d.Status !== withdrawnDisplay)
 
   // ── Commission per Rradar client ──────────────────────────────────────────
+  // Both income streams, ex-GST, so they add up: statement commission off the
+  // loan, plus any Direct Income invoice allocated to this client.
   function clientComm(rc) {
-    let upfront = 0, trail = 0
+    let upfront = 0, trail = 0, trail12 = 0
     rc.loans.forEach(l => {
       ;(l.commissionHistory || []).forEach(h => {
         upfront += h.upfrontComm || 0
         trail   += h.trailComm   || 0
+        if (h.month && h.month >= since12) trail12 += h.trailComm || 0
       })
     })
-    return { upfront, trail, total: upfront + trail }
+    directIncomeForClient(diEntries, rc.name).forEach(e => {
+      const sp = entryCommissionSplit(e)
+      upfront += sp.upfront
+      trail   += sp.trail
+      if (e.month && e.month >= since12) trail12 += sp.trail
+    })
+    return { upfront, trail, trail12, total: upfront + trail }
   }
 
-  const totalComm = useMemo(() => {
+  // The same split for one loan — statement rows plus the Direct Income
+  // invoices linked to that loan account.
+  function loanComm(loan) {
     let upfront = 0, trail = 0
-    linkedClients.forEach(rc => { const c = clientComm(rc); upfront += c.upfront; trail += c.trail })
-    settledDeals.forEach(d => { upfront += d._upfrontComm || 0 })
-    return { upfront, trail, total: upfront + trail }
-  }, [linkedClients, settledDeals])
+    ;(loan.commissionHistory || []).forEach(h => {
+      upfront += h.upfrontComm || 0
+      trail   += h.trailComm   || 0
+    })
+    diEntries.filter(e => entryMatchesLoan(e, loan)).forEach(e => {
+      const sp = entryCommissionSplit(e)
+      upfront += sp.upfront
+      trail   += sp.trail
+    })
+    return { upfront, trail }
+  }
+
+  // Only money actually received — statement commission and Direct Income.
+  // (This used to add d._upfrontComm for each settled CRM deal, but nothing
+  // anywhere ever wrote that field, so the term was always zero.)
+  const totalComm = useMemo(() => {
+    let upfront = 0, trail = 0, trail12 = 0
+    linkedClients.forEach(rc => { const c = clientComm(rc); upfront += c.upfront; trail += c.trail; trail12 += c.trail12 })
+    return { upfront, trail, trail12, total: upfront + trail }
+  }, [linkedClients, diEntries, since12]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Manual link helpers ───────────────────────────────────────────────────
   const manualLinks = contact.linkedClients || []
@@ -530,15 +576,16 @@ function ReferrerClientsPanel({ contact, rradarClients, allClients, onSave }) {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10,
           marginTop: 20, marginBottom: 4 }}>
           {[
-            { label: 'Total Upfront', value: fmt(totalComm.upfront), col: C.navy },
-            { label: 'Trail p.a.',    value: fmt(totalComm.trail),   col: '#2A7A2A' },
-            { label: 'Total Earned',  value: fmt(totalComm.total),   col: C.pinkBtn },
+            { label: 'Total Upfront', value: fmt(totalComm.upfront), col: C.navy, sub: 'All time, excl. GST' },
+            { label: 'Trail p.a.',    value: fmt(totalComm.trail12), col: '#2A7A2A', sub: `Last 12 months · ${fmt(totalComm.trail)} lifetime` },
+            { label: 'Total Earned',  value: fmt(totalComm.total),   col: C.pinkBtn, sub: 'Upfront + trail, all time' },
           ].map(t => (
             <div key={t.label} style={{ padding: '12px 14px', borderRadius: 10,
               background: t.col + '10', border: `1px solid ${t.col}30`, textAlign: 'center' }}>
               <div style={{ fontSize: 10, fontWeight: 700, color: t.col, textTransform: 'uppercase',
                 letterSpacing: '0.05em', fontFamily: 'Montserrat,sans-serif', marginBottom: 4 }}>{t.label}</div>
               <div style={{ fontSize: 18, fontWeight: 800, color: t.col, fontFamily: 'Montserrat,sans-serif' }}>{t.value}</div>
+              {t.sub && <div style={{ fontSize: 9, color: C.muted, fontFamily: 'Montserrat,sans-serif', marginTop: 3 }}>{t.sub}</div>}
             </div>
           ))}
         </div>
@@ -612,7 +659,8 @@ function ReferrerClientsPanel({ contact, rradarClients, allClients, onSave }) {
                     </div>
                   </div>
                   <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                    <div style={{ fontSize: 10, color: '#2A7A2A', fontWeight: 600, fontFamily: 'Montserrat,sans-serif' }}>~ {fmtD(comm.trail)}/yr</div>
+                    <div title={`Last 12 months of trail · ${fmtD(comm.trail)} lifetime`}
+                      style={{ fontSize: 10, color: '#2A7A2A', fontWeight: 600, fontFamily: 'Montserrat,sans-serif' }}>~ {fmtD(comm.trail12)}/yr</div>
                     <div style={{ fontSize: 10, color: C.navy, fontWeight: 600, fontFamily: 'Montserrat,sans-serif' }}>↑ {fmtD(comm.upfront)}</div>
                   </div>
                   {isManual && (
@@ -621,21 +669,46 @@ function ReferrerClientsPanel({ contact, rradarClients, allClients, onSave }) {
                   )}
                   <span style={{ color: C.slate, fontSize: 13 }}>›</span>
                 </div>
-                {loans.filter(l => (l.commissionHistory||[]).length > 0).map(loan => {
-                  const lU = (loan.commissionHistory||[]).reduce((s,h)=>s+(h.upfrontComm||0),0)
-                  const lT = (loan.commissionHistory||[]).reduce((s,h)=>s+(h.trailComm||0),0)
+                {rc.loans.map((loan, li) => {
+                  const { upfront: lU, trail: lT } = loanComm(loan)
                   if (!lU && !lT) return null
                   return (
-                    <div key={loan.acc} style={{ display:'flex', gap:8, padding:'5px 12px',
+                    <div key={loan.acc || `loan-${li}`} style={{ display:'flex', gap:8, padding:'5px 12px',
                       borderTop:`1px solid ${C.border}`, fontSize:11, fontFamily:'Montserrat,sans-serif' }}>
                       <div style={{ flex:1, color:C.text, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
                         {loan.lname || loan.bank} <span style={{ color:C.muted }}>{loan.bank}</span>
+                        {loan.closed && <span style={{ color:C.muted }}> · closed</span>}
                       </div>
-                      <span style={{ color:C.navy, fontWeight:600 }}>↑ {fmtD(lU)}</span>
-                      <span style={{ color:'#2A7A2A', fontWeight:600 }}>~ {fmtD(lT)}/yr</span>
+                      <span title="Upfront received on this loan, all time" style={{ color:C.navy, fontWeight:600 }}>↑ {fmtD(lU)}</span>
+                      <span title="Trail received on this loan, all time" style={{ color:'#2A7A2A', fontWeight:600 }}>~ {fmtD(lT)}</span>
                     </div>
                   )
                 })}
+                {(() => {
+                  // Direct Income allocated to the client but not to a specific
+                  // loan still belongs to this referrer — show it on its own
+                  // line rather than letting the loan rows come up short.
+                  const loose = directIncomeForClient(diEntries, rc.name)
+                    .filter(e => !rc.loans.some(l => entryMatchesLoan(e, l)))
+                  if (!loose.length) return null
+                  const t = loose.reduce((acc, e) => {
+                    const sp = entryCommissionSplit(e)
+                    acc.upfront += sp.upfront; acc.trail += sp.trail
+                    return acc
+                  }, { upfront: 0, trail: 0 })
+                  if (!t.upfront && !t.trail) return null
+                  return (
+                    <div style={{ display:'flex', gap:8, padding:'5px 12px',
+                      borderTop:`1px solid ${C.border}`, fontSize:11, fontFamily:'Montserrat,sans-serif' }}>
+                      <div style={{ flex:1, color:C.muted, fontStyle:'italic', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}
+                        title="Direct Income invoices allocated to this client but not to a particular loan">
+                        Direct income · no loan linked
+                      </div>
+                      <span style={{ color:C.navy, fontWeight:600 }}>↑ {fmtD(t.upfront)}</span>
+                      <span style={{ color:'#2A7A2A', fontWeight:600 }}>~ {fmtD(t.trail)}</span>
+                    </div>
+                  )
+                })()}
               </div>
             )
           })}
