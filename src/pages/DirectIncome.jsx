@@ -20,6 +20,31 @@ function currentMonthKey() {
 const hLabel = { fontSize: 10, color: '#7A8090', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 3 }
 const hInput = { border: '1px solid #e8eaed', borderRadius: 7, padding: '6px 9px', fontSize: 12, fontFamily: 'inherit', color: '#2A3545', boxSizing: 'border-box' }
 
+// ─── Where you were ──────────────────────────────────────────────────────────
+// Opening an invoice and coming back used to dump you on the Current tab at
+// today's month, which is the wrong place if you'd just filtered History down
+// to the one payee you were working through. The page's view, month and
+// History filters are stashed on every change and read back on mount, so
+// "Back to Direct Income" — and the browser's own back button — return you to
+// the list exactly as you left it.
+//
+// sessionStorage, not localStorage: within a session, retracing your steps
+// should be seamless; a fresh session should open clean on the current month.
+const VIEW_STATE_KEY = 'rion-direct-income-view'
+
+function loadViewState() {
+  try {
+    const s = sessionStorage.getItem(VIEW_STATE_KEY)
+    const v = s ? JSON.parse(s) : null
+    return v && typeof v === 'object' ? v : {}
+  } catch {
+    return {}
+  }
+}
+function saveViewState(state) {
+  try { sessionStorage.setItem(VIEW_STATE_KEY, JSON.stringify(state)) } catch {}
+}
+
 function monthLabel(m) {
   const [y, mo] = m.split('-').map(Number)
   return new Date(y, mo - 1, 1).toLocaleDateString('en-AU', { month: 'short', year: '2-digit' })
@@ -85,8 +110,10 @@ export default function DirectIncome() {
   const [nextInvoiceNumber, setNextInvoiceNumber] = useState(() => loadNextInvoiceNumberLocal(startingInvoiceNumber))
   const [clients, setClients] = useState(() => loadClients())
   const payeeOptions = useMemo(() => loadPayeeOptions(clients), [clients])
-  const [month, setMonth] = useState(currentMonthKey())
-  const [view, setView] = useState('current') // 'current' | 'history'
+  // Restored once, on mount — see loadViewState above.
+  const [restored] = useState(loadViewState)
+  const [month, setMonth] = useState(() => restored.month || currentMonthKey())
+  const [view, setView] = useState(() => (restored.view === 'history' ? 'history' : 'current')) // 'current' | 'history'
   const [importPreview, setImportPreview] = useState(null) // { parsed, skippedRows, fileName } | null
 
   useEffect(() => {
@@ -207,13 +234,18 @@ export default function DirectIncome() {
   // months. Search matches anything you'd actually remember about an entry —
   // payee, invoice number, client, deal, or the wording of a line — and the
   // filters narrow by payee, line type and month range.
-  const [hSearch, setHSearch] = useState('')
-  const [hPayee, setHPayee] = useState('')
-  const [hType, setHType] = useState('')
-  const [hFrom, setHFrom] = useState('')
-  const [hTo, setHTo] = useState('')
+  const [hSearch, setHSearch] = useState(() => restored.hSearch || '')
+  const [hPayee, setHPayee] = useState(() => restored.hPayee || '')
+  const [hType, setHType] = useState(() => restored.hType || '')
+  const [hFrom, setHFrom] = useState(() => restored.hFrom || '')
+  const [hTo, setHTo] = useState(() => restored.hTo || '')
   const hFiltersOn = !!(hSearch.trim() || hPayee || hType || hFrom || hTo)
   function clearHistoryFilters() { setHSearch(''); setHPayee(''); setHType(''); setHFrom(''); setHTo('') }
+
+  // Stash on every change, so whatever is on screen is what comes back.
+  useEffect(() => {
+    saveViewState({ view, month, hSearch, hPayee, hType, hFrom, hTo })
+  }, [view, month, hSearch, hPayee, hType, hFrom, hTo])
 
   const closedEntries = useMemo(() => entries.filter(e => e.closed), [entries])
   // Payee and type lists come from what's actually in History, so the
