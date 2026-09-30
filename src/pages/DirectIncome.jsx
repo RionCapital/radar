@@ -17,6 +17,9 @@ function currentMonthKey() {
   const d = new Date()
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
 }
+const hLabel = { fontSize: 10, color: '#7A8090', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 3 }
+const hInput = { border: '1px solid #e8eaed', borderRadius: 7, padding: '6px 9px', fontSize: 12, fontFamily: 'inherit', color: '#2A3545', boxSizing: 'border-box' }
+
 function monthLabel(m) {
   const [y, mo] = m.split('-').map(Number)
   return new Date(y, mo - 1, 1).toLocaleDateString('en-AU', { month: 'short', year: '2-digit' })
@@ -199,11 +202,60 @@ export default function DirectIncome() {
 
   // All closed entries, most recent month first — the History view, for
   // collecting/re-downloading invoices from months that are already locked.
+  // ── History search & filters ─────────────────────────────────────────────
+  // Once a couple of years of invoices have built up, History is a wall of
+  // months. Search matches anything you'd actually remember about an entry —
+  // payee, invoice number, client, deal, or the wording of a line — and the
+  // filters narrow by payee, line type and month range.
+  const [hSearch, setHSearch] = useState('')
+  const [hPayee, setHPayee] = useState('')
+  const [hType, setHType] = useState('')
+  const [hFrom, setHFrom] = useState('')
+  const [hTo, setHTo] = useState('')
+  const hFiltersOn = !!(hSearch.trim() || hPayee || hType || hFrom || hTo)
+  function clearHistoryFilters() { setHSearch(''); setHPayee(''); setHType(''); setHFrom(''); setHTo('') }
+
+  const closedEntries = useMemo(() => entries.filter(e => e.closed), [entries])
+  // Payee and type lists come from what's actually in History, so the
+  // dropdowns never offer a value that returns nothing.
+  const historyPayees = useMemo(
+    () => [...new Set(closedEntries.map(e => e.supplierName).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
+    [closedEntries]
+  )
+  const historyTypes = useMemo(
+    () => [...new Set(closedEntries.flatMap(e => invoiceItems(e).map(it => it.item)).filter(Boolean))].sort(),
+    [closedEntries]
+  )
+
+  const historyMatches = useMemo(() => {
+    const q = hSearch.trim().toLowerCase()
+    // A backwards range is a slip, not an intention — read it either way round.
+    const lo = hFrom && hTo ? (hFrom <= hTo ? hFrom : hTo) : hFrom
+    const hi = hFrom && hTo ? (hFrom <= hTo ? hTo : hFrom) : hTo
+    return closedEntries.filter(e => {
+      if (lo && (e.month || '') < lo) return false
+      if (hi && (e.month || '') > hi) return false
+      if (hPayee && e.supplierName !== hPayee) return false
+      const items = invoiceItems(e)
+      if (hType && !items.some(it => it.item === hType)) return false
+      if (!q) return true
+      const haystack = [
+        e.invoiceNumber, e.supplierName, e.clientName, e.dealName, monthLabel(e.month),
+        ...items.map(it => it.description), ...items.map(it => it.item),
+      ].filter(Boolean).join(' ').toLowerCase()
+      return haystack.includes(q)
+    })
+  }, [closedEntries, hSearch, hPayee, hType, hFrom, hTo])
+
+  const historyTotal = useMemo(
+    () => historyMatches.reduce((s2, e) => s2 + invoiceTotals(e).total, 0),
+    [historyMatches]
+  )
+
   const closedByMonth = useMemo(() => {
-    const closed = entries.filter(e => e.closed)
-    const months = Array.from(new Set(closed.map(e => e.month))).sort().reverse()
-    return months.map(m => ({ month: m, entries: closed.filter(e => e.month === m) }))
-  }, [entries])
+    const months = Array.from(new Set(historyMatches.map(e => e.month))).sort().reverse()
+    return months.map(m => ({ month: m, entries: historyMatches.filter(e => e.month === m) }))
+  }, [historyMatches])
 
   function downloadTaxInvoice(e) { downloadTaxInvoicePdf(e, payeeOptions) }
 
@@ -362,9 +414,56 @@ export default function DirectIncome() {
       )}
 
       {view === 'history' && (
+        <>
+        <div style={{ background: '#fff', borderRadius: 10, border: '0.5px solid #e8eaed', padding: '12px 14px', marginBottom: 12 }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+            <div style={{ flex: '2 1 240px', minWidth: 200 }}>
+              <div style={hLabel}>Search</div>
+              <input value={hSearch} onChange={e => setHSearch(e.target.value)}
+                placeholder="Payee, invoice no., client, deal or description…"
+                style={{ ...hInput, width: '100%' }} />
+            </div>
+            <div style={{ flex: '1 1 150px', minWidth: 130 }}>
+              <div style={hLabel}>Paid by</div>
+              <select value={hPayee} onChange={e => setHPayee(e.target.value)} style={{ ...hInput, width: '100%' }}>
+                <option value="">All payees</option>
+                {historyPayees.map(p2 => <option key={p2} value={p2}>{p2}</option>)}
+              </select>
+            </div>
+            <div style={{ flex: '1 1 130px', minWidth: 120 }}>
+              <div style={hLabel}>Type</div>
+              <select value={hType} onChange={e => setHType(e.target.value)} style={{ ...hInput, width: '100%' }}>
+                <option value="">All types</option>
+                {historyTypes.map(t2 => <option key={t2} value={t2}>{t2}</option>)}
+              </select>
+            </div>
+            <div>
+              <div style={hLabel}>From</div>
+              <input type="month" value={hFrom} onChange={e => setHFrom(e.target.value)} style={hInput} />
+            </div>
+            <div>
+              <div style={hLabel}>To</div>
+              <input type="month" value={hTo} onChange={e => setHTo(e.target.value)} style={hInput} />
+            </div>
+            {hFiltersOn && (
+              <button onClick={clearHistoryFilters}
+                style={{ padding: '7px 14px', borderRadius: 7, border: '1px solid #e8eaed', background: '#fff', color: '#7A8090', fontSize: 11.5, fontWeight: 600, cursor: 'pointer' }}>Clear</button>
+            )}
+          </div>
+          <div style={{ fontSize: 11.5, color: '#7A8090', marginTop: 10 }}>
+            {historyMatches.length === 0
+              ? (closedEntries.length ? 'No invoices match these filters.' : 'Nothing in History yet.')
+              : <>Showing <strong style={{ color: '#2A3545' }}>{historyMatches.length}</strong> of {closedEntries.length} invoice{closedEntries.length === 1 ? '' : 's'} across {closedByMonth.length} month{closedByMonth.length === 1 ? '' : 's'} · <strong style={{ color: '#22c55e' }}>${fmt2(historyTotal)}</strong></>}
+          </div>
+        </div>
+
         <div style={{ background: '#fff', borderRadius: 10, border: '0.5px solid #e8eaed', overflow: 'hidden' }}>
           {closedByMonth.length === 0 && (
-            <div style={{ padding: 24, textAlign: 'center', color: '#9ca3af', fontSize: 12 }}>No closed months yet — entries land here once a commission statement has been imported for that month.</div>
+            <div style={{ padding: 24, textAlign: 'center', color: '#9ca3af', fontSize: 12 }}>
+              {closedEntries.length
+                ? 'No invoices match these filters — try clearing them.'
+                : 'No closed months yet — entries land here once a commission statement has been imported for that month.'}
+            </div>
           )}
           {closedByMonth.map(({ month: m, entries: monthClosedEntries }) => {
             const mTotal = monthClosedEntries.reduce((s, e) => s + invoiceTotals(e).total, 0)
@@ -389,6 +488,7 @@ export default function DirectIncome() {
             )
           })}
         </div>
+        </>
       )}
     </div>
   )
