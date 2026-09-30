@@ -31,6 +31,8 @@ const hInput = { border: '1px solid #e8eaed', borderRadius: 7, padding: '6px 9px
 // sessionStorage, not localStorage: within a session, retracing your steps
 // should be seamless; a fresh session should open clean on the current month.
 const VIEW_STATE_KEY = 'rion-direct-income-view'
+// Sentinel for the Client filter — no real client can be called this.
+const UNALLOCATED = '\u0000unallocated'
 
 function loadViewState() {
   try {
@@ -239,15 +241,48 @@ export default function DirectIncome() {
   const [hType, setHType] = useState(() => restored.hType || '')
   const [hFrom, setHFrom] = useState(() => restored.hFrom || '')
   const [hTo, setHTo] = useState(() => restored.hTo || '')
-  const hFiltersOn = !!(hSearch.trim() || hPayee || hType || hFrom || hTo)
-  function clearHistoryFilters() { setHSearch(''); setHPayee(''); setHType(''); setHFrom(''); setHTo('') }
+  // '' = every client, UNALLOCATED = the ones with no client on them at all.
+  const [hClient, setHClient] = useState(() => restored.hClient || '')
+  const hFiltersOn = !!(hSearch.trim() || hPayee || hType || hFrom || hTo || hClient)
+  function clearHistoryFilters() { setHSearch(''); setHPayee(''); setHType(''); setHFrom(''); setHTo(''); setHClient('') }
 
   // Stash on every change, so whatever is on screen is what comes back.
   useEffect(() => {
-    saveViewState({ view, month, hSearch, hPayee, hType, hFrom, hTo })
-  }, [view, month, hSearch, hPayee, hType, hFrom, hTo])
+    saveViewState({ view, month, hSearch, hPayee, hType, hFrom, hTo, hClient })
+  }, [view, month, hSearch, hPayee, hType, hFrom, hTo, hClient])
+
+  // ── Allocating a client from the list ──────────────────────────────────────
+  // Typed into a draft first and written on blur, rather than saving on every
+  // keystroke — otherwise each letter is a write to storage and a round trip
+  // to Supabase.
+  const [allocDraft, setAllocDraft] = useState({})
+  function commitAllocation(entry, raw) {
+    const name = (raw || '').trim()
+    setAllocDraft(d => { const next = { ...d }; delete next[entry.id]; return next })
+    if (name === (entry.clientName || '').trim()) return
+    // The loan link belonged to the old client, so it can't survive the change.
+    persist(entries.map(x => x.id === entry.id ? { ...x, clientName: name, loanAcc: '', loanName: '' } : x))
+  }
 
   const closedEntries = useMemo(() => entries.filter(e => e.closed), [entries])
+
+  // An invoice with no client on it never reaches that client's Commission
+  // History — the income is in Rradar's totals but invisible on the connection
+  // it actually belongs to. These are the ones worth chasing down.
+  const unallocated = useMemo(() => entries.filter(e => !(e.clientName || '').trim()), [entries])
+  const unallocatedClosed = useMemo(() => unallocated.filter(e => e.closed).length, [unallocated])
+  const unallocatedOpen = unallocated.length - unallocatedClosed
+
+  // Every client Rradar knows about, for the allocation box; plus the ones
+  // already used in History, for the filter dropdown.
+  const allClientNames = useMemo(
+    () => [...new Set((clients || []).map(c => c.name).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
+    [clients]
+  )
+  const historyClients = useMemo(
+    () => [...new Set(closedEntries.map(e => (e.clientName || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
+    [closedEntries]
+  )
   // Payee and type lists come from what's actually in History, so the
   // dropdowns never offer a value that returns nothing.
   const historyPayees = useMemo(
@@ -268,6 +303,9 @@ export default function DirectIncome() {
       if (lo && (e.month || '') < lo) return false
       if (hi && (e.month || '') > hi) return false
       if (hPayee && e.supplierName !== hPayee) return false
+      const client = (e.clientName || '').trim()
+      if (hClient === UNALLOCATED && client) return false
+      if (hClient && hClient !== UNALLOCATED && client !== hClient) return false
       const items = invoiceItems(e)
       if (hType && !items.some(it => it.item === hType)) return false
       if (!q) return true
@@ -277,7 +315,7 @@ export default function DirectIncome() {
       ].filter(Boolean).join(' ').toLowerCase()
       return haystack.includes(q)
     })
-  }, [closedEntries, hSearch, hPayee, hType, hFrom, hTo])
+  }, [closedEntries, hSearch, hPayee, hType, hFrom, hTo, hClient])
 
   const historyTotal = useMemo(
     () => historyMatches.reduce((s2, e) => s2 + invoiceTotals(e).total, 0),
@@ -317,6 +355,14 @@ export default function DirectIncome() {
         <div style={{ display: 'flex', gap: 6 }}>
           <button onClick={() => setView('current')} style={{ padding: '7px 16px', borderRadius: 7, border: `1px solid ${view === 'current' ? NAVY : '#e8eaed'}`, background: view === 'current' ? NAVY : '#fff', color: view === 'current' ? '#fff' : '#7A8090', fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>Current</button>
           <button onClick={() => setView('history')} style={{ padding: '7px 16px', borderRadius: 7, border: `1px solid ${view === 'history' ? NAVY : '#e8eaed'}`, background: view === 'history' ? NAVY : '#fff', color: view === 'history' ? '#fff' : '#7A8090', fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>History</button>
+          {unallocated.length > 0 && (
+            <button
+              onClick={() => { setView('history'); clearHistoryFilters(); setHClient(UNALLOCATED) }}
+              title="Show the invoices with no client on them, so they can be allocated"
+              style={{ padding: '7px 14px', borderRadius: 7, border: '1px solid #f5e6a8', background: '#FEF9E7', color: '#92600A', fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>
+              ⚠ {unallocated.length} not allocated
+            </button>
+          )}
         </div>
         <div style={{ display: 'flex', gap: 6 }}>
         <button onClick={() => setExportOpen(true)}
@@ -447,6 +493,9 @@ export default function DirectIncome() {
 
       {view === 'history' && (
         <>
+        <datalist id="direct-income-client-names">
+          {allClientNames.map(c2 => <option key={c2} value={c2} />)}
+        </datalist>
         <div style={{ background: '#fff', borderRadius: 10, border: '0.5px solid #e8eaed', padding: '12px 14px', marginBottom: 12 }}>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
             <div style={{ flex: '2 1 240px', minWidth: 200 }}>
@@ -454,6 +503,15 @@ export default function DirectIncome() {
               <input value={hSearch} onChange={e => setHSearch(e.target.value)}
                 placeholder="Payee, invoice no., client, deal or description…"
                 style={{ ...hInput, width: '100%' }} />
+            </div>
+            <div style={{ flex: '1 1 160px', minWidth: 140 }}>
+              <div style={hLabel}>Client</div>
+              <select value={hClient} onChange={e => setHClient(e.target.value)}
+                style={{ ...hInput, width: '100%', ...(hClient === UNALLOCATED ? { borderColor: '#f5e6a8', background: '#FEF9E7', color: '#92600A', fontWeight: 600 } : null) }}>
+                <option value="">All clients</option>
+                <option value={UNALLOCATED}>⚠ Not allocated{unallocatedClosed ? ` (${unallocatedClosed})` : ''}</option>
+                {historyClients.map(c2 => <option key={c2} value={c2}>{c2}</option>)}
+              </select>
             </div>
             <div style={{ flex: '1 1 150px', minWidth: 130 }}>
               <div style={hLabel}>Paid by</div>
@@ -487,6 +545,11 @@ export default function DirectIncome() {
               ? (closedEntries.length ? 'No invoices match these filters.' : 'Nothing in History yet.')
               : <>Showing <strong style={{ color: '#2A3545' }}>{historyMatches.length}</strong> of {closedEntries.length} invoice{closedEntries.length === 1 ? '' : 's'} across {closedByMonth.length} month{closedByMonth.length === 1 ? '' : 's'} · <strong style={{ color: '#22c55e' }}>${fmt2(historyTotal)}</strong></>}
           </div>
+          {hClient === UNALLOCATED && unallocatedOpen > 0 && (
+            <div style={{ fontSize: 11.5, color: '#92600A', marginTop: 6 }}>
+              {unallocatedOpen} more unallocated invoice{unallocatedOpen === 1 ? ' is' : 's are'} in a month that isn't closed yet — those are on the Current tab.
+            </div>
+          )}
         </div>
 
         <div style={{ background: '#fff', borderRadius: 10, border: '0.5px solid #e8eaed', overflow: 'hidden' }}>
@@ -509,6 +572,26 @@ export default function DirectIncome() {
                   <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 14px', borderTop: '0.5px solid #f7f7f7', fontSize: 11.5 }}>
                     <span style={{ width: 80, color: '#7A8090' }}>{e.invoiceNumber}</span>
                     <span style={{ flex: 1, color: '#2A3545' }}>{e.supplierName || '—'} — {invoiceSummaryDescription(e)}</span>
+                    {(e.clientName || '').trim()
+                      ? (() => {
+                          const known = allClientNames.includes(e.clientName.trim())
+                          return (
+                            <span
+                              title={known ? e.clientName : `No connection in Rradar is called "${e.clientName}" — check the spelling, or this invoice won't show on anyone's Commission History`}
+                              style={{ width: 170, color: known ? '#7A8090' : '#92600A', fontWeight: known ? 400 : 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {known ? '' : '⚠ '}{e.clientName}
+                            </span>
+                          )
+                        })()
+                      : <input
+                          value={allocDraft[e.id] ?? ''}
+                          onChange={ev => setAllocDraft(d => ({ ...d, [e.id]: ev.target.value }))}
+                          onBlur={ev => commitAllocation(e, ev.target.value)}
+                          onKeyDown={ev => { if (ev.key === 'Enter') ev.currentTarget.blur(); if (ev.key === 'Escape') { setAllocDraft(d => { const n2 = { ...d }; delete n2[e.id]; return n2 }); ev.currentTarget.value = ''; ev.currentTarget.blur() } }}
+                          list="direct-income-client-names"
+                          placeholder="⚠ Allocate to client…"
+                          title="Type or pick the client this invoice belongs to — it'll show on their Commission History"
+                          style={{ width: 170, border: '1px solid #f5e6a8', background: '#FEF9E7', borderRadius: 5, padding: '3px 7px', fontSize: 11, fontFamily: 'inherit', color: '#92600A' }} />}
                     <span style={{ width: 90, textAlign: 'right', fontWeight: 600 }}>${fmt2(invoiceTotals(e).total)}</span>
                     <button onClick={() => navigate(`/radar/direct-income/${e.id}`)} title="Open this invoice — closed records can be unlocked there if something needs correcting"
                       style={{ background: '#fff', color: '#7A8090', border: '1px solid #e8eaed', borderRadius: 5, padding: '3px 8px', cursor: 'pointer', fontSize: 10.5, whiteSpace:'nowrap' }}>Open</button>
