@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react'
 import {
   assessServicing, sensitivity, resolvePolicy, maxLoanAtDscr,
-  DEFAULT_SERVICING_POLICY, isIndividual,
+  DEFAULT_SERVICING_POLICY, isIndividual, resolveProperty, tenantRows, tenantYearsRemaining,
 } from '../lib/servicing'
 
 // ─── Commercial servicing calculator ─────────────────────────────────────────
@@ -55,16 +55,20 @@ const GST_TREATMENTS = ['Going concern (no GST)', 'GST applies — claimable', '
 const RENT_BASIS = ['Net', 'Gross']
 const REVIEW_BASIS = ['CPI', 'Fixed %', 'Market', 'None']
 
-export default function ServicingCalculator({ contacts, structure, settingsPolicy, onChange }) {
+export default function ServicingCalculator({ contacts, structure, settingsPolicy, onChange, funding, onFundingChange, fundingLabels }) {
   const st = structure || {}
   const property = st.commercialProperty || {}
   const entityDetail = st.entityDetail || {}
   const override = st.servicingOverride || {}
 
   const policy = useMemo(() => resolvePolicy(settingsPolicy, override), [settingsPolicy, override])
+  // Purchase price, duty and the loan amount come from the deal's funding
+  // table — one set of numbers, edited in either place.
+  const resolved = useMemo(() => resolveProperty(st, funding) || {}, [st, funding])
+  const schedule = resolved._schedule || { rows: [], totalRent: 0, wale: null, tenantCount: 0, expiringWithin3Pct: 0 }
   const result = useMemo(
-    () => assessServicing({ contacts, structure: st, policy }),
-    [contacts, st, policy]
+    () => assessServicing({ contacts, structure: st, policy, funding }),
+    [contacts, st, policy, funding]
   )
   const { entities, perEntity, group } = result
 
@@ -85,16 +89,38 @@ export default function ServicingCalculator({ contacts, structure, settingsPolic
     onChange({ servicingOverride: next })
   }
 
-  const sens = useMemo(() => sensitivity({ contacts, structure: st, policy }, [
+  const sens = useMemo(() => sensitivity({ contacts, structure: st, policy, funding }, [
     { label: 'Base case' },
     { label: 'Rate +1%', rateDelta: 1 },
     { label: 'Rate +2%', rateDelta: 2 },
     { label: 'Vacancy 15%', vacancyPct: 15 },
-  ]), [contacts, st, policy])
+  ]), [contacts, st, policy, funding])
 
   const prop = group.property
 
   // ── Property ───────────────────────────────────────────────────────────────
+  // Funding-table row, so the property reads the same way it does on the
+  // Strategy tab — label left, figure right — rather than as a second,
+  // differently-shaped form for the same numbers.
+  const FRow = ({ label, value, onCommit, hint, readOnly, tone }) => (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14, padding: '7px 0', borderBottom: '0.5px solid #f1f3f5' }}>
+      <div>
+        <span style={{ fontSize: 12, color: '#2A3545' }}>{label}</span>
+        {hint && <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 1 }}>{hint}</div>}
+      </div>
+      {readOnly
+        ? <span style={{ fontSize: 12.5, fontWeight: 700, color: tone === 'navy' ? NAVY : '#2A3545', whiteSpace: 'nowrap' }}>{value}</span>
+        : <input type="number" value={value ?? ''} onChange={e => onCommit(e.target.value === '' ? '' : Number(e.target.value))}
+            style={{ ...inp, width: 170, textAlign: 'right' }} />}
+    </div>
+  )
+
+  const tenants = tenantRows(resolved)
+  const setTenants = next => onChange({ commercialProperty: { ...property, tenants: next } })
+  const updTenant = (i, k, v) => setTenants(tenants.map((t, idx) => idx === i ? { ...t, [k]: v } : t))
+  const addTenant = () => setTenants([...tenants, { id: `t${Date.now()}`, name: '', annualRent: '', leaseExpiry: '', options: '', reviewBasis: '', outgoingsRecoverable: '' }])
+  const rmTenant = i => setTenants(tenants.filter((_, idx) => idx !== i))
+
   const propertyTab = (
     <>
       <div style={card}>
@@ -102,8 +128,10 @@ export default function ServicingCalculator({ contacts, structure, settingsPolic
         <div style={{ fontSize: 11, color: '#7A8090', marginBottom: 12, lineHeight: 1.5 }}>
           Who buys it decides how it's tested. In an individual's name the net rent joins their income; through a company or trust the property is
           tested on its own ratios first, then the guarantors are tested on whether they can carry any shortfall.
+          {onFundingChange && <> The money figures below are the <strong style={{ color: '#2A3545' }}>same ones as the Strategy tab's funding table</strong> — change either and both move.</>}
         </div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 14 }}>
           <F label="Address" w={260}><input value={property.address || ''} onChange={e => setProperty('address', e.target.value)} placeholder="e.g. 12 Example St, Oran Park" style={{ ...inp, width: '100%' }} /></F>
           <F label="Purchasing entity" hint="From Loan Details → Clients & Contacts.">
             <select value={property.ownerEntity || ''} onChange={e => setProperty('ownerEntity', e.target.value)} style={{ ...inp, width: '100%' }}>
@@ -111,58 +139,126 @@ export default function ServicingCalculator({ contacts, structure, settingsPolic
               {entities.map(e => <option key={e.name} value={e.name}>{e.name} ({e.type})</option>)}
             </select>
           </F>
-          <F label="Purchase price"><input type="number" value={property.purchasePrice || ''} onChange={e => setProperty('purchasePrice', e.target.value)} style={{ ...inp, width: '100%' }} /></F>
           <F label="GST treatment" hint="A going-concern sale carries no GST; otherwise it may need short-term funding.">
             <select value={property.gstTreatment || ''} onChange={e => setProperty('gstTreatment', e.target.value)} style={{ ...inp, width: '100%' }}>
               <option value="">— Select —</option>
               {GST_TREATMENTS.map(g => <option key={g}>{g}</option>)}
             </select>
           </F>
-          <F label="Stamp duty"><input type="number" value={property.stampDuty || ''} onChange={e => setProperty('stampDuty', e.target.value)} style={{ ...inp, width: '100%' }} /></F>
-          <F label="Other acquisition costs" hint="Legals, due diligence, broker fee."><input type="number" value={property.acquisitionCosts || ''} onChange={e => setProperty('acquisitionCosts', e.target.value)} style={{ ...inp, width: '100%' }} /></F>
         </div>
+
+        {onFundingChange ? (
+          <div style={{ borderTop: '0.5px solid #e8eaed', paddingTop: 10 }}>
+            {(fundingLabels || []).map(([key, label]) => (
+              <FRow key={key} label={label} value={funding?.[key]} onCommit={v => onFundingChange(key, v)} />
+            ))}
+            <FRow label="Total costs" value={money(funding?.totalCosts)} readOnly tone="navy" />
+            <FRow label="Loan from lender" value={money(funding?.loanAmount)} readOnly tone="navy"
+              hint={funding?.lvr ? `${pct(funding.lvr)} LVR — set on the Strategy tab` : 'Set on the Strategy tab'} />
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+            <F label="Purchase price"><input type="number" value={property.purchasePrice || ''} onChange={e => setProperty('purchasePrice', e.target.value)} style={{ ...inp, width: '100%' }} /></F>
+            <F label="Stamp duty"><input type="number" value={property.stampDuty || ''} onChange={e => setProperty('stampDuty', e.target.value)} style={{ ...inp, width: '100%' }} /></F>
+            <F label="Other acquisition costs"><input type="number" value={property.acquisitionCosts || ''} onChange={e => setProperty('acquisitionCosts', e.target.value)} style={{ ...inp, width: '100%' }} /></F>
+          </div>
+        )}
       </div>
 
       <div style={card}>
         <div style={{ fontSize: 12, fontWeight: 700, color: NAVY, marginBottom: 10 }}>Proposed loan</div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
-          <F label="Loan amount"><input type="number" value={property.loanAmount || ''} onChange={e => setProperty('loanAmount', e.target.value)} style={{ ...inp, width: '100%' }} /></F>
+          <F label="Loan amount" hint={onFundingChange ? 'From the funding table.' : undefined}>
+            <input type="number" value={resolved.loanAmount || ''} disabled={!!onFundingChange}
+              onChange={e => setProperty('loanAmount', e.target.value)}
+              style={{ ...inp, width: '100%', background: onFundingChange ? '#f8fafc' : '#fff' }} />
+          </F>
           <F label="Rate" hint={`Assessed at ${pct(prop ? prop.assessedRate : null)} after the buffer.`}><input type="number" step="0.01" value={property.rate || ''} onChange={e => setProperty('rate', e.target.value)} style={{ ...inp, width: '100%' }} /></F>
           <F label="Term (years)" hint={`Default ${policy.commercialAmortYears} for commercial.`}><input type="number" value={property.termYears || ''} onChange={e => setProperty('termYears', e.target.value)} placeholder={policy.commercialAmortYears} style={{ ...inp, width: '100%' }} /></F>
           <F label="Interest-only period (years)" hint="Doesn't change the assessment — it's still tested P&I."><input type="number" value={property.ioYears || ''} onChange={e => setProperty('ioYears', e.target.value)} style={{ ...inp, width: '100%' }} /></F>
           <F label="LVR">
             <div style={{ ...inp, background: '#f8fafc', color: '#2A3545', fontWeight: 600 }}>
-              {Number(property.purchasePrice) > 0 ? pct(Number(property.loanAmount || 0) / Number(property.purchasePrice) * 100) : '—'}
+              {Number(resolved.purchasePrice) > 0 ? pct(Number(resolved.loanAmount || 0) / Number(resolved.purchasePrice) * 100) : '—'}
             </div>
           </F>
         </div>
       </div>
 
       <div style={card}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: NAVY, marginBottom: 3 }}>Lease</div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 3 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: NAVY }}>Tenancy schedule</div>
+          <button onClick={addTenant} style={{ fontSize: 11, fontWeight: 600, color: NAVY, background: '#fff', border: '1px solid #e8eaed', borderRadius: 6, padding: '5px 12px', cursor: 'pointer' }}>+ Add tenant</button>
+        </div>
         <div style={{ fontSize: 11, color: '#7A8090', marginBottom: 12, lineHeight: 1.5 }}>
           A <strong style={{ color: '#2A3545' }}>net</strong> lease has the tenant paying outgoings, so only the landlord's non-recoverable costs come off the rent.
           On a <strong style={{ color: '#2A3545' }}>gross</strong> lease the landlord wears the lot, and both outgoings lines are deducted.
+          WALE is weighted by income, not floor area, because income is what services the debt.
         </div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
-          <F label="Tenant"><input value={property.tenant || ''} onChange={e => setProperty('tenant', e.target.value)} style={{ ...inp, width: '100%' }} /></F>
+
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 760 }}>
+            <thead><tr>
+              <th style={th}>Tenant</th><th style={{ ...th, textAlign: 'right' }}>Rent p.a.</th><th style={th}>Lease expiry</th>
+              <th style={{ ...th, textAlign: 'right' }}>Yrs left</th><th style={th}>Options</th><th style={th}>Review</th>
+              <th style={{ ...th, textAlign: 'right' }}>Outgoings rec.</th><th style={th} />
+            </tr></thead>
+            <tbody>
+              {tenants.length === 0 && (
+                <tr><td colSpan={8} style={{ ...td, textAlign: 'center', color: '#9ca3af', fontStyle: 'italic', padding: 16 }}>No tenants yet — add one to build the schedule.</td></tr>
+              )}
+              {tenants.map((t, i) => {
+                const yrs = tenantYearsRemaining(t)
+                return (
+                  <tr key={t.id || i}>
+                    <td style={td}><input value={t.name || ''} onChange={e => updTenant(i, 'name', e.target.value)} placeholder="Tenant name" style={{ ...inp, width: '100%', minWidth: 130 }} /></td>
+                    <td style={td}><input type="number" value={t.annualRent || ''} onChange={e => updTenant(i, 'annualRent', e.target.value)} style={{ ...inp, width: 110, textAlign: 'right' }} /></td>
+                    <td style={td}><input type="date" value={t.leaseExpiry || ''} onChange={e => updTenant(i, 'leaseExpiry', e.target.value)} style={{ ...inp, width: 140 }} /></td>
+                    <td style={{ ...td, textAlign: 'right' }}>
+                      {t.leaseExpiry
+                        ? <span style={{ color: yrs <= 3 ? AMBER : '#2A3545', fontWeight: 600 }}>{yrs.toFixed(1)}</span>
+                        : <input type="number" step="0.5" value={t.termRemaining || ''} onChange={e => updTenant(i, 'termRemaining', e.target.value)} placeholder="yrs" style={{ ...inp, width: 64, textAlign: 'right' }} />}
+                    </td>
+                    <td style={td}><input value={t.options || ''} onChange={e => updTenant(i, 'options', e.target.value)} placeholder="2 × 5 yrs" style={{ ...inp, width: 100 }} /></td>
+                    <td style={td}>
+                      <select value={t.reviewBasis || ''} onChange={e => updTenant(i, 'reviewBasis', e.target.value)} style={{ ...inp, width: 100 }}>
+                        <option value="">—</option>
+                        {REVIEW_BASIS.map(r => <option key={r}>{r}</option>)}
+                      </select>
+                    </td>
+                    <td style={td}><input type="number" value={t.outgoingsRecoverable || ''} onChange={e => updTenant(i, 'outgoingsRecoverable', e.target.value)} style={{ ...inp, width: 100, textAlign: 'right' }} /></td>
+                    <td style={td}><button onClick={() => rmTenant(i)} style={{ fontSize: 10, padding: '3px 8px', border: '1px solid #fecaca', background: '#fff', color: RED, borderRadius: 5, cursor: 'pointer' }}>✕</button></td>
+                  </tr>
+                )
+              })}
+              {tenants.length > 0 && (
+                <tr style={{ background: '#f8fafc' }}>
+                  <td style={{ ...td, fontWeight: 700 }}>Total — {schedule.tenantCount} tenant{schedule.tenantCount === 1 ? '' : 's'}</td>
+                  <td style={{ ...td, textAlign: 'right', fontWeight: 700 }}>{money(schedule.totalRent)}</td>
+                  <td style={{ ...td, fontWeight: 700, color: NAVY }}>WALE</td>
+                  <td style={{ ...td, textAlign: 'right', fontWeight: 700, color: schedule.wale !== null && schedule.wale < 3 ? AMBER : NAVY }}>{schedule.wale === null ? '—' : `${schedule.wale.toFixed(1)} yrs`}</td>
+                  <td style={td} colSpan={2}>
+                    {schedule.expiringWithin3Pct > 0 && (
+                      <span style={{ fontSize: 10.5, color: schedule.expiringWithin3Pct >= 50 ? AMBER : '#7A8090' }}>
+                        {Math.round(schedule.expiringWithin3Pct)}% of income expires within 3 years
+                      </span>
+                    )}
+                  </td>
+                  <td style={{ ...td, textAlign: 'right', fontWeight: 700 }}>{money(resolved.outgoingsRecoverable)}</td>
+                  <td style={td} />
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginTop: 14, borderTop: '0.5px solid #f1f3f5', paddingTop: 12 }}>
           <F label="Rent basis">
             <select value={property.rentBasis || 'Net'} onChange={e => setProperty('rentBasis', e.target.value)} style={{ ...inp, width: '100%' }}>
               {RENT_BASIS.map(r => <option key={r}>{r}</option>)}
             </select>
           </F>
-          <F label="Annual rent"><input type="number" value={property.annualRent || ''} onChange={e => setProperty('annualRent', e.target.value)} style={{ ...inp, width: '100%' }} /></F>
-          <F label="Outgoings — non-recoverable" hint="Land tax, management, landlord insurance."><input type="number" value={property.outgoingsNonRecoverable || ''} onChange={e => setProperty('outgoingsNonRecoverable', e.target.value)} style={{ ...inp, width: '100%' }} /></F>
-          <F label="Outgoings — recoverable" hint="Only deducted on a gross lease."><input type="number" value={property.outgoingsRecoverable || ''} onChange={e => setProperty('outgoingsRecoverable', e.target.value)} style={{ ...inp, width: '100%' }} /></F>
+          <F label="Outgoings — non-recoverable" hint="Land tax, management, landlord insurance — always deducted."><input type="number" value={property.outgoingsNonRecoverable || ''} onChange={e => setProperty('outgoingsNonRecoverable', e.target.value)} style={{ ...inp, width: '100%' }} /></F>
           <F label="Vacancy allowance" hint={`Blank uses the house default of ${policy.vacancyAllowancePct}%.`}><input type="number" value={property.vacancyPct ?? ''} onChange={e => setProperty('vacancyPct', e.target.value)} placeholder={policy.vacancyAllowancePct} style={{ ...inp, width: '100%' }} /></F>
-          <F label="Lease term remaining (years)" hint="A short WALE is what makes a lender shade harder."><input type="number" step="0.5" value={property.leaseTermRemaining || ''} onChange={e => setProperty('leaseTermRemaining', e.target.value)} style={{ ...inp, width: '100%' }} /></F>
-          <F label="Options remaining"><input value={property.options || ''} onChange={e => setProperty('options', e.target.value)} placeholder="e.g. 2 × 5 years" style={{ ...inp, width: '100%' }} /></F>
-          <F label="Review basis">
-            <select value={property.reviewBasis || ''} onChange={e => setProperty('reviewBasis', e.target.value)} style={{ ...inp, width: '100%' }}>
-              <option value="">— Select —</option>
-              {REVIEW_BASIS.map(r => <option key={r}>{r}</option>)}
-            </select>
-          </F>
         </div>
       </div>
 
@@ -174,17 +270,18 @@ export default function ServicingCalculator({ contacts, structure, settingsPolic
             <Tile label="Interest cover (ICR)" value={ratio(prop.icr)} tone={prop.icrPass ? 'good' : 'bad'} sub={`Needs ${ratio(policy.minICR)} · interest ${money(prop.interestOnly)}`} />
             <Tile label="Debt service cover (DSCR)" value={ratio(prop.dscr)} tone={prop.dscrPass ? 'good' : 'bad'} sub={`Needs ${ratio(policy.minDSCR)} · P&I ${money(prop.principalAndInterest)}`} />
             <Tile label="Shortfall to cover" value={money(prop.shortfall)} tone={prop.shortfall > 0 ? 'warn' : 'good'} sub={prop.shortfall > 0 ? 'Carried by the guarantors' : 'Property carries itself'} />
+            {schedule.wale !== null && <Tile label="WALE" value={`${schedule.wale.toFixed(1)} yrs`} tone={schedule.wale < 3 ? 'warn' : 'good'} sub={`${schedule.tenantCount} tenant${schedule.tenantCount === 1 ? '' : 's'}`} />}
           </div>
           <div style={{ fontSize: 11.5, color: '#64748b', lineHeight: 1.6 }}>
             Assessed at <strong style={{ color: '#2A3545' }}>{pct(prop.assessedRate)}</strong> ({pct(Number(property.rate) || 0)} + {policy.buffer}% buffer, floor {policy.floorRate}%)
             over <strong style={{ color: '#2A3545' }}>{prop.term} years</strong> P&I.
             <br />
-            At the minimum DSCR of {ratio(policy.minDSCR)} this income supports a loan of <strong style={{ color: NAVY }}>{money(maxLoanAtDscr(property, policy, policy.minDSCR))}</strong>
-            {Number(property.purchasePrice) > 0 && <> — {pct(maxLoanAtDscr(property, policy, policy.minDSCR) / Number(property.purchasePrice) * 100)} of the purchase price.</>}
+            At the minimum DSCR of {ratio(policy.minDSCR)} this income supports a loan of <strong style={{ color: NAVY }}>{money(maxLoanAtDscr(resolved, policy, policy.minDSCR))}</strong>
+            {Number(resolved.purchasePrice) > 0 && <> — {pct(maxLoanAtDscr(resolved, policy, policy.minDSCR) / Number(resolved.purchasePrice) * 100)} of the purchase price.</>}
           </div>
         </div>
       ) : (
-        <div style={{ ...card, color: '#9ca3af', fontSize: 12, fontStyle: 'italic' }}>Enter a loan amount and rent to see the property test.</div>
+        <div style={{ ...card, color: '#9ca3af', fontSize: 12, fontStyle: 'italic' }}>Add a tenant and a loan amount to see the property test.</div>
       )}
     </>
   )

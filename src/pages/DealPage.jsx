@@ -2008,12 +2008,35 @@ function StructureTab({ d, editing, set, updateDeal }) {
   const [sub, setSub] = useState(subs[0].id)
   useEffect(() => { if (!subs.find(x=>x.id===sub)) setSub(subs[0].id) }, [d.Categories]) // eslint-disable-line react-hooks/exhaustive-deps
   const struct = d._structure || {}
-  const s = (k, v) => set('_structure', { ...struct, [k]: v })
-  // Saves straight away rather than through the Edit-deal draft — the
-  // servicing calculator is a live working surface, not a form you submit.
+  // Saves straight away rather than collecting into the Edit-deal draft.
+  // These registers are working surfaces you add rows to as you go, not a
+  // form you submit — before this, every "+ Add" button outside edit mode
+  // added a row to a draft that was never committed, so nothing happened.
   const sLive = (patch) => updateDeal
     ? updateDeal({ _structure: { ...struct, ...patch } })
     : set('_structure', { ...struct, ...patch })
+  const s = (k, v) => sLive({ [k]: v })
+
+  // The funding table's figures, so the servicing property and the Strategy
+  // tab share one set of numbers instead of disagreeing.
+  const fundingStrat = d._strategy || {}
+  const fundingDealType = deriveDealType(d['Transaction Type'])
+  const fundingCalc = calcFunding(fundingStrat, fundingDealType)
+  const fundingFigures = {
+    purchasePrice: fundingStrat.purchasePrice,
+    stampDuty: fundingCalc.stampDuty,
+    legals: fundingCalc.legals,
+    settlementAdj: fundingCalc.settlementAdj,
+    acquisitionCosts: Number(fundingCalc.legals || 0) + Number(fundingCalc.settlementAdj || 0),
+    totalCosts: fundingCalc.totalCosts,
+    loanAmount: fundingCalc.loanFromLender,
+    lvr: fundingCalc.lvrBase ? (fundingCalc.loanFromLender / fundingCalc.lvrBase) * 100 : null,
+  }
+  const fundingLabels = (fundingCalc.fields || []).map(([k, label]) =>
+    [k, k === 'stampDuty' ? `${label} — ${fundingStrat.state || 'NSW'}` : label])
+  const setFunding = (k, v) => updateDeal
+    ? updateDeal({ _strategy: { ...fundingStrat, [k]: v } })
+    : set('_strategy', { ...fundingStrat, [k]: v })
   const fin = struct.financials || {}
   const setFin = (year, k, v) => s('financials', { ...fin, [year]: { ...(fin[year]||{}), [k]: v } })
   const servicing = struct.servicing || {}
@@ -2134,9 +2157,7 @@ function StructureTab({ d, editing, set, updateDeal }) {
                     <td style={{padding:'6px 8px',borderBottom:'0.5px solid #f0f0f0',color:'#7A8090'}}>{label}</td>
                     {years.map(y => (
                       <td key={y} style={{padding:'4px 6px',borderBottom:'0.5px solid #f0f0f0'}}>
-                        {editing
-                          ? <input style={rowInp} value={fin[y]?.[k]||''} onChange={e=>setFin(y,k,e.target.value)}/>
-                          : <span style={{color:'#2A3545'}}>{fin[y]?.[k] ? (k==='grossMargin' ? `${fin[y][k]}%` : `$${Number(fin[y][k]).toLocaleString()}`) : '—'}</span>}
+                        <input style={rowInp} value={fin[y]?.[k]||''} onChange={e=>setFin(y,k,e.target.value)}/>
                       </td>
                     ))}
                   </tr>
@@ -2154,6 +2175,9 @@ function StructureTab({ d, editing, set, updateDeal }) {
             structure={struct}
             settingsPolicy={getServicingPolicy()}
             onChange={sLive}
+            funding={fundingFigures}
+            fundingLabels={fundingLabels}
+            onFundingChange={setFunding}
           />
           <TabCard title="Home Loan Servicing">
             <div style={{ fontSize:12, color:'#7A8090', marginBottom:10 }}>For a straight residential/PAYG assessment, link to a Quickli assessment rather than duplicating buffer logic here.</div>

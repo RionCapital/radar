@@ -270,6 +270,87 @@ export function assessedLivingExpenses(policy, { declaredAnnual, composition, de
   }
 }
 
+// ─── Tenants and WALE ────────────────────────────────────────────────────────
+// A commercial property can have several tenants, and a lender reads the
+// tenancy schedule as hard as it reads the rent: one tenant on a short lease
+// is a very different risk from four on staggered ones. WALE (weighted
+// average lease expiry) is the standard summary of that, weighted by income
+// rather than by floor area, because income is what services the debt.
+export function tenantRows(property) {
+  // Every row the broker added is kept, including a blank one just created —
+  // filtering on "has a name or a rent" meant a new row vanished the instant
+  // it appeared and the Add button looked broken.
+  const list = (property?.tenants || []).filter(t => t && typeof t === 'object')
+  if (list.length) return list
+  // A property entered before the schedule existed, or a single-tenant one
+  // filled in on the old fields, still reads as one tenant.
+  if (n(property?.annualRent)) {
+    return [{
+      id: 'legacy', name: property.tenant || '', annualRent: property.annualRent,
+      leaseExpiry: property.leaseExpiry || '', termRemaining: property.leaseTermRemaining || '',
+      options: property.options || '', reviewBasis: property.reviewBasis || '',
+    }]
+  }
+  return []
+}
+
+// Years left on a tenancy — taken from an expiry date when there is one, and
+// falling back to a typed figure so a schedule can be sketched before the
+// leases are to hand.
+export function tenantYearsRemaining(t, today) {
+  if (t.leaseExpiry) {
+    const end = new Date(t.leaseExpiry + (t.leaseExpiry.length === 7 ? '-01' : ''))
+    if (!isNaN(end)) {
+      const now = today ? new Date(today) : new Date()
+      return Math.max(0, (end - now) / (365.25 * 24 * 3600 * 1000))
+    }
+  }
+  return Math.max(0, n(t.termRemaining))
+}
+
+export function tenancySchedule(property, today) {
+  const rows = tenantRows(property).map(t => ({
+    ...t,
+    rent: n(t.annualRent),
+    years: tenantYearsRemaining(t, today),
+  }))
+  const totalRent = rows.reduce((s2, t) => s2 + t.rent, 0)
+  const wale = totalRent > 0
+    ? rows.reduce((s2, t) => s2 + t.rent * t.years, 0) / totalRent
+    : null
+  // Income at risk inside three years is the question behind the WALE.
+  const expiringWithin3 = rows.filter(t => t.years <= 3).reduce((s2, t) => s2 + t.rent, 0)
+  return {
+    rows, totalRent, wale, tenantCount: rows.length,
+    expiringWithin3, expiringWithin3Pct: totalRent > 0 ? expiringWithin3 / totalRent * 100 : 0,
+  }
+}
+
+// ─── The property, from wherever its numbers live ────────────────────────────
+// Purchase price, stamp duty, legals, settlement adjustments and the loan
+// amount belong to the deal's funding table — entering them twice is how the
+// two end up disagreeing. Those come in through `funding`; everything the
+// funding table doesn't know about (who's buying, GST, the tenancy schedule)
+// stays on the property record.
+export function resolveProperty(structure, funding) {
+  const base = structure?.commercialProperty || null
+  if (!base && !funding) return null
+  const p = { ...(base || {}) }
+  if (funding) {
+    if (funding.purchasePrice !== undefined && funding.purchasePrice !== '') p.purchasePrice = funding.purchasePrice
+    if (funding.stampDuty !== undefined && funding.stampDuty !== '') p.stampDuty = funding.stampDuty
+    if (funding.acquisitionCosts !== undefined && funding.acquisitionCosts !== '') p.acquisitionCosts = funding.acquisitionCosts
+    if (funding.loanAmount !== undefined && funding.loanAmount !== '') p.loanAmount = funding.loanAmount
+  }
+  const sched = tenancySchedule(p)
+  if (sched.totalRent > 0) p.annualRent = sched.totalRent
+  // Outgoings recoverable per tenant roll up, when the schedule carries them.
+  const perTenantRecoverable = (p.tenants || []).reduce((s2, t) => s2 + n(t.outgoingsRecoverable), 0)
+  if (perTenantRecoverable > 0) p.outgoingsRecoverable = perTenantRecoverable
+  p._schedule = sched
+  return p
+}
+
 // ─── Commercial property ─────────────────────────────────────────────────────
 // Gross rent is what the tenant pays in total; net rent is rent after the
 // landlord's own (non-recoverable) outgoings. Commercial leases are usually
@@ -557,11 +638,11 @@ export function assessGroup(perEntity, policy, property) {
 }
 
 // ─── Top level ───────────────────────────────────────────────────────────────
-export function assessServicing({ contacts, structure, policy }) {
+export function assessServicing({ contacts, structure, policy, funding }) {
   const st = structure || {}
   const entities = buildEntities(contacts, st.entityDetail)
   const entityNames = entities.map(e => e.name)
-  const property = st.commercialProperty || null
+  const property = resolveProperty(st, funding)
   const registers = {
     employment: st.employment || {},
     otherIncome: st.otherIncome || [],
@@ -588,13 +669,13 @@ export function assessServicing({ contacts, structure, policy }) {
 // ─── Sensitivity ─────────────────────────────────────────────────────────────
 // Re-runs the whole assessment with the rate moved and/or the vacancy
 // assumption worsened — the two things that actually break these deals.
-export function sensitivity({ contacts, structure, policy }, scenarios) {
+export function sensitivity({ contacts, structure, policy, funding }, scenarios) {
   return (scenarios || []).map(sc => {
     const p = { ...policy, buffer: n(policy.buffer) + n(sc.rateDelta || 0) }
     const st = sc.vacancyPct === undefined || !structure?.commercialProperty
       ? structure
       : { ...structure, commercialProperty: { ...structure.commercialProperty, vacancyPct: sc.vacancyPct } }
-    const res = assessServicing({ contacts, structure: st, policy: p })
+    const res = assessServicing({ contacts, structure: st, policy: p, funding })
     return {
       label: sc.label,
       groupSurplus: res.group.surplus,
