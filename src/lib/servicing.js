@@ -602,6 +602,34 @@ export function assessEntity(entity, ctx) {
     addIncome(r.type || 'Other income', r.type || 'Other', split[entity.name] || 0)
   })
 
+  // A security held as an INVESTMENT earns rent and costs money to hold.
+  // Both belong in the assessment: the rent shaded like any other rental
+  // income, the outgoings deducted — and deductible, which is what makes a
+  // negatively geared property work on paper.
+  let propertyOutgoings = 0
+  let deductibleExpenses = 0
+  const propertyOutgoingLines = []
+  // Securities held as investments and investment properties in the Real
+  // Estate register behave identically, so they run through the same code.
+  const investmentHoldings = [
+    ...(registers.securities || [])
+      .filter(x => x.purpose === 'Investment')
+      .map(x => ({ label: x.description || x.type || 'Investment security', income: x.leaseIncome, incomeFreq: x.leaseIncomeFreq, expenses: x.leaseExpenses, expensesFreq: x.leaseExpensesFreq, owners: x.owners, ownership: x.ownership, source: 'Security' })),
+    ...(registers.realEstate || [])
+      .filter(x => x.purpose === 'Investment')
+      .map(x => ({ label: x.address || 'Investment property', income: x.rentalIncome, incomeFreq: x.rentalIncomeFreq, expenses: x.propertyExpenses, expensesFreq: x.propertyExpensesFreq, owners: x.owners, ownership: x.ownership, source: 'Real Estate' })),
+  ]
+  investmentHoldings.forEach(h => {
+    const incShare = splitByOwner({ amount: h.income, frequency: h.incomeFreq || 'Annually', owners: h.owners, ownership: h.ownership }, entityNames, individualNames)[entity.name] || 0
+    const expShare = splitByOwner({ amount: h.expenses, frequency: h.expensesFreq || 'Annually', owners: h.owners, ownership: h.ownership }, entityNames, individualNames)[entity.name] || 0
+    if (incShare) addIncome(`${h.label} — rent`, 'Rental Income', incShare)
+    if (expShare) {
+      propertyOutgoings += expShare
+      deductibleExpenses += expShare
+      propertyOutgoingLines.push({ label: `${h.label} — property expenses`, annual: expShare, source: h.source })
+    }
+  })
+
   // The property being bought, if this entity is the one buying it.
   let propertyResult = null
   if (property && property.ownerEntity === entity.name && n(property.loanAmount) >= 0) {
@@ -642,7 +670,7 @@ export function assessEntity(entity, ctx) {
 
   // Tax is on real income less real deductions — negative gearing is what
   // makes a lot of these deals work, so leaving it out understates capacity.
-  const taxableIncome = Math.max(0, grossIncome - deductibleInterest)
+  const taxableIncome = Math.max(0, grossIncome - deductibleInterest - deductibleExpenses)
   const tax = isIndividual(entity) ? totalPersonalTax(taxableIncome, policy) : companyTax(taxableIncome, policy)
 
   // Living expenses apply to people, not companies.
@@ -653,14 +681,14 @@ export function assessEntity(entity, ctx) {
     : { amount: 0, basis: 'n/a (entity)', declared: 0, hem: 0, hemAvailable: !!(policy.hem || []).length, usedHem: false }
 
   const netIncomeAfterTax = shadedIncome - tax
-  const surplus = netIncomeAfterTax - expenses.amount - assessedCommitmentsTotal
-  const outgoingsTotal = expenses.amount + assessedCommitmentsTotal
+  const surplus = netIncomeAfterTax - expenses.amount - assessedCommitmentsTotal - propertyOutgoings
+  const outgoingsTotal = expenses.amount + assessedCommitmentsTotal + propertyOutgoings
   const nsr = outgoingsTotal > 0 ? netIncomeAfterTax / outgoingsTotal : null
 
   return {
     entity, lines, commitments, propertyResult,
-    grossIncome, shadedIncome, taxableIncome, deductibleInterest, tax,
-    netIncomeAfterTax, expenses,
+    grossIncome, shadedIncome, taxableIncome, deductibleInterest, deductibleExpenses, tax,
+    netIncomeAfterTax, expenses, propertyOutgoings, propertyOutgoingLines,
     assessedCommitments: assessedCommitmentsTotal,
     surplus, surplusMonthly: surplus / 12,
     nsr, pass: surplus >= 0,
@@ -698,13 +726,14 @@ export function assessGroup(perEntity, policy, property) {
   const tax = sum('tax')
   const expenses = included.reduce((s, r) => s + (r.expenses?.amount || 0), 0)
   const assessedCommitments = sum('assessedCommitments')
+  const propertyOutgoings = sum('propertyOutgoings')
   const netIncomeAfterTax = shadedIncome - tax
-  const surplus = netIncomeAfterTax - expenses - assessedCommitments
-  const outgoings = expenses + assessedCommitments
+  const surplus = netIncomeAfterTax - expenses - assessedCommitments - propertyOutgoings
+  const outgoings = expenses + assessedCommitments + propertyOutgoings
   const nsr = outgoings > 0 ? netIncomeAfterTax / outgoings : null
   const propertyRes = property && property.loanAmount ? propertyTest(property, policy) : null
   return {
-    grossIncome, shadedIncome, tax, expenses, assessedCommitments,
+    grossIncome, shadedIncome, tax, expenses, assessedCommitments, propertyOutgoings,
     netIncomeAfterTax, surplus, surplusMonthly: surplus / 12, nsr,
     pass: surplus >= 0, property: propertyRes,
     entityCount: included.length,
@@ -722,6 +751,8 @@ export function assessServicing({ contacts, structure, policy, funding }) {
     otherIncome: st.otherIncome || [],
     livingExpenses: st.livingExpenses || [],
     liabilities: st.liabilitiesReg || [],
+    securities: st.securities || [],
+    realEstate: st.realEstateAssets || [],
   }
   const individualNames = entities.filter(isIndividual).map(e => e.name)
 
@@ -759,4 +790,22 @@ export function sensitivity({ contacts, structure, policy, funding }, scenarios)
       pass: res.group.pass && (res.group.property ? res.group.property.dscrPass !== false : true),
     }
   })
+}
+
+
+// ─── Investment property costs ───────────────────────────────────────────────
+// These are additional (non-HEM) expenses, but they belong to the property
+// rather than the household, so they live on the Real Estate register and are
+// surfaced in the Additional Expenses card rather than keyed in both places.
+export function investmentPropertyExpenses(structure) {
+  return (structure?.realEstateAssets || [])
+    .map((r, idx) => ({ idx, row: r }))
+    .filter(({ row }) => row.purpose === 'Investment' && (row.propertyExpenses || row.rentalIncome))
+    .map(({ idx, row }) => ({
+      idx,
+      label: row.address || `Investment property ${idx + 1}`,
+      expenses: row.propertyExpenses,
+      frequency: row.propertyExpensesFreq || 'Annually',
+      owners: row.owners,
+    }))
 }

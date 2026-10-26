@@ -424,11 +424,11 @@ export default function AdminSettings({ clients, onUpdateClients }) {
     radar: [
       { id:'statements', label:'Commission Statements' },
       { id:'accounting', label:'Accounting' },
-      { id:'servicing', label:'Servicing' },
     ],
     crm: [
       { id:'stages', label:'Stages' },
       { id:'loanTypes', label:'Loan Types' },
+      { id:'servicing', label:'Servicing' },
       { id:'communication', label:'Communication' },
     ],
   }
@@ -598,13 +598,14 @@ export default function AdminSettings({ clients, onUpdateClients }) {
           )}
 
           {/* Rradar > Commission Statements */}
-          {section==='radar' && tab==='servicing' && (
+          {section==='crm' && tab==='servicing' && (
             <Card style={{ marginBottom:16 }}>
               <CardTitle>Servicing assumptions</CardTitle>
               <div style={{ fontSize:11, color:'#7A8090', marginBottom:14, lineHeight:1.5 }}>
-                The house assumptions every commercial servicing assessment starts from. Any deal can override them for itself under
-                Financials → Servicing → Assumptions, and an override only affects that deal — change a number here and it still flows
-                through to every deal that hasn't overridden it.
+                The global assumptions every deal's servicing assessment starts from — buffers, shading, minimum ratios, the tax scale and the
+                HEM benchmark. Change a number here and it flows through to <strong>every deal</strong> that hasn't overridden it.
+                An individual deal can override any of them for itself under Financials → Servicing → Assumptions, and that override
+                affects only that deal.
               </div>
               <ServicingSettings
                 policy={settings.servicingPolicy}

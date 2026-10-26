@@ -11,9 +11,9 @@ import { calcUpfront, getUpfrontRate, dealUpfrontCommission, dealUpfrontRateEffe
 import { mapRradarContactToDealContact } from '../lib/data'
 import { downloadFileNotePdf, downloadFileNotesPdf } from '../lib/fileNotePdf'
 import ServicingCalculator from '../components/ServicingCalculator'
-import OwnerSplit, { ownersOf } from '../components/OwnerSplit'
+import OwnerSplit, { ownersOf, ownersSummary } from '../components/OwnerSplit'
 import BusinessFinancials from '../components/BusinessFinancials'
-import { HEM_EXPENSE_TYPES, NON_HEM_EXPENSE_TYPES, RENT_EXPENSE_TYPES, isHemExpense } from '../lib/servicing'
+import { HEM_EXPENSE_TYPES, NON_HEM_EXPENSE_TYPES, RENT_EXPENSE_TYPES, isHemExpense, investmentPropertyExpenses } from '../lib/servicing'
 import { assessServicing, resolvePolicy } from '../lib/servicing'
 import { getServicingPolicy } from '../lib/settings'
 import { newSplit, newGroup, newScenario, normalizeScenario, rowRepayment, groupTotals, findRecommendedGroups, toggleRecommendation, isRecommended, pruneRecommendation, recommendationColumns, recommendationTotals, recommendedLenderLabel } from '../lib/comparisonUtils'
@@ -314,6 +314,14 @@ function ContactsPanel({ deal, clients, updateDeal }) {
 ------------------------------------------------------------------------ */
 
 const SECURITY_TYPES = ['1MTG','2MTG','GSA','PMSI','Gtee']
+// A mortgage security needs to say whether it's owner-occupied or an
+// investment, because an investment earns rent and costs money to hold and
+// both belong in servicing. A guarantee needs to say whether anything
+// actually stands behind it.
+const MORTGAGE_SECURITY_TYPES = ['1MTG','2MTG']
+const SECURITY_PURPOSES = ['Owner Occupied','Investment']
+const GUARANTEE_SUPPORT = ['Unsupported','Supported']
+const GUARANTOR_KINDS = ['Individual','Corporate']
 const SEC_BANDS = [
   { code:'WS', label:'Well Secured' },
   { code:'FS', label:'Fully Secured' },
@@ -586,7 +594,7 @@ function SideTabs({ tabs, active, onChange }) {
   )
 }
 
-function MiniTable({ columns, rows, empty='No rows yet', widths }) {
+function MiniTable({ columns, rows, empty='No rows yet', widths, rowProps }) {
   return (
     <div style={{ overflowX:'auto' }}>
       <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12, tableLayout: widths ? 'fixed' : 'auto' }}>
@@ -605,11 +613,13 @@ function MiniTable({ columns, rows, empty='No rows yet', widths }) {
         <tbody>
           {rows.length === 0 ? (
             <tr><td colSpan={columns.length} style={{ padding:'12px 8px', fontSize:11, color:'#9ca3af', textAlign:'center' }}>{empty}</td></tr>
-          ) : rows.map((r, i) => (
-            <tr key={i} style={{ background:i%2 ? '#fafafa' : '#fff' }}>
+          ) : rows.map((r, i) => {
+            const extra = rowProps ? rowProps(i) : null
+            return (
+            <tr key={i} {...(extra || {})} style={{ background:i%2 ? '#fafafa' : '#fff', ...(extra?.style || {}) }}>
               {r.map((cell, j) => <td key={j} style={{ padding:'6px 8px', borderBottom:'0.5px solid #f0f0f0', color:'#2A3545', whiteSpace:'nowrap' }}>{cell}</td>)}
             </tr>
-          ))}
+          )})}
         </tbody>
       </table>
     </div>
@@ -2035,6 +2045,10 @@ function StructureTab({ d, editing, set, updateDeal }) {
     ...(isResidential ? [] : [{id:'financials',label:'Financials'},{id:'servicing',label:'Servicing'}]),
   ]
   const [sub, setSub] = useState(subs[0].id)
+  const [secDetail, setSecDetail] = useState(null)
+  const [reDetail, setReDetail] = useState(null)
+  const [dragRow, setDragRow] = useState(null)
+  const [dragOver, setDragOver] = useState(null)
   useEffect(() => { if (!subs.find(x=>x.id===sub)) setSub(subs[0].id) }, [d.Categories]) // eslint-disable-line react-hooks/exhaustive-deps
   const struct = d._structure || {}
   // Saves straight away rather than collecting into the Edit-deal draft.
@@ -2088,7 +2102,8 @@ function StructureTab({ d, editing, set, updateDeal }) {
 
   const securityTypeOptions = CATEGORY_SECURITY_TYPES[d.Categories] || SECURITY_TYPES
   const securities = struct.securities || []
-  const addSecurity = () => s('securities', [...securities, { type:securityTypeOptions[0], description:'', value:'', maxLvPct:'', lendingValue:'', owners:[], band:'FS' }])
+  const addSecurity = () => s('securities', [...securities, { type:securityTypeOptions[0], description:'', value:'', maxLvPct:'', lendingValue:'', owners:[], band:'FS', purpose:'Owner Occupied', leaseIncome:'', leaseIncomeFreq:'Annually', leaseExpenses:'', leaseExpensesFreq:'Annually', guaranteeSupport:'Unsupported', supportedBy:'', guarantorKind:'Individual' }])
+  const updSecurityPatch = (i, patch) => s('securities', securities.map((row, idx) => idx === i ? { ...row, ...patch } : row))
 
   // Value, max LV% and Lending Value are three views of the same thing, so
   // any two fill in the third — type the percentage a lender will go to and
@@ -2173,6 +2188,7 @@ function StructureTab({ d, editing, set, updateDeal }) {
   // inside render gives it a new identity every pass, so React unmounts and
   // remounts it on each change — which closed the picker the moment you set
   // the first owner.
+  const ownersSummaryFor = (row) => ownersSummary(row, allEntities.map(e=>e.name), individualNames)
   const Owner = (rows, i, listKey) => (
     <OwnerSplit row={rows[i]} entities={entityList} individualNames={individualNames}
       onChange={patch => updRowPatch(listKey, rows, i, patch)} />
@@ -2226,7 +2242,7 @@ function StructureTab({ d, editing, set, updateDeal }) {
         {sub === 'security' && (
           <TabCard title="Securities Held" right={<button onClick={addSecurity} style={addBtnStyle}>+ Add security</button>}>
             <div style={{ fontSize:11, color:'#9ca3af', marginBottom:10 }}>Security types shown are the ones typically used for a <strong style={{color:'#2A3545'}}>{d.Categories || 'this'}</strong> deal — change Category on Loan Details if this list isn't right.</div>
-            <MiniTable columns={['Type','Description','Owners','Value','Max LV %','Lending Value','Band','']} rows={securities.map((r,i) => [
+            <MiniTable columns={['Type','Description','Owners','Value','Max LV %','Lending Value','Band','Detail','']} rows={securities.map((r,i) => [
               <LiveSelect small value={r.type} onCommit={v=>updSecurity(i,'type',v)} options={securityTypeOptions} allowBlank={false} />,
               <LiveText small value={r.description} onCommit={v=>updSecurity(i,'description',v)} placeholder="e.g. address, or asset description" />,
               Owner(securities, i, "securities"),
@@ -2234,8 +2250,103 @@ function StructureTab({ d, editing, set, updateDeal }) {
               <LiveNumber small value={r.maxLvPct} onCommit={v=>setSecurityLvPct(i, v)} />,
               <LiveNumber small value={r.lendingValue} onCommit={v=>setSecurityLendingValue(i, v)} />,
               <LiveSelect small value={r.band} onCommit={v=>updSecurity(i,'band',v)} options={SEC_BANDS.map(b=>b.code)} allowBlank={false} />,
+              (MORTGAGE_SECURITY_TYPES.includes(r.type) || r.type === 'Gtee')
+                ? <button onClick={()=>setSecDetail(secDetail===i?null:i)} style={{...addBtnStyle, padding:'3px 9px', fontSize:10, borderColor: secDetail===i ? '#3D4F6B' : '#e8eaed'}}>
+                    {r.type === 'Gtee' ? (r.guaranteeSupport || 'Unsupported') : (r.purpose === 'Investment' ? 'INV' : 'OO')} {secDetail===i ? '▲' : '▾'}
+                  </button>
+                : <span style={{ fontSize:10.5, color:'#cbd5e1' }}>—</span>,
               <button onClick={()=>rmSecurity(i)} style={rmBtnStyle}>✕</button>,
             ])} empty="No security added yet"/>
+
+            {secDetail !== null && securities[secDetail] && (() => {
+              const r = securities[secDetail], i = secDetail
+              const otherSecurities = securities.filter((_,idx)=>idx!==i).map(x => [x.type, x.description].filter(Boolean).join(' — ')).filter(Boolean)
+              const fld = { fontSize:10, color:'#7A8090', fontWeight:600, textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:3 }
+              const box = { border:'1px solid #e8eaed', borderRadius:6, padding:'5px 8px', fontSize:11.5, fontFamily:'inherit', boxSizing:'border-box', width:'100%' }
+              return (
+                <div data-security-detail style={{ marginTop:12, padding:'12px 14px', border:'1px solid #3D4F6B33', borderRadius:8, background:'#fbfcfe' }}>
+                  <div style={{ fontSize:12, fontWeight:700, color:'#2A3545', marginBottom:10 }}>
+                    {r.description || r.type} — detail
+                  </div>
+
+                  {MORTGAGE_SECURITY_TYPES.includes(r.type) && (
+                    <>
+                      <div style={{ display:'flex', gap:12, flexWrap:'wrap', alignItems:'flex-end' }}>
+                        <div style={{ width:170 }}>
+                          <div style={fld}>Purpose</div>
+                          <select value={r.purpose || 'Owner Occupied'} onChange={e=>updSecurityPatch(i,{purpose:e.target.value})} style={box}>
+                            {SECURITY_PURPOSES.map(x=><option key={x}>{x}</option>)}
+                          </select>
+                        </div>
+                        {r.purpose === 'Investment' && (
+                          <>
+                            <div style={{ width:170 }}>
+                              <div style={fld}>Lease income</div>
+                              <div style={{ display:'flex', gap:4 }}>
+                                <input type="number" value={r.leaseIncome ?? ''} onChange={e=>updSecurityPatch(i,{leaseIncome:e.target.value})} style={box} />
+                                <select value={r.leaseIncomeFreq || 'Annually'} onChange={e=>updSecurityPatch(i,{leaseIncomeFreq:e.target.value})} style={{...box, width:100}}>
+                                  {FREQUENCIES.map(f=><option key={f}>{f}</option>)}
+                                </select>
+                              </div>
+                            </div>
+                            <div style={{ width:170 }}>
+                              <div style={fld}>Lease expenses</div>
+                              <div style={{ display:'flex', gap:4 }}>
+                                <input type="number" value={r.leaseExpenses ?? ''} onChange={e=>updSecurityPatch(i,{leaseExpenses:e.target.value})} style={box} />
+                                <select value={r.leaseExpensesFreq || 'Annually'} onChange={e=>updSecurityPatch(i,{leaseExpensesFreq:e.target.value})} style={{...box, width:100}}>
+                                  {FREQUENCIES.map(f=><option key={f}>{f}</option>)}
+                                </select>
+                              </div>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                      {r.purpose === 'Investment' && (
+                        <div style={{ fontSize:10.5, color:'#9ca3af', marginTop:8, lineHeight:1.5 }}>
+                          The rent is shaded like any other rental income and split by the owners above; the outgoings are deducted and treated as
+                          deductible, which is what makes a negatively geared property work on paper.
+                          Don't also enter this rent under Other Income or it'll count twice.
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  {r.type === 'Gtee' && (
+                    <>
+                      <div style={{ display:'flex', gap:12, flexWrap:'wrap', alignItems:'flex-end' }}>
+                        <div style={{ width:170 }}>
+                          <div style={fld}>Guarantee</div>
+                          <select value={r.guaranteeSupport || 'Unsupported'} onChange={e=>updSecurityPatch(i,{guaranteeSupport:e.target.value})} style={box}>
+                            {GUARANTEE_SUPPORT.map(x=><option key={x}>{x}</option>)}
+                          </select>
+                        </div>
+                        <div style={{ width:170 }}>
+                          <div style={fld}>Guarantor</div>
+                          <select value={r.guarantorKind || 'Individual'} onChange={e=>updSecurityPatch(i,{guarantorKind:e.target.value})} style={box}>
+                            {GUARANTOR_KINDS.map(x=><option key={x}>{x}</option>)}
+                          </select>
+                        </div>
+                        {r.guaranteeSupport === 'Supported' && (
+                          <div style={{ flex:'1 1 260px', minWidth:220 }}>
+                            <div style={fld}>Supported by</div>
+                            <input value={r.supportedBy || ''} onChange={e=>updSecurityPatch(i,{supportedBy:e.target.value})}
+                              list="security-support-options" placeholder="Pick another security, or describe it" style={box} />
+                            <datalist id="security-support-options">{otherSecurities.map(o=><option key={o} value={o}/>)}</datalist>
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ fontSize:10.5, color:'#9ca3af', marginTop:8, lineHeight:1.5 }}>
+                        A <strong style={{color:'#2A3545'}}>supported</strong> guarantee has real security standing behind it — a mortgage or a GSA — so a lender
+                        can look through to an asset. An <strong style={{color:'#2A3545'}}>unsupported</strong> one is a promise to pay and nothing more, which is why
+                        it carries no lending value of its own.
+                      </div>
+                    </>
+                  )}
+
+                  <button onClick={()=>setSecDetail(null)} style={{...addBtnStyle, marginTop:10, padding:'4px 12px'}}>Close</button>
+                </div>
+              )
+            })()}
           </TabCard>
         )}
 
@@ -2278,9 +2389,36 @@ function StructureTab({ d, editing, set, updateDeal }) {
               : (!RENT_EXPENSE_TYPES.includes(r.type) && !isHemExpense(r.type)))
           const subtotal = list => list.reduce((sum, { r }) => sum + toMonthly(r.amount, r.frequency), 0)
           const hemRows = group('hem'), nonHemRows = group('nonHem'), rentRows = group('rent')
+          const linkedPropertyCosts = investmentPropertyExpenses(struct)
+
+          // Drag to reorder. The three cards are filtered views of one list,
+          // so a drop moves the dragged row to sit immediately before or
+          // after the row it was dropped on, by their real indices.
+          const moveExpense = (fromIdx, toIdx) => {
+            if (fromIdx === toIdx || fromIdx == null || toIdx == null) return
+            const next = [...livingExpenses]
+            const [moved] = next.splice(fromIdx, 1)
+            next.splice(fromIdx < toIdx ? toIdx - 1 : toIdx, 0, moved)
+            s('livingExpenses', next)
+          }
+          const dragProps = (realIdx) => ({
+            draggable: true,
+            onDragStart: (ev) => { setDragRow(realIdx); ev.dataTransfer.effectAllowed = 'move' },
+            onDragOver: (ev) => { ev.preventDefault(); ev.dataTransfer.dropEffect = 'move'; if (dragOver !== realIdx) setDragOver(realIdx) },
+            onDrop: (ev) => { ev.preventDefault(); moveExpense(dragRow, realIdx); setDragRow(null); setDragOver(null) },
+            onDragEnd: () => { setDragRow(null); setDragOver(null) },
+            style: {
+              cursor: 'grab',
+              opacity: dragRow === realIdx ? 0.4 : 1,
+              boxShadow: dragOver === realIdx && dragRow !== realIdx ? 'inset 0 2px 0 #3D4F6B' : 'none',
+            },
+          })
 
           const table = (list, types) => (
-            <MiniTable columns={['Type','Owners','Frequency','Amount','']} rows={list.map(({ r, i }) => [
+            <MiniTable columns={['','Type','Owners','Frequency','Amount','']}
+              rowProps={pos => dragProps(list[pos]?.i)}
+              rows={list.map(({ r, i }) => [
+              <span title="Drag to reorder" style={{ cursor:'grab', color:'#cbd5e1', fontSize:13, userSelect:'none' }}>⠿</span>,
               <LiveSelect small value={r.type} onCommit={v=>updLivingExpense(i,'type',v)} options={types} />,
               Owner(livingExpenses, i, "livingExpenses"),
               <LiveSelect small value={r.frequency} onCommit={v=>updLivingExpense(i,'frequency',v)} options={FREQUENCIES} allowBlank={false} />,
@@ -2299,7 +2437,7 @@ function StructureTab({ d, editing, set, updateDeal }) {
             <>
               <TabCard title="Living Expenses — HEM comparable" right={<button onClick={()=>addLivingExpense(HEM_EXPENSE_TYPES[0])} style={addBtnStyle}>+ Add expense</button>}>
                 <div style={{ fontSize:11, color:'#9ca3af', marginBottom:10, lineHeight:1.5 }}>
-                  The basket the HEM benchmark covers. These are assessed at the <strong style={{color:'#2A3545'}}>greater of what's declared here and the benchmark</strong> — so understating them doesn't help, the benchmark takes over.
+                  Drag a row by its handle to reorder. The basket the HEM benchmark covers. These are assessed at the <strong style={{color:'#2A3545'}}>greater of what's declared here and the benchmark</strong> — so understating them doesn't help, the benchmark takes over.
                 </div>
                 {table(hemRows, HEM_EXPENSE_TYPES)}
                 {hemRows.length > 0 && subRow('HEM-comparable subtotal', subtotal(hemRows))}
@@ -2311,7 +2449,37 @@ function StructureTab({ d, editing, set, updateDeal }) {
                   Putting them in the basket above is the usual way a real commitment disappears into HEM and the file comes back short.
                 </div>
                 {table(nonHemRows, NON_HEM_EXPENSE_TYPES)}
-                {nonHemRows.length > 0 && subRow('Additional subtotal', subtotal(nonHemRows))}
+
+                {/* Investment property costs belong to the property, not the
+                    household, so they live on the Real Estate register and
+                    appear here linked rather than keyed in both places.
+                    Editable from either side — it's one figure. */}
+                {linkedPropertyCosts.length > 0 && (
+                  <div style={{ marginTop: nonHemRows.length ? 14 : 0 }}>
+                    <div style={{ fontSize:10, color:'#7A8090', fontWeight:600, textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:6 }}>Investment property costs</div>
+                    {linkedPropertyCosts.map(pc => (
+                      <div key={pc.idx} data-linked-property-cost={pc.idx} style={{ display:'flex', gap:10, alignItems:'flex-start', padding:'8px 0', borderBottom:'0.5px solid #f0f0f0', flexWrap:'wrap' }}>
+                        <div style={{ flex:'1 1 320px', minWidth:260 }}>
+                          <div style={{ fontSize:11.5, color:'#2A3545', fontWeight:500 }}>Investment Property Costs</div>
+                          <div style={{ fontSize:10.5, color:'#64748b', marginTop:1 }}>{pc.label}</div>
+                          <div style={{ fontSize:10, color:'#9ca3af', marginTop:1 }}>
+                            Linked to this property's expenses in Assets — Real Estate. Changes here update it there.
+                          </div>
+                        </div>
+                        <div style={{ flex:'0 0 160px', fontSize:11, color:'#7A8090', paddingTop:2 }}>{ownersSummaryFor(realEstateAssets[pc.idx])}</div>
+                        <div style={{ flex:'0 0 120px' }}>
+                          <LiveSelect small value={pc.frequency} onCommit={v=>updRealEstateAsset(pc.idx,'propertyExpensesFreq',v)} options={FREQUENCIES} allowBlank={false} />
+                        </div>
+                        <div style={{ flex:'0 0 120px' }}>
+                          <LiveNumber small value={pc.expenses} onCommit={v=>updRealEstateAsset(pc.idx,'propertyExpenses',v)} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {(nonHemRows.length > 0 || linkedPropertyCosts.length > 0) &&
+                  subRow('Additional subtotal', subtotal(nonHemRows) + linkedPropertyCosts.reduce((sum,pc)=>sum+toMonthly(pc.expenses, pc.frequency), 0))}
               </TabCard>
 
               <TabCard title="Rent / Board" right={<button onClick={()=>addLivingExpense(RENT_EXPENSE_TYPES[0])} style={addBtnStyle}>+ Add rent</button>}>
@@ -2336,7 +2504,7 @@ function StructureTab({ d, editing, set, updateDeal }) {
           const totalLoanBalance = realEstateAssets.reduce((sum,r)=>sum+(Number(r.loanBalance)||0),0)
           return (
             <TabCard title="Assets — Real Estate" right={<button onClick={addRealEstateAsset} style={addBtnStyle}>+ Add property</button>}>
-              <MiniTable columns={['Address','Purpose','Owners','Security','Purchasing','Value','Loan Balance','']} rows={realEstateAssets.map((r,i) => [
+              <MiniTable columns={['Address','Purpose','Owners','Security','Purchasing','Value','Loan Balance','Detail','']} rows={realEstateAssets.map((r,i) => [
                 <LiveText small value={r.address} onCommit={v=>updRealEstateAsset(i,'address',v)} placeholder="Address" />,
                 <LiveSelect small value={r.purpose} onCommit={v=>updRealEstateAsset(i,'purpose',v)} options={REAL_ESTATE_PURPOSES} allowBlank={false} />,
                 Owner(realEstateAssets, i, "realEstateAssets"),
@@ -2344,8 +2512,48 @@ function StructureTab({ d, editing, set, updateDeal }) {
                 <input type="checkbox" checked={!!r.isPurchasing} onChange={e=>updRealEstateAsset(i,'isPurchasing',e.target.checked)} />,
                 <LiveNumber small value={r.value} onCommit={v=>updRealEstateAsset(i,'value',v)} />,
                 <LiveNumber small value={r.loanBalance} onCommit={v=>updRealEstateAsset(i,'loanBalance',v)} />,
+                r.purpose === 'Investment'
+                  ? <button onClick={()=>setReDetail(reDetail===i?null:i)} style={{...addBtnStyle, padding:'3px 9px', fontSize:10, borderColor: reDetail===i ? '#3D4F6B' : '#e8eaed'}}>Rent {reDetail===i ? '▲' : '▾'}</button>
+                  : <span style={{ fontSize:10.5, color:'#cbd5e1' }}>—</span>,
                 <button onClick={()=>rmRealEstateAsset(i)} style={rmBtnStyle}>✕</button>,
               ])} empty="No real estate assets added yet"/>
+
+              {reDetail !== null && realEstateAssets[reDetail] && realEstateAssets[reDetail].purpose === 'Investment' && (() => {
+                const r = realEstateAssets[reDetail], i = reDetail
+                const fld = { fontSize:10, color:'#7A8090', fontWeight:600, textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:3 }
+                const box = { border:'1px solid #e8eaed', borderRadius:6, padding:'5px 8px', fontSize:11.5, fontFamily:'inherit', boxSizing:'border-box', width:'100%' }
+                return (
+                  <div data-realestate-detail style={{ marginTop:12, padding:'12px 14px', border:'1px solid #3D4F6B33', borderRadius:8, background:'#fbfcfe' }}>
+                    <div style={{ fontSize:12, fontWeight:700, color:'#2A3545', marginBottom:10 }}>{r.address || 'Investment property'} — rent and costs</div>
+                    <div style={{ display:'flex', gap:12, flexWrap:'wrap' }}>
+                      <div style={{ width:210 }}>
+                        <div style={fld}>Rental income</div>
+                        <div style={{ display:'flex', gap:4 }}>
+                          <input type="number" value={r.rentalIncome ?? ''} onChange={e=>updRealEstateAsset(i,'rentalIncome',e.target.value)} style={box} />
+                          <select value={r.rentalIncomeFreq || 'Annually'} onChange={e=>updRealEstateAsset(i,'rentalIncomeFreq',e.target.value)} style={{...box, width:110}}>
+                            {FREQUENCIES.map(f=><option key={f}>{f}</option>)}
+                          </select>
+                        </div>
+                      </div>
+                      <div style={{ width:210 }}>
+                        <div style={fld}>Property expenses</div>
+                        <div style={{ display:'flex', gap:4 }}>
+                          <input type="number" value={r.propertyExpenses ?? ''} onChange={e=>updRealEstateAsset(i,'propertyExpenses',e.target.value)} style={box} />
+                          <select value={r.propertyExpensesFreq || 'Annually'} onChange={e=>updRealEstateAsset(i,'propertyExpensesFreq',e.target.value)} style={{...box, width:110}}>
+                            {FREQUENCIES.map(f=><option key={f}>{f}</option>)}
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{ fontSize:10.5, color:'#9ca3af', marginTop:8, lineHeight:1.5 }}>
+                      The rent is shaded like any other rental income and split by the owners above. The costs show up under
+                      <strong style={{color:'#2A3545'}}> Living Expenses → Additional Expenses</strong> and are editable from either place — they're one figure, not two.
+                      Being property costs they're deductible, so they reduce taxable income as well as cash.
+                    </div>
+                    <button onClick={()=>setReDetail(null)} style={{...addBtnStyle, marginTop:10, padding:'4px 12px'}}>Close</button>
+                  </div>
+                )
+              })()}
               {realEstateAssets.length > 0 && (
                 <div style={{ marginTop:12, paddingTop:10, borderTop:'1px solid #e8eaed' }}>
                   <ComputedRow label="Total Assets" value={fmtM(totalValue)} tone="navy" />
