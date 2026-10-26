@@ -10,7 +10,10 @@ import { SettleModal, applySettlement } from '../components/SettleModal'
 import { calcUpfront, getUpfrontRate, dealUpfrontCommission, dealUpfrontRateEffective, dealCommissionIsOverridden, loadSettings, getDealStages, stageDisplay } from '../lib/settings'
 import { mapRradarContactToDealContact } from '../lib/data'
 import { downloadFileNotePdf, downloadFileNotesPdf } from '../lib/fileNotePdf'
-import { newSplit, newGroup, newScenario, normalizeScenario, rowRepayment, groupTotals, findRecommendedGroup } from '../lib/comparisonUtils'
+import ServicingCalculator from '../components/ServicingCalculator'
+import { assessServicing, resolvePolicy } from '../lib/servicing'
+import { getServicingPolicy } from '../lib/settings'
+import { newSplit, newGroup, newScenario, normalizeScenario, rowRepayment, groupTotals, findRecommendedGroups, toggleRecommendation, isRecommended, pruneRecommendation, recommendationColumns, recommendationTotals, recommendedLenderLabel } from '../lib/comparisonUtils'
 
 // Category list and per-category Transaction Type options, per Cameron's
 // working spreadsheet (Category drives which Transaction Types are valid).
@@ -1488,24 +1491,21 @@ function StrategyTab({ deal, updateDeal }) {
   const scenarios = (strat.comparisonScenarios || []).map(normalizeScenario)
   const commitScenarios = (next) => s('comparisonScenarios', next)
   const rec = strat.comparisonRecommendation || null
-  const clearRecommendationIfMatches = (scenarioId, groupId) => {
-    if (rec && rec.scenarioId === scenarioId && rec.groupId === groupId) s('comparisonRecommendation', null)
-  }
+
+  // Tables and the recommendation list travel together: writing them in one
+  // update means a delete can't lose the pick cleanup (two separate s()
+  // calls each spread the same stale strat, so the first was discarded).
+  const commitScenariosAndPrune = (next) =>
+    updateDeal({ _strategy: { ...strat, comparisonScenarios: next, comparisonRecommendation: pruneRecommendation(rec, next) } })
 
   const addScenario = () => commitScenarios([...scenarios, newScenario()])
   const updScenario = (i, patch) => commitScenarios(scenarios.map((sc,idx)=> idx===i ? {...sc,...patch} : sc))
-  const rmScenario = (i) => {
-    const sc = scenarios[i]
-    if (rec && rec.scenarioId === sc.id) s('comparisonRecommendation', null)
-    commitScenarios(scenarios.filter((_,idx)=>idx!==i))
-  }
+  const rmScenario = (i) => commitScenariosAndPrune(scenarios.filter((_,idx)=>idx!==i))
   const addGroup = (i) => updScenario(i, { groups: [...scenarios[i].groups, newGroup()] })
   const updGroup = (i, gi, patch) => updScenario(i, { groups: scenarios[i].groups.map((g,idx)=> idx===gi ? {...g,...patch} : g) })
-  const rmGroup = (i, gi) => {
-    const sc = scenarios[i], g = sc.groups[gi]
-    clearRecommendationIfMatches(sc.id, g.id)
-    updScenario(i, { groups: sc.groups.filter((_,idx)=>idx!==gi) })
-  }
+  const rmGroup = (i, gi) => commitScenariosAndPrune(
+    scenarios.map((sc,idx)=> idx!==i ? sc : { ...sc, groups: sc.groups.filter((_,gx)=>gx!==gi) })
+  )
   // Capped at 5 — Cameron's usual case is 1-2 splits, occasionally 3; this
   // is just a backstop against the recommendation panel growing unbounded.
   const MAX_SPLITS = 5
@@ -1516,23 +1516,23 @@ function StrategyTab({ deal, updateDeal }) {
   const updSplit = (i, gi, si, k, v) => updGroup(i, gi, { splits: scenarios[i].groups[gi].splits.map((sp,idx)=> idx===si ? {...sp,[k]:v} : sp) })
   const rmSplit = (i, gi, si) => updGroup(i, gi, { splits: scenarios[i].groups[gi].splits.filter((_,idx)=>idx!==si) })
 
-  // A single deal-wide recommendation — ticking a lender's row (no-split
-  // table) or a lender's whole box (split table) elsewhere unticks any
-  // other, since "Our Recommendation" is meant to be the one structure
-  // actually going forward with, not a per-table shortlist.
-  const setRecommendation = (scenarioId, groupId) => {
-    if (rec && rec.scenarioId === scenarioId && rec.groupId === groupId) s('comparisonRecommendation', null)
-    else s('comparisonRecommendation', { scenarioId, groupId })
-  }
+  // One recommended lender PER TABLE. A deal often spans several properties,
+  // each with its own comparison table, and the structure going forward is
+  // the pick from each — so ticking Bankwest for Thornton no longer unticks
+  // Bankwest for Campbelltown. Within a single table it still swaps, since
+  // two lenders can't both fund the same property.
+  const setRecommendation = (scenarioId, groupId) =>
+    s('comparisonRecommendation', toggleRecommendation(rec, scenarioId, groupId))
 
   // rowRepayment/groupTotals imported from lib/comparisonUtils.js — same
   // functions the Comparison Email builder uses, so the numbers can never
   // drift between what's shown here and what goes out in an email.
 
-  // The recommended group, wherever it lives — plus the indices needed to
+  // Every recommended group, in table order, each with the indices needed to
   // write back to it (e.g. editing Total Loan Term from inside the
   // recommendation panel itself, rather than only from its source table).
-  const { recommendedGroup, recommendedSceneIdx, recommendedGroupIdx } = findRecommendedGroup(scenarios, rec)
+  const recommendedPicks = findRecommendedGroups(scenarios, rec)
+  const recommendedGroups = recommendedPicks.map(p => p.group)
 
   const fundingTableTitle = dealType === 'Construction' ? 'Land & Construction Funding Table' : `${dealType} Funding Table`
   const baseValueLabel = dealType === 'Construction' ? 'Estimated Value' : dealType === 'Refinance' ? 'Property Value' : 'Purchase Price'
@@ -1827,7 +1827,7 @@ function StrategyTab({ deal, updateDeal }) {
                             <tr><td colSpan={cols.length} style={{ padding:'12px 8px', fontSize:11, color:'#9ca3af', textAlign:'center' }}>No rows yet</td></tr>
                           )}
                           {sc.groups.map((g, gi) => {
-                            const checked = rec && rec.scenarioId===sc.id && rec.groupId===g.id
+                            const checked = isRecommended(rec, sc.id, g.id)
                             const totals = groupTotals(g)
                             const multi = g.splits.length > 1
                             const rowBg = checked ? '#fdf0f6' : (gi%2 ? '#fafafa' : '#fff')
@@ -1858,7 +1858,7 @@ function StrategyTab({ deal, updateDeal }) {
                                       {strat.showLMI && <td style={tdStyle}><LiveNumber small value={sp.lmi} onCommit={v=>updSplit(i,gi,si,'lmi',v)} /></td>}
                                       <td style={tdStyle}><LiveNumber small value={sp.rate} onCommit={v=>updSplit(i,gi,si,'rate',v)} step="0.01" /></td>
                                       <td style={tdStyle}>{repay ? `$${Math.round(repay).toLocaleString()}` : '—'}</td>
-                                      <td style={tdStyle}><input type="checkbox" checked={!!checked} onChange={()=>setRecommendation(sc.id, g.id)} title="Recommend this loan" /></td>
+                                      <td style={tdStyle}><input type="checkbox" checked={!!checked} onChange={()=>setRecommendation(sc.id, g.id)} title="Recommend this lender for this table — you can recommend one lender from each comparison table" /></td>
                                       <td style={tdStyle}>
                                         <div style={{ display:'flex', gap:4 }}>
                                           {isLast && (
@@ -1897,95 +1897,83 @@ function StrategyTab({ deal, updateDeal }) {
               })}
             </TabCard>
 
-            {recommendedGroup && (() => {
-              const splits = recommendedGroup.splits
+            {recommendedGroups.length > 0 && (() => {
               const n = v => Number(v)||0
-              const totalLoan = splits.reduce((sum,sp)=>sum+n(sp.baseLoan),0)
-              const totalRepay = splits.reduce((sum,sp)=>sum+rowRepayment(sp),0)
-              const weightedRate = totalLoan ? splits.reduce((sum,sp)=>sum+n(sp.rate)*n(sp.baseLoan),0)/totalLoan : 0
+              // One column per split, across every table you've recommended
+              // from — so a deal over two properties shows both lenders side
+              // by side, totalled and weighted as one structure.
+              const cols = recommendationColumns(recommendedGroups)
+              const { totalLoan, totalRepay, weightedRate } = recommendationTotals(cols)
               const labelCellStyle = { padding:'5px 8px', color:'#7A8090', fontSize:10, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.03em', whiteSpace:'nowrap', borderBottom:'0.5px solid #f0f0f0', overflow:'hidden', textOverflow:'ellipsis' }
               const cellStyle = { padding:'5px 8px', color:'#2A3545', fontSize:11, borderBottom:'0.5px solid #f0f0f0', overflow:'hidden', textOverflow:'ellipsis' }
               const totalCellStyle = { ...cellStyle, fontWeight:700, background:'#f8fafc' }
               // Fixed-width columns via colgroup + table-layout:fixed — so
-              // adding a 4th or 5th split grows the table's total width
-              // (scrolling if it overflows, per the overflowX:'auto'
-              // wrapper) rather than every existing column shrinking to
-              // squeeze the new one in, which is what a plain % or auto
-              // layout would otherwise do.
+              // adding a split grows the table's total width (scrolling if it
+              // overflows, per the overflowX:'auto' wrapper) rather than
+              // every existing column shrinking to squeeze the new one in.
               const LABEL_COL_WIDTH = 161, DATA_COL_WIDTH = 147
               // A TOTAL column only means anything once there's more than
               // one split to total up — for a single, unsplit loan it'd
               // just repeat Split 1's own numbers back at you.
-              const showTotal = splits.length > 1
+              const showTotal = cols.length > 1
+              const lenderLabel = recommendedLenderLabel(recommendedGroups)
+              const row = (label, cellFn, totalCell) => (
+                <tr>
+                  <td style={labelCellStyle}>{label}</td>
+                  {cols.map((c,ci) => <td key={ci} style={cellStyle}>{cellFn(c,ci)}</td>)}
+                  {showTotal && <td style={totalCellStyle}>{totalCell ?? ''}</td>}
+                </tr>
+              )
               return (
                 <TabCard title="Our Recommendation">
+                  {recommendedPicks.length > 1 && (
+                    <div style={{ fontSize:11, color:'#7A8090', marginBottom:8 }}>
+                      {recommendedPicks.length} tables recommended{lenderLabel ? ` — ${lenderLabel}` : ''}. Totals and the weighted average rate are across the whole structure.
+                    </div>
+                  )}
                   <div style={{ overflowX:'auto' }}>
                     <table style={{ borderCollapse:'collapse', fontSize:11, tableLayout:'fixed' }}>
                       <colgroup>
                         <col style={{ width:LABEL_COL_WIDTH }} />
-                        {splits.map((_,si) => <col key={si} style={{ width:DATA_COL_WIDTH }} />)}
+                        {cols.map((_,ci) => <col key={ci} style={{ width:DATA_COL_WIDTH }} />)}
                         {showTotal && <col style={{ width:DATA_COL_WIDTH }} />}
                       </colgroup>
                       <tbody>
                         <tr>
                           <td style={labelCellStyle}>Split</td>
-                          {splits.map((sp,si) => <td key={si} style={{ ...cellStyle, fontWeight:700, textAlign:'center' }}>{si+1}</td>)}
+                          {cols.map((c,ci) => <td key={ci} style={{ ...cellStyle, fontWeight:700, textAlign:'center' }}>{ci+1}</td>)}
                           {showTotal && <td style={{ ...totalCellStyle, textAlign:'center' }}>TOTAL</td>}
                         </tr>
-                        <tr>
-                          <td style={labelCellStyle}>Bank</td>
-                          {splits.map((sp,si) => <td key={si} style={cellStyle}>{recommendedGroup.lender || '—'}</td>)}
-                          {showTotal && <td style={totalCellStyle}></td>}
-                        </tr>
-                        <tr>
-                          <td style={labelCellStyle}>Property</td>
-                          {splits.map((sp,si) => <td key={si} style={cellStyle}>{sp.property || 'TBC'}</td>)}
-                          {showTotal && <td style={totalCellStyle}></td>}
-                        </tr>
-                        <tr>
-                          <td style={labelCellStyle}>Purpose</td>
-                          {splits.map((sp,si) => <td key={si} style={cellStyle}>{sp.purpose || '—'}</td>)}
-                          {showTotal && <td style={totalCellStyle}></td>}
-                        </tr>
-                        <tr>
-                          <td style={labelCellStyle}>Loan Amount</td>
-                          {splits.map((sp,si) => <td key={si} style={cellStyle}>{fmtM(n(sp.baseLoan))}</td>)}
-                          {showTotal && <td style={totalCellStyle}>{fmtM(totalLoan)}</td>}
-                        </tr>
-                        <tr>
-                          <td style={labelCellStyle}>Term</td>
-                          {splits.map((sp,si) => <td key={si} style={cellStyle}>{sp.term ? `${sp.term} Years (${sp.type})` : '—'}</td>)}
-                          {showTotal && <td style={totalCellStyle}></td>}
-                        </tr>
+                        {row('Bank', c => c.group.lender || '—')}
+                        {row('Property', c => c.split.property || 'TBC')}
+                        {row('Purpose', c => c.split.purpose || '—')}
+                        {row('Loan Amount', c => fmtM(n(c.split.baseLoan)), fmtM(totalLoan))}
+                        {row('Term', c => c.split.term ? `${c.split.term} Years (${c.split.type})` : '—')}
                         <tr>
                           {/* A single per-split "Term" (e.g. "5 Years (IO)") doesn't capture the
                               overall loan duration once an IO period sits inside a longer P&I
                               term — this always shows (editable right here, same field as the
                               split box above) regardless of split count, so it's never hidden
-                              just because it hasn't been filled in yet. */}
+                              just because it hasn't been filled in yet. One cell per recommended
+                              lender, since Total Loan Term belongs to the group, not the split. */}
                           <td style={labelCellStyle}>Total Loan Term</td>
-                          <td colSpan={splits.length + (showTotal ? 1 : 0)} style={{ ...cellStyle, fontWeight:600 }}>
-                            <div style={{ display:'flex', alignItems:'center', gap:4 }}>
-                              <LiveNumber small value={recommendedGroup.totalTerm} onCommit={v=>updGroup(recommendedSceneIdx, recommendedGroupIdx, {totalTerm:v})} placeholder="e.g. 30" />
-                              <span style={{ fontSize:10, color:'#7A8090', whiteSpace:'nowrap' }}>Years</span>
-                            </div>
-                          </td>
+                          {recommendedPicks.map((p, pi) => (
+                            <td key={pi} colSpan={(p.group.splits || []).length || 1} style={{ ...cellStyle, fontWeight:600 }}>
+                              <div style={{ display:'flex', alignItems:'center', gap:4 }}>
+                                <LiveNumber small value={p.group.totalTerm} onCommit={v=>updGroup(p.sceneIdx, p.groupIdx, {totalTerm:v})} placeholder="e.g. 30" />
+                                <span style={{ fontSize:10, color:'#7A8090', whiteSpace:'nowrap' }}>Years</span>
+                              </div>
+                            </td>
+                          ))}
+                          {showTotal && <td style={totalCellStyle}></td>}
                         </tr>
-                        <tr>
-                          <td style={labelCellStyle}>Rate</td>
-                          {splits.map((sp,si) => <td key={si} style={cellStyle}>{sp.rate ? `${Number(sp.rate).toFixed(2)}%` : '—'}</td>)}
-                          {showTotal && <td style={totalCellStyle}>{weightedRate ? `${weightedRate.toFixed(2)}% W.avg` : '—'}</td>}
-                        </tr>
-                        <tr>
-                          <td style={labelCellStyle}>Repayment</td>
-                          {splits.map((sp,si) => { const repay = rowRepayment(sp); return <td key={si} style={cellStyle}>{repay ? `$${Math.round(repay).toLocaleString()}` : '—'}</td> })}
-                          {showTotal && <td style={totalCellStyle}>{totalRepay ? `$${Math.round(totalRepay).toLocaleString()}` : '—'}</td>}
-                        </tr>
+                        {row('Rate', c => c.split.rate ? `${Number(c.split.rate).toFixed(2)}%` : '—', weightedRate ? `${weightedRate.toFixed(2)}% W.avg` : '—')}
+                        {row('Repayment', c => { const repay = rowRepayment(c.split); return repay ? `$${Math.round(repay).toLocaleString()}` : '—' }, totalRepay ? `$${Math.round(totalRepay).toLocaleString()}` : '—')}
                       </tbody>
                     </table>
                   </div>
                   <div style={{ fontSize:10.5, color:'#9ca3af', marginTop:10 }}>
-                    This feeds the client comparison email template — coming in a later pass.
+                    Tick one lender in each comparison table to build this up — it's what goes into the client comparison email.
                   </div>
                 </TabCard>
               )
@@ -2005,26 +1993,27 @@ function StrategyTab({ deal, updateDeal }) {
 // Commercial (BANK RM), SMSF, Business Loan, Trade & Invoice Finance, Asset
 // Finance, Development) gets the full set, since those routinely involve
 // entity financials and servicing calculations.
-function StructureTab({ d, editing, set }) {
+function StructureTab({ d, editing, set, updateDeal }) {
   const isResidential = d.Categories === 'Residential'
   const subs = [
     {id:'security',label:'Security'},
-    ...(isResidential
-      ? [
-          {id:'livingExpenses',label:'Living Expenses'},
-          {id:'realEstate',label:'Assets — Real Estate'},
-          {id:'otherAssets',label:'Assets — Other'},
-          {id:'liabilities',label:'Liabilities'},
-          {id:'employment',label:'Employment'},
-          {id:'otherIncome',label:'Other Income'},
-        ]
-      : [{id:'financials',label:'Financials'},{id:'servicing',label:'Servicing'}]
-    ),
+    {id:'livingExpenses',label:'Living Expenses'},
+    {id:'realEstate',label:'Assets — Real Estate'},
+    {id:'otherAssets',label:'Assets — Other'},
+    {id:'liabilities',label:'Liabilities'},
+    {id:'employment',label:'Employment'},
+    {id:'otherIncome',label:'Other Income'},
+    ...(isResidential ? [] : [{id:'financials',label:'Financials'},{id:'servicing',label:'Servicing'}]),
   ]
   const [sub, setSub] = useState(subs[0].id)
   useEffect(() => { if (!subs.find(x=>x.id===sub)) setSub(subs[0].id) }, [d.Categories]) // eslint-disable-line react-hooks/exhaustive-deps
   const struct = d._structure || {}
   const s = (k, v) => set('_structure', { ...struct, [k]: v })
+  // Saves straight away rather than through the Edit-deal draft — the
+  // servicing calculator is a live working surface, not a form you submit.
+  const sLive = (patch) => updateDeal
+    ? updateDeal({ _structure: { ...struct, ...patch } })
+    : set('_structure', { ...struct, ...patch })
   const fin = struct.financials || {}
   const setFin = (year, k, v) => s('financials', { ...fin, [year]: { ...(fin[year]||{}), [k]: v } })
   const servicing = struct.servicing || {}
@@ -2040,7 +2029,11 @@ function StructureTab({ d, editing, set }) {
   // a separate entity register here — Cameron folded that in to avoid
   // capturing the same people twice.
   const individuals = (d.Contacts || []).filter(c => c.type === 'Individual' && c.name)
-  const OWNERSHIP_OPTIONS = ['Shared Equally', ...individuals.map(e => `100% ${e.name}`)]
+  // Every entity on the deal, not just the people — a commercial purchase
+  // through an SPV needs the company or trust to be able to own the rent and
+  // the debt. "Shared Equally" still means equally between the individuals.
+  const allEntities = (d.Contacts || []).filter(c => c.name)
+  const OWNERSHIP_OPTIONS = ['Shared Equally', ...allEntities.map(e => `100% ${e.name}`)]
 
   const livingExpenses = struct.livingExpenses || []
   const addLivingExpense = () => s('livingExpenses', [...livingExpenses, { type:'', ownership:'Shared Equally', frequency:'Monthly', amount:'' }])
@@ -2156,36 +2149,21 @@ function StructureTab({ d, editing, set }) {
 
       {sub === 'servicing' && (
         <>
-          <TabCard title="Debt Servicing (Proposed)">
-            {editing ? (
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
-                <Field label="Repayments for debt servicing ($ p.a.)"><input style={inp} type="number" value={servicing.repayments||''} onChange={e=>setServicing('repayments', e.target.value)}/></Field>
-                <Field label="Interest for interest cover ($ p.a.)"><input style={inp} type="number" value={servicing.interestForCover||''} onChange={e=>setServicing('interestForCover', e.target.value)}/></Field>
-                <Field label="EBITDA ($)"><input style={inp} type="number" value={servicing.ebitda||''} onChange={e=>setServicing('ebitda', e.target.value)}/></Field>
-                <Field label="EBIT ($)"><input style={inp} type="number" value={servicing.ebit||''} onChange={e=>setServicing('ebit', e.target.value)}/></Field>
-              </div>
-            ) : (
-              <MiniTable columns={['Metric','Value']} rows={[
-                ['Repayments for Debt Servicing', servicing.repayments?`$${Number(servicing.repayments).toLocaleString()} p.a.`:'—'],
-                ['Interest for Interest Cover', servicing.interestForCover?`$${Number(servicing.interestForCover).toLocaleString()} p.a.`:'—'],
-                ['EBITDA', servicing.ebitda?`$${Number(servicing.ebitda).toLocaleString()}`:'—'],
-                ['EBIT', servicing.ebit?`$${Number(servicing.ebit).toLocaleString()}`:'—'],
-              ]}/>
-            )}
-            <div style={{ display:'flex', gap:24, marginTop:12 }}>
-              <div><div style={{fontSize:10,color:'#9ca3af'}}>Debt Service Cover Ratio</div><div style={{fontSize:18,fontWeight:700,color:'#3D4F6B'}}>{dscr}{dscr!=='—'?'x':''}</div></div>
-              <div><div style={{fontSize:10,color:'#9ca3af'}}>Interest Cover Ratio</div><div style={{fontSize:18,fontWeight:700,color:'#3D4F6B'}}>{icr}{icr!=='—'?'x':''}</div></div>
-            </div>
-          </TabCard>
+          <ServicingCalculator
+            contacts={d.Contacts || []}
+            structure={struct}
+            settingsPolicy={getServicingPolicy()}
+            onChange={sLive}
+          />
           <TabCard title="Home Loan Servicing">
-            <div style={{ fontSize:12, color:'#7A8090', marginBottom:10 }}>For residential/PAYG servicing, link straight to a Quickli assessment rather than duplicating buffer logic here.</div>
-            <Field label="Quickli link"><input style={inp} placeholder="https://quickli.com.au/…" value={servicing.quickliLink||''} onChange={e=>setServicing('quickliLink', e.target.value)} disabled={!editing}/></Field>
+            <div style={{ fontSize:12, color:'#7A8090', marginBottom:10 }}>For a straight residential/PAYG assessment, link to a Quickli assessment rather than duplicating buffer logic here.</div>
+            <Field label="Quickli link"><input style={inp} placeholder="https://quickli.com.au/…" value={servicing.quickliLink||''} onChange={e=>setServicing('quickliLink', e.target.value)}/></Field>
             {servicing.quickliLink && <a href={servicing.quickliLink} target="_blank" rel="noreferrer" style={{ display:'inline-block', marginTop:8, fontSize:12, fontWeight:600, color:'#fff', background:'#3D4F6B', borderRadius:6, padding:'8px 16px', textDecoration:'none' }}>Open in Quickli ↗</a>}
           </TabCard>
-          </>
-        )}
+        </>
+      )}
 
-        {sub === 'livingExpenses' && (() => {
+      {sub === 'livingExpenses' && (() => {
           const { grand, perApp } = registerTotalRow(livingExpenses)
           return (
             <TabCard title="Living Expenses" right={<button onClick={addLivingExpense} style={addBtnStyle}>+ Add expense</button>}>
@@ -3018,9 +2996,17 @@ function SummaryTab({ deal }) {
   const dealType = deriveDealType(deal['Transaction Type'])
   const calc = calcFunding(strat, dealType)
   const struct = deal._structure || {}
-  const servicing = struct.servicing || {}
-  const dscr = servicing.ebitda && servicing.repayments ? (Number(servicing.ebitda)/Number(servicing.repayments)).toFixed(2) : null
-  const icr = servicing.ebit && servicing.interestForCover ? (Number(servicing.ebit)/Number(servicing.interestForCover)).toFixed(2) : null
+  // Reads the live servicing assessment rather than the four hand-keyed
+  // fields the old Servicing box used to hold.
+  const assessment = (() => {
+    try {
+      if (!struct.commercialProperty && !(deal.Contacts || []).length) return null
+      return assessServicing({ contacts: deal.Contacts || [], structure: struct, policy: resolvePolicy(getServicingPolicy(), struct.servicingOverride) })
+    } catch { return null }
+  })()
+  const dscr = assessment?.group?.property?.dscr != null ? assessment.group.property.dscr.toFixed(2) : null
+  const icr = assessment?.group?.property?.icr != null ? assessment.group.property.icr.toFixed(2) : null
+  const groupSurplus = assessment?.group?.surplus
   const fmtAmt = v => v ? `$${Number(v).toLocaleString()}` : '—'
 
   return (
@@ -3053,12 +3039,21 @@ function SummaryTab({ deal }) {
           <ComputedRow label="Surplus / (Deficit)" value={fmtM(calc.surplusDeficit)} tone={calc.surplusDeficit < 0 ? 'red' : 'green'} big />
         </TabCard>
 
-        {(dscr || icr) && (
+        {(dscr || icr || groupSurplus !== undefined) && (
           <TabCard title="Servicing Summary">
-            <div style={{ display:'flex', gap:24 }}>
+            <div style={{ display:'flex', gap:24, flexWrap:'wrap' }}>
               {dscr && <div><div style={{fontSize:10,color:'#9ca3af'}}>Debt Service Cover Ratio</div><div style={{fontSize:18,fontWeight:700,color:'#3D4F6B'}}>{dscr}x</div></div>}
               {icr && <div><div style={{fontSize:10,color:'#9ca3af'}}>Interest Cover Ratio</div><div style={{fontSize:18,fontWeight:700,color:'#3D4F6B'}}>{icr}x</div></div>}
+              {groupSurplus !== undefined && (
+                <div>
+                  <div style={{fontSize:10,color:'#9ca3af'}}>Group surplus</div>
+                  <div style={{fontSize:18,fontWeight:700,color: groupSurplus >= 0 ? '#166534' : '#b91c1c'}}>
+                    ${Math.abs(Math.round(groupSurplus/12)).toLocaleString()}{groupSurplus < 0 ? ' short' : ''}/mo
+                  </div>
+                </div>
+              )}
             </div>
+            <div style={{ fontSize:10.5, color:'#9ca3af', marginTop:8 }}>From Financials → Servicing.</div>
           </TabCard>
         )}
 
@@ -3323,7 +3318,7 @@ export default function DealPage({ onUpdateDeals, clients = [], onUpdateClients 
 
         {tab === 'details' && <LoanDetailsTab deal={deal} updateDeal={updateDeal} deals={deals} setDeals={setDeals} clients={clients} />}
         {tab === 'strategy' && <StrategyTab deal={deal} updateDeal={updateDeal} />}
-        {tab === 'structure' && <StructureTab d={d} editing={editing} set={set} />}
+        {tab === 'structure' && <StructureTab d={d} editing={editing} set={set} updateDeal={updateDeal} />}
         {tab === 'attachments' && <AttachmentsTab deal={deal} deals={deals} setDeals={setDeals} editing={editing} d={d} set={set} />}
         {tab === 'notes' && <NotesTab d={d} editing={editing} set={set} deal={deal} deals={deals} setDeals={setDeals} />}
         {tab === 'summary' && <SummaryTab deal={deal} />}

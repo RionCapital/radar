@@ -5,6 +5,7 @@ import { loadDeals, saveDeals as libSaveDeals } from '../lib/deals'
 import { icon_crm, icon_radar, icon_marketing, icon_planner, icon_studio } from '../lib/icons'
 import StatementHistory from '../components/StatementHistory'
 import { ACCOUNTING_PACKAGES, getFormat } from '../lib/accountingExport'
+import ServicingSettings from '../components/ServicingSettings'
 
 const inp = { border:'1px solid #e8eaed', borderRadius:6, padding:'6px 10px', fontSize:12, width:'100%', boxSizing:'border-box', fontFamily:'inherit' }
 const Card = ({ children, style }) => <div style={{ background:'#fff', borderRadius:8, border:'0.5px solid #e8eaed', padding:'16px 18px', ...style }}>{children}</div>
@@ -423,6 +424,7 @@ export default function AdminSettings({ clients, onUpdateClients }) {
     radar: [
       { id:'statements', label:'Commission Statements' },
       { id:'accounting', label:'Accounting' },
+      { id:'servicing', label:'Servicing' },
     ],
     crm: [
       { id:'stages', label:'Stages' },
@@ -596,6 +598,21 @@ export default function AdminSettings({ clients, onUpdateClients }) {
           )}
 
           {/* Rradar > Commission Statements */}
+          {section==='radar' && tab==='servicing' && (
+            <Card style={{ marginBottom:16 }}>
+              <CardTitle>Servicing assumptions</CardTitle>
+              <div style={{ fontSize:11, color:'#7A8090', marginBottom:14, lineHeight:1.5 }}>
+                The house assumptions every commercial servicing assessment starts from. Any deal can override them for itself under
+                Financials → Servicing → Assumptions, and an override only affects that deal — change a number here and it still flows
+                through to every deal that hasn't overridden it.
+              </div>
+              <ServicingSettings
+                policy={settings.servicingPolicy}
+                isAdmin={isAdmin}
+                onChange={next => setSettings(s2 => ({ ...s2, servicingPolicy: next }))} />
+            </Card>
+          )}
+
           {section==='radar' && tab==='statements' && (
             <Card style={{ marginBottom:16 }}>
               <CardTitle>Commission statements</CardTitle>

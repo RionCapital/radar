@@ -1,6 +1,7 @@
 // Commission rates and app settings — stored in localStorage + Supabase
 import { sbLoadSettings, sbSaveSettings } from './supabase.js'
 import { LOAN_TYPES } from './data.js'
+import { DEFAULT_SERVICING_POLICY } from './servicing.js'
 
 const SETTINGS_KEY = 'rion-settings-v1'
 
@@ -21,6 +22,10 @@ export const DEFAULT_SETTINGS = {
     'Invoice Finance':  { upfront: 0.50, trail: 0.00, label: 'Invoice Finance' },
     'Other':            { upfront: 0.50, trail: 0.15, label: 'Other' },
   },
+  // Commercial servicing assumptions — buffers, shading, ratios, the tax
+  // scale and the HEM benchmark. See lib/servicing.js for what each one does.
+  // Editable in Settings > Rradar > Servicing, overridable per deal.
+  servicingPolicy: DEFAULT_SERVICING_POLICY,
   brokerName: 'Cameron Finlayson',
   brokerEmail: 'cameron@rion-capital.com',
   brokerPhone: '0400 000 000',
@@ -378,4 +383,14 @@ export function getTrainingCategories(settingsArg) {
 export function getTrainingExercises(settingsArg) {
   const settings = settingsArg || loadSettings()
   return (settings.trainingExercises && settings.trainingExercises.length) ? settings.trainingExercises : DEFAULT_SETTINGS.trainingExercises
+}
+
+// The house servicing assumptions, falling back to the shipped defaults for
+// any key that hasn't been set. Read through here rather than off settings
+// directly, so a policy added later doesn't come back undefined on a profile
+// saved before it existed.
+export function getServicingPolicy(settingsArg) {
+  const settings = settingsArg || loadSettings()
+  return { ...DEFAULT_SERVICING_POLICY, ...(settings.servicingPolicy || {}),
+    shading: { ...DEFAULT_SERVICING_POLICY.shading, ...(settings.servicingPolicy?.shading || {}) } }
 }
