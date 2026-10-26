@@ -7,7 +7,7 @@ import { findLinkedClient } from './DealPage'
 import {
   buildChecklistHtml, openInPreferredClient, escapeHtml, EMAIL_FONT_CSS,
 } from '../lib/emailUtils'
-import { normalizeScenario, findRecommendedGroup, buildComparisonTableHtml, buildRecommendationTableHtml } from '../lib/comparisonUtils'
+import { normalizeScenario, findRecommendedGroups, recommendedLenderLabel, buildComparisonTableHtml, buildRecommendationTableHtml } from '../lib/comparisonUtils'
 
 const NAVY = '#3D4F6B'
 const PINK = '#EB99C2'
@@ -56,7 +56,9 @@ export default function ComparisonEmail() {
   const strat = deal?._strategy || {}
   const scenarios = (strat.comparisonScenarios || []).map(normalizeScenario)
   const rec = strat.comparisonRecommendation || null
-  const { recommendedGroup } = findRecommendedGroup(scenarios, rec)
+  // Every table you've recommended from — one lender per property, rendered
+  // as a single structure with its own totals and weighted average rate.
+  const recommendedGroups = findRecommendedGroups(scenarios, rec).map(p => p.group)
   const showLMI = !!strat.showLMI
 
   const linkedClient = deal ? findLinkedClient(deal, clients) : null
@@ -167,7 +169,8 @@ export default function ComparisonEmail() {
     // Pre-safe HTML either way — an escaped real lender name, or an
     // unescaped placeholder <span> — so nothing downstream needs to know
     // which case it is.
-    const recLenderHtml = recommendedGroup?.lender ? escapeHtml(recommendedGroup.lender) : PLACEHOLDER('Lender Name')
+    const recLenderName = recommendedLenderLabel(recommendedGroups)
+    const recLenderHtml = recLenderName ? escapeHtml(recLenderName) : PLACEHOLDER('Lender Name')
     const sections = deal?._attachments?.sections || null
     const outstandingHtml = sections
       ? buildChecklistHtml(sections, { onlyOutstanding: true })
@@ -182,7 +185,7 @@ export default function ComparisonEmail() {
         ${headingDiv('Lender Comparison Table')}
         ${buildComparisonTableHtml(scenarios, { showLMI }) || textDiv(PLACEHOLDER('Insert Table'))}
         ${headingDiv(`My Recommendation: ${recLenderHtml}`)}
-        ${recommendedGroup ? buildRecommendationTableHtml(recommendedGroup) : textDiv(PLACEHOLDER('Insert Table'))}
+        ${recommendedGroups.length ? buildRecommendationTableHtml(recommendedGroups) : textDiv(PLACEHOLDER('Insert Table'))}
         ${textDiv(`Based on the above, I recommend we proceed with ${recLenderHtml} as the most aligned solution. This strategy has been selected because:`)}
         ${bulletDiv(PLACEHOLDER('Insert reason 1 – e.g. maximises borrowing capacity'), { placeholder: true })}
         ${bulletDiv(PLACEHOLDER('Insert reason 2 – e.g. offers multiple offset accounts / flexible redraw / fixed & variable split'), { placeholder: true })}

@@ -59,19 +59,96 @@ export function groupTotals(g) {
   return { totalBaseLoan, totalRepayment, weightedRate }
 }
 
-// Finds the recommended group across every scenario, plus the indices
-// needed to write back to it — the same lookup DealPage.jsx's Strategy tab
-// does for its "Our Recommendation" panel and the email builder both need.
-export function findRecommendedGroup(scenarios, rec) {
-  let recommendedGroup = null, recommendedSceneIdx = -1, recommendedGroupIdx = -1
-  if (rec) {
-    scenarios.forEach((sc, sceneIdx) => {
-      if (sc.id !== rec.scenarioId) return
-      const gi = sc.groups.findIndex(g => g.id === rec.groupId)
-      if (gi !== -1) { recommendedGroup = sc.groups[gi]; recommendedSceneIdx = sceneIdx; recommendedGroupIdx = gi }
+// ─── What's been recommended ─────────────────────────────────────────────────
+// A deal can span several properties, each with its own comparison table, so
+// the recommendation is a LIST of picks — one lender group per table. It used
+// to be a single { scenarioId, groupId } pointer, which meant recommending
+// Bankwest for Thornton silently un-recommended Bankwest for Campbelltown.
+// Deals saved under the old shape still read correctly: a lone object is
+// treated as a one-entry list.
+export function normalizeRecommendation(rec) {
+  if (!rec) return []
+  const list = Array.isArray(rec) ? rec : [rec]
+  return list.filter(r => r && r.scenarioId !== undefined && r.groupId !== undefined)
+}
+
+// Every recommended group, in table order, each with the scenario it came
+// from and the indices needed to write back into `scenarios`.
+export function findRecommendedGroups(scenarios, rec) {
+  const picks = normalizeRecommendation(rec)
+  const out = []
+  ;(scenarios || []).forEach((sc, sceneIdx) => {
+    picks.forEach(p => {
+      if (sc.id !== p.scenarioId) return
+      const gi = (sc.groups || []).findIndex(g => g.id === p.groupId)
+      if (gi !== -1) out.push({ group: sc.groups[gi], scenario: sc, sceneIdx, groupIdx: gi })
     })
+  })
+  return out
+}
+
+// Back-compat single-group lookup, for anything that still wants just the
+// first pick.
+export function findRecommendedGroup(scenarios, rec) {
+  const first = findRecommendedGroups(scenarios, rec)[0]
+  return first
+    ? { recommendedGroup: first.group, recommendedSceneIdx: first.sceneIdx, recommendedGroupIdx: first.groupIdx }
+    : { recommendedGroup: null, recommendedSceneIdx: -1, recommendedGroupIdx: -1 }
+}
+
+// Adds, replaces or removes a pick. One lender per table: ticking a different
+// lender in a table you've already picked from swaps that table's choice
+// rather than stacking two lenders for the same property.
+export function toggleRecommendation(rec, scenarioId, groupId) {
+  const picks = normalizeRecommendation(rec)
+  const existing = picks.find(p => p.scenarioId === scenarioId)
+  if (existing && existing.groupId === groupId) {
+    return picks.filter(p => p.scenarioId !== scenarioId)
   }
-  return { recommendedGroup, recommendedSceneIdx, recommendedGroupIdx }
+  return [...picks.filter(p => p.scenarioId !== scenarioId), { scenarioId, groupId }]
+}
+
+export function isRecommended(rec, scenarioId, groupId) {
+  return normalizeRecommendation(rec).some(p => p.scenarioId === scenarioId && p.groupId === groupId)
+}
+
+// Drops any pick pointing at a table or lender that no longer exists.
+export function pruneRecommendation(rec, scenarios) {
+  return normalizeRecommendation(rec).filter(p =>
+    (scenarios || []).some(sc => sc.id === p.scenarioId && (sc.groups || []).some(g => g.id === p.groupId))
+  )
+}
+
+// Flattens the recommended groups into the column list the summary table
+// draws — one entry per split, each carrying its own lender, because splits
+// in one recommendation can now come from different tables and lenders.
+export function recommendationColumns(groups) {
+  const cols = []
+  ;(groups || []).forEach((g, gi) => {
+    ;(g.splits || []).forEach((sp, si) => {
+      cols.push({ split: sp, group: g, groupIdx: gi, firstOfGroup: si === 0, splitCount: (g.splits || []).length })
+    })
+  })
+  return cols
+}
+
+// Totals across every recommended split, whichever table or lender it came
+// from — the weighted average rate is over the whole recommended structure.
+export function recommendationTotals(cols) {
+  const n = v => Number(v)||0
+  const totalLoan = cols.reduce((sum,c)=>sum+n(c.split.baseLoan),0)
+  const totalRepay = cols.reduce((sum,c)=>sum+rowRepayment(c.split),0)
+  const weightedRate = totalLoan ? cols.reduce((sum,c)=>sum+n(c.split.rate)*n(c.split.baseLoan),0)/totalLoan : 0
+  return { totalLoan, totalRepay, weightedRate }
+}
+
+// "Bankwest", "Bankwest and ANZ", "Bankwest, ANZ and NAB" — the same lender
+// twice reads as one name, which is the usual case across properties.
+export function recommendedLenderLabel(groups) {
+  const names = [...new Set((groups || []).map(g => (g.lender || '').trim()).filter(Boolean))]
+  if (!names.length) return ''
+  if (names.length === 1) return names[0]
+  return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
 }
 
 function esc(str) {
@@ -148,29 +225,49 @@ export function buildComparisonTableHtml(scenarios, opts = {}) {
 const REC_LABEL_COL_WIDTH = 120
 const REC_DATA_COL_WIDTH = 130
 
-export function buildRecommendationTableHtml(recommendedGroup) {
-  if (!recommendedGroup) return ''
+export function buildRecommendationTableHtml(recommended) {
+  // Accepts one group (the old shape) or a list of them.
+  const groups = (Array.isArray(recommended) ? recommended : [recommended]).filter(Boolean)
+  if (!groups.length) return ''
   const n = v => Number(v)||0
-  const splits = recommendedGroup.splits || []
-  const showTotal = splits.length > 1
-  const totalLoan = splits.reduce((sum,sp)=>sum+n(sp.baseLoan),0)
-  const totalRepay = splits.reduce((sum,sp)=>sum+rowRepayment(sp),0)
-  const weightedRate = totalLoan ? splits.reduce((sum,sp)=>sum+n(sp.rate)*n(sp.baseLoan),0)/totalLoan : 0
+  const cols = recommendationColumns(groups)
+  if (!cols.length) return ''
+  const showTotal = cols.length > 1
+  const { totalLoan, totalRepay, weightedRate } = recommendationTotals(cols)
   const LABEL_TD = `padding:6px 8px;${EMAIL_TABLE_FONT}font-weight:700;text-transform:uppercase;font-size:9pt;color:#7A8090;white-space:nowrap;border-bottom:0.5px solid #e2e8f0`
   const CELL = `padding:6px 8px;${EMAIL_TABLE_FONT}color:#1a1a1a;border-bottom:0.5px solid #e2e8f0`
   const TOTAL_CELL = `${CELL}font-weight:700;background:#f8fafc`
-  const colgroup = `<colgroup><col style="width:${REC_LABEL_COL_WIDTH}px" />${splits.map(() => `<col style="width:${REC_DATA_COL_WIDTH}px" />`).join('')}${showTotal ? `<col style="width:${REC_DATA_COL_WIDTH}px" />` : ''}</colgroup>`
-  const row = (label, cellsFn, totalVal) => `<tr><td style="${LABEL_TD}">${label}</td>${splits.map((sp,si)=>`<td style="${CELL}">${cellsFn(sp,si)}</td>`).join('')}${showTotal ? `<td style="${TOTAL_CELL}">${totalVal ?? ''}</td>` : ''}</tr>`
+  const colgroup = `<colgroup><col style="width:${REC_LABEL_COL_WIDTH}px" />${cols.map(() => `<col style="width:${REC_DATA_COL_WIDTH}px" />`).join('')}${showTotal ? `<col style="width:${REC_DATA_COL_WIDTH}px" />` : ''}</colgroup>`
+  const row = (label, cellsFn, totalVal) => `<tr><td style="${LABEL_TD}">${label}</td>${cols.map((c,ci)=>`<td style="${CELL}">${cellsFn(c,ci)}</td>`).join('')}${showTotal ? `<td style="${TOTAL_CELL}">${totalVal ?? ''}</td>` : ''}</tr>`
+
+  // Total Loan Term belongs to the lender group, not the split. With one
+  // group it stays a single spanning cell, as it always was; across groups
+  // each one's term sits over its own splits.
+  const terms = groups.map(g => g.totalTerm).filter(Boolean)
+  let totalTermRow = ''
+  if (terms.length) {
+    if (groups.length === 1) {
+      totalTermRow = `<tr><td style="${LABEL_TD}">Total Loan Term</td><td colspan="${cols.length + (showTotal?1:0)}" style="${CELL}font-weight:700">${esc(groups[0].totalTerm)} Years</td></tr>`
+    } else {
+      const cells = groups.map(g => {
+        const span = (g.splits || []).length || 1
+        return `<td colspan="${span}" style="${CELL}font-weight:700">${g.totalTerm ? `${esc(g.totalTerm)} Years` : '—'}</td>`
+      }).join('')
+      totalTermRow = `<tr><td style="${LABEL_TD}">Total Loan Term</td>${cells}${showTotal ? `<td style="${TOTAL_CELL}"></td>` : ''}</tr>`
+    }
+  }
+
   const rows = [
-    `<tr><td style="${LABEL_TD}">Split</td>${splits.map((sp,si)=>`<td style="${CELL}font-weight:700;text-align:center">${si+1}</td>`).join('')}${showTotal ? `<td style="${TOTAL_CELL}text-align:center">TOTAL</td>` : ''}</tr>`,
-    row('Bank', () => esc(recommendedGroup.lender || '—')),
-    row('Property', sp => esc(sp.property || 'TBC')),
-    row('Purpose', sp => esc(sp.purpose || '—')),
-    row('Loan Amount', sp => fmtM(n(sp.baseLoan)), fmtM(totalLoan)),
-    row('Term', sp => sp.term ? `${sp.term} Years (${sp.type})` : '—'),
-    ...(recommendedGroup.totalTerm ? [`<tr><td style="${LABEL_TD}">Total Loan Term</td><td colspan="${splits.length + (showTotal?1:0)}" style="${CELL}font-weight:700">${recommendedGroup.totalTerm} Years</td></tr>`] : []),
-    row('Rate', sp => sp.rate ? `${Number(sp.rate).toFixed(2)}%` : '—', weightedRate ? `${weightedRate.toFixed(2)}% W.avg` : '—'),
-    row('Repayment', sp => { const r = rowRepayment(sp); return r ? `$${Math.round(r).toLocaleString()}` : '—' }, totalRepay ? `$${Math.round(totalRepay).toLocaleString()}` : '—'),
+    `<tr><td style="${LABEL_TD}">Split</td>${cols.map((c,ci)=>`<td style="${CELL}font-weight:700;text-align:center">${ci+1}</td>`).join('')}${showTotal ? `<td style="${TOTAL_CELL}text-align:center">TOTAL</td>` : ''}</tr>`,
+    row('Bank', c => esc(c.group.lender || '—')),
+    row('Property', c => esc(c.split.property || 'TBC')),
+    row('Purpose', c => esc(c.split.purpose || '—')),
+    row('Loan Amount', c => fmtM(n(c.split.baseLoan)), fmtM(totalLoan)),
+    row('Term', c => c.split.term ? `${esc(c.split.term)} Years (${esc(c.split.type)})` : '—'),
+    ...(totalTermRow ? [totalTermRow] : []),
+    row('Rate', c => c.split.rate ? `${Number(c.split.rate).toFixed(2)}%` : '—', weightedRate ? `${weightedRate.toFixed(2)}% W.avg` : '—'),
+    row('Repayment', c => { const r = rowRepayment(c.split); return r ? `$${Math.round(r).toLocaleString()}` : '—' }, totalRepay ? `$${Math.round(totalRepay).toLocaleString()}` : '—'),
   ]
   return `<table style="border-collapse:collapse;table-layout:fixed;margin:0 0 16px">${colgroup}${rows.join('')}</table>`
 }
+
