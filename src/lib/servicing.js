@@ -207,6 +207,23 @@ export function splitByOwner(row, entityNames, splitNames) {
   if (!entityNames.length) return out
   const fallback = (splitNames && splitNames.length) ? splitNames : entityNames
 
+  // owners: [{ name, pct }] — the current shape. A property held 70/30, or a
+  // debt in one name inside a couple, can't be said any other way. Shares are
+  // normalised so a row that adds to 90% or 110% still allocates the whole
+  // amount rather than quietly losing or inventing part of it.
+  if (Array.isArray(row.owners) && row.owners.length) {
+    const valid = row.owners.filter(o => o && entityNames.includes(o.name))
+    const totalPct = valid.reduce((sum, o) => sum + (Number(o.pct) || 0), 0)
+    if (valid.length && totalPct > 0) {
+      valid.forEach(o => { out[o.name] += amount * ((Number(o.pct) || 0) / totalPct) })
+      return out
+    }
+    if (valid.length) {
+      valid.forEach(o => { out[o.name] += amount / valid.length })
+      return out
+    }
+  }
+
   const explicit = row.ownerEntity && entityNames.includes(row.ownerEntity)
   if (explicit) {
     const pct = row.ownerPct === '' || row.ownerPct === undefined ? 100 : n(row.ownerPct)
@@ -248,26 +265,74 @@ export function hemLookup(policy, { composition, dependants, grossIncome }) {
   return matches.reduce((best, r) => (n(r.annual) > n(best.annual) ? r : best))
 }
 
-export function assessedLivingExpenses(policy, { declaredAnnual, composition, dependants, grossIncome }) {
-  const declared = n(declaredAnnual)
+// The HEM benchmark covers a specific basket — groceries, transport, utilities
+// and the like. It does NOT cover private school fees, private health,
+// investment property costs, child support or strata. Benchmarking the whole
+// declared figure against HEM is the common mistake: it lets a big non-HEM
+// cost like school fees hide inside the benchmark and vanish from the
+// assessment. So the benchmark is applied to the HEM basket only, and the
+// non-HEM expenses are added on top of whichever figure wins.
+export function assessedLivingExpenses(policy, { declaredAnnual, nonHemAnnual, rentAnnual, composition, dependants, grossIncome }) {
+  const hemBasket = n(declaredAnnual)
+  const nonHem = n(nonHemAnnual)
+  const rent = n(rentAnnual)
   const manualFloor = n(policy.manualExpenseFloor)
   const hemRow = policy.useHem ? hemLookup(policy, { composition, dependants, grossIncome }) : null
   const hem = hemRow ? n(hemRow.annual) : 0
 
   const candidates = [
-    { basis: 'Declared', amount: declared },
+    { basis: 'Declared', amount: hemBasket },
     ...(hem ? [{ basis: 'HEM benchmark', amount: hem }] : []),
     ...(manualFloor ? [{ basis: 'Manual floor', amount: manualFloor }] : []),
   ]
   const winner = candidates.reduce((a, b) => (b.amount > a.amount ? b : a))
+  const basketAmount = winner.amount
   return {
-    amount: winner.amount,
+    amount: basketAmount + nonHem + rent,
     basis: winner.basis,
-    declared,
+    basketBasis: winner.basis,
+    basketAmount,
+    declared: hemBasket,
+    nonHem,
+    rent,
     hem,
     hemAvailable: !!(policy.hem || []).length,
     usedHem: winner.basis === 'HEM benchmark',
   }
+}
+
+// Which living-expense lines the HEM benchmark actually covers. Anything not
+// on this list is additional and is never absorbed into the benchmark.
+export const HEM_EXPENSE_TYPES = [
+  'Primary Residence',
+  'Phone, Internet & Media',
+  'Food & Groceries',
+  'Recreation & Holidays',
+  'Clothing & Personal Care',
+  'Medical & Health',
+  'Transport',
+  'Public Education',
+  'Higher Education & Vocational Training',
+  'Childcare',
+  'General Insurance',
+  'Other (HEM comparable)',
+]
+export const NON_HEM_EXPENSE_TYPES = [
+  'Property Tax',
+  'Strata & Body Corporate Fees',
+  'Private Non-Government School Fees',
+  'Child Support / Maintenance Payments',
+  'Private Health Insurance',
+  'Life, Accident & Illness Insurance',
+  'Secondary Residence Costs',
+  'Investment Property Expense',
+  'Other (non-HEM comparable)',
+]
+export const RENT_EXPENSE_TYPES = ['Rent / Board']
+export function isHemExpense(type) {
+  if (!type) return true
+  if (RENT_EXPENSE_TYPES.includes(type)) return false
+  return !NON_HEM_EXPENSE_TYPES.includes(type)
 }
 
 // ─── Tenants and WALE ────────────────────────────────────────────────────────
@@ -476,18 +541,27 @@ export function buildHouseholds(entities) {
 export function householdExpenses(entities, registers, entityNames, individualNames, policy, grossByEntity) {
   const out = {}
   buildHouseholds(entities).forEach(h => {
-    const declared = (registers.livingExpenses || []).reduce((sum, r) => {
+    const basket = { hem: 0, nonHem: 0, rent: 0 }
+    ;(registers.livingExpenses || []).forEach(r => {
       const split = splitByOwner(r, entityNames, individualNames)
-      return sum + h.members.reduce((s2, m) => s2 + (split[m] || 0), 0)
-    }, 0)
+      const share = h.members.reduce((s2, m) => s2 + (split[m] || 0), 0)
+      if (RENT_EXPENSE_TYPES.includes(r.type)) basket.rent += share
+      else if (isHemExpense(r.type)) basket.hem += share
+      else basket.nonHem += share
+    })
     const grossIncome = h.members.reduce((s, m) => s + n(grossByEntity[m]), 0)
     const assessed = assessedLivingExpenses(policy, {
-      declaredAnnual: declared, composition: h.composition, dependants: h.dependants, grossIncome,
+      declaredAnnual: basket.hem, nonHemAnnual: basket.nonHem, rentAnnual: basket.rent,
+      composition: h.composition, dependants: h.dependants, grossIncome,
     })
     h.members.forEach(m => {
       out[m] = { ...assessed, household: h.composition, householdMembers: h.members, share: 1 / h.members.length,
-        amount: assessed.amount / h.members.length, declared: assessed.declared / h.members.length,
-        householdAmount: assessed.amount, householdDeclared: assessed.declared }
+        amount: assessed.amount / h.members.length,
+        declared: assessed.declared / h.members.length,
+        nonHem: assessed.nonHem / h.members.length,
+        rent: assessed.rent / h.members.length,
+        householdAmount: assessed.amount, householdDeclared: assessed.declared,
+        householdNonHem: assessed.nonHem, householdRent: assessed.rent, householdBasket: assessed.basketAmount }
     })
   })
   return out

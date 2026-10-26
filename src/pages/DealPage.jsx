@@ -11,6 +11,9 @@ import { calcUpfront, getUpfrontRate, dealUpfrontCommission, dealUpfrontRateEffe
 import { mapRradarContactToDealContact } from '../lib/data'
 import { downloadFileNotePdf, downloadFileNotesPdf } from '../lib/fileNotePdf'
 import ServicingCalculator from '../components/ServicingCalculator'
+import OwnerSplit, { ownersOf } from '../components/OwnerSplit'
+import BusinessFinancials from '../components/BusinessFinancials'
+import { HEM_EXPENSE_TYPES, NON_HEM_EXPENSE_TYPES, RENT_EXPENSE_TYPES, isHemExpense } from '../lib/servicing'
 import { assessServicing, resolvePolicy } from '../lib/servicing'
 import { getServicingPolicy } from '../lib/settings'
 import { newSplit, newGroup, newScenario, normalizeScenario, rowRepayment, groupTotals, findRecommendedGroups, toggleRecommendation, isRecommended, pruneRecommendation, recommendationColumns, recommendationTotals, recommendedLenderLabel } from '../lib/comparisonUtils'
@@ -346,15 +349,23 @@ const FREQUENCIES = ['Weekly','Fortnightly','Monthly','Quarterly','Annually']
 const FREQ_TO_MONTHLY = { Weekly: 52/12, Fortnightly: 26/12, Monthly: 1, Quarterly: 1/3, Annually: 1/12 }
 function toMonthly(amount, freq) { return (Number(amount)||0) * (FREQ_TO_MONTHLY[freq] || 1) }
 
-const LIVING_EXPENSE_TYPES = ['Clothing & Personal Care','General Insurance','Groceries','Investment Property Costs','Medical & Health','Primary Residence Costs','Recreation & Entertainment','Telephone, Internet, Pay TV & Streaming','Transport','Childcare','Education','Other']
+// Living expenses are split the way a lender reads them: the HEM-comparable
+// basket (which the benchmark covers) and everything additional (which it
+// doesn't, and which is added on top). Both lists live in lib/servicing.js.
+const LIVING_EXPENSE_TYPES = [...HEM_EXPENSE_TYPES, ...NON_HEM_EXPENSE_TYPES, ...RENT_EXPENSE_TYPES]
 const REAL_ESTATE_PURPOSES = ['Owner Occupied','Investment']
 const OTHER_ASSET_TYPES = ['Boat','Home Contents','Motor Vehicle','Savings Account','Superannuation','Shares','Other']
 const ASSET_BASIS = ['Applicant Estimate','Bank Valuation','Contract Price']
-const LIABILITY_TYPES = ['HECS','Mortgage Loan','Credit Card','Personal Loan','Car Loan','Store Card','Other']
-const EMPLOYMENT_TYPES = ['Primary Employment','Secondary Employment']
+const LIABILITY_TYPES = ['HECS','Mortgage Loan','Commercial Loan','Credit Card','Overdraft','Personal Loan','Car Loan','Asset Finance','Store Card','Other']
+const REPAYMENT_TYPES = ['P&I','Interest Only']
+const EMPLOYMENT_TYPES = ['Primary Employment','Secondary Employment','Previous Employment']
 const EMPLOYMENT_BASIS = ['Full Time','Part Time','Casual']
 const EMPLOYMENT_INCOME_TYPES = ['PAYG','Self-Employed']
-const INCOME_LINE_TYPES = ['Salary','Overtime','Allowance','Bonus','Commission','Other']
+// Matches the shading list in Settings → Rradar → Servicing, so every income
+// line has a shading percentage behind it rather than defaulting to 100%.
+const INCOME_LINE_TYPES = ['Salary','Allowance','Overtime','Bonus','Commission','Dividends','Other']
+const BUSINESS_STRUCTURES = ['Company','Trust','Sole Trader','Partnership']
+const ELIMINATION_TYPES = ["Director's wages / salary","Rent","Management fee","Trust distribution","Dividend","Inter-entity loan repayment","Other"]
 const OTHER_INCOME_TYPES = ['Rental Income','Centrelink / Family Tax Benefit','Dividends','Trust Distribution','Other']
 
 // Keyed by Category (not Transaction Type) — Cameron confirmed Category is
@@ -1134,6 +1145,24 @@ function calcStampDuty(state, price) {
     }
     default: return 0
   }
+}
+
+// How long a role has run — to today if it's the current one, otherwise to
+// its end date. Used for the three-year history check.
+function employmentYears(rec) {
+  if (!rec?.startDate) return 0
+  const start = new Date(rec.startDate)
+  if (isNaN(start)) return 0
+  const isCurrent = rec.current !== false && rec.type !== 'Previous Employment'
+  const end = isCurrent ? new Date() : (rec.endDate ? new Date(rec.endDate) : new Date())
+  if (isNaN(end)) return 0
+  return Math.max(0, (end - start) / (365.25 * 24 * 3600 * 1000))
+}
+function employmentLengthLabel(rec) {
+  const y = employmentYears(rec)
+  if (!y) return rec?.startDate ? '' : 'No start date'
+  const months = Math.round(y * 12)
+  return months < 24 ? `${months} months` : `${y.toFixed(1)} years`
 }
 
 const STRATEGY_COST_FIELDS = {
@@ -2031,9 +2060,24 @@ function StructureTab({ d, editing, set, updateDeal }) {
     totalCosts: fundingCalc.totalCosts,
     loanAmount: fundingCalc.loanFromLender,
     lvr: fundingCalc.lvrBase ? (fundingCalc.loanFromLender / fundingCalc.lvrBase) * 100 : null,
+    // The contributions half of the funding table, so Servicing shows the
+    // whole picture rather than just the costs side.
+    equity: fundingStrat.equity,
+    savings: fundingStrat.savings,
+    contributions: fundingStrat.contributions || [],
+    saleRows: fundingCalc.saleRows || [],
+    includeSaleProceeds: !!fundingStrat.includeSaleProceeds,
+    totalFundsAvailable: fundingCalc.totalFundsAvailable,
+    surplusDeficit: fundingCalc.surplusDeficit,
+    title: `${fundingDealType} Funding Table`,
+    state: fundingStrat.state || 'NSW',
+    stampDutyEstimate: fundingCalc.stampDutyEstimate,
+    lmiIncluded: fundingCalc.lmiIncluded,
+    lmi: fundingCalc.lmi,
   }
   const fundingLabels = (fundingCalc.fields || []).map(([k, label]) =>
     [k, k === 'stampDuty' ? `${label} — ${fundingStrat.state || 'NSW'}` : label])
+  const setContributions = (next) => setFunding('contributions', next)
   const setFunding = (k, v) => updateDeal
     ? updateDeal({ _strategy: { ...fundingStrat, [k]: v } })
     : set('_strategy', { ...fundingStrat, [k]: v })
@@ -2044,7 +2088,30 @@ function StructureTab({ d, editing, set, updateDeal }) {
 
   const securityTypeOptions = CATEGORY_SECURITY_TYPES[d.Categories] || SECURITY_TYPES
   const securities = struct.securities || []
-  const addSecurity = () => s('securities', [...securities, { type:securityTypeOptions[0], description:'', value:'', lendingValue:'', owner:'', band:'FS' }])
+  const addSecurity = () => s('securities', [...securities, { type:securityTypeOptions[0], description:'', value:'', maxLvPct:'', lendingValue:'', owners:[], band:'FS' }])
+
+  // Value, max LV% and Lending Value are three views of the same thing, so
+  // any two fill in the third — type the percentage a lender will go to and
+  // the lending value appears, or type the lending value you've been given
+  // and the percentage it implies appears.
+  const setSecurityValue = (i, v) => {
+    const r = securities[i], pct = Number(r.maxLvPct)
+    const patch = { value: v }
+    if (pct > 0 && Number(v) > 0) patch.lendingValue = Math.round(Number(v) * pct) / 100
+    s('securities', securities.map((row, idx) => idx === i ? { ...row, ...patch } : row))
+  }
+  const setSecurityLvPct = (i, v) => {
+    const r = securities[i], val = Number(r.value)
+    const patch = { maxLvPct: v }
+    if (val > 0 && v !== '' && v !== null) patch.lendingValue = Math.round(val * Number(v)) / 100
+    s('securities', securities.map((row, idx) => idx === i ? { ...row, ...patch } : row))
+  }
+  const setSecurityLendingValue = (i, v) => {
+    const r = securities[i], val = Number(r.value)
+    const patch = { lendingValue: v }
+    if (val > 0 && v !== '' && v !== null) patch.maxLvPct = Math.round((Number(v) / val) * 10000) / 100
+    s('securities', securities.map((row, idx) => idx === i ? { ...row, ...patch } : row))
+  }
   const updSecurity = (i,k,v) => s('securities', securities.map((r,idx)=>idx===i?{...r,[k]:v}:r))
   const rmSecurity = (i) => s('securities', securities.filter((_,idx)=>idx!==i))
 
@@ -2059,53 +2126,81 @@ function StructureTab({ d, editing, set, updateDeal }) {
   const OWNERSHIP_OPTIONS = ['Shared Equally', ...allEntities.map(e => `100% ${e.name}`)]
 
   const livingExpenses = struct.livingExpenses || []
-  const addLivingExpense = () => s('livingExpenses', [...livingExpenses, { type:'', ownership:'Shared Equally', frequency:'Monthly', amount:'' }])
+  const addLivingExpense = (type) => s('livingExpenses', [...livingExpenses, { type: type || '', owners: [], frequency:'Monthly', amount:'' }])
   const updLivingExpense = (i,k,v) => s('livingExpenses', livingExpenses.map((r,idx)=>idx===i?{...r,[k]:v}:r))
   const rmLivingExpense = (i) => s('livingExpenses', livingExpenses.filter((_,idx)=>idx!==i))
 
   const realEstateAssets = struct.realEstateAssets || []
-  const addRealEstateAsset = () => s('realEstateAssets', [...realEstateAssets, { address:'', purpose:'Owner Occupied', isSecurity:false, isPurchasing:false, value:'', loanBalance:'' }])
+  const addRealEstateAsset = () => s('realEstateAssets', [...realEstateAssets, { address:'', purpose:'Owner Occupied', owners:[], isSecurity:false, isPurchasing:false, value:'', loanBalance:'' }])
   const updRealEstateAsset = (i,k,v) => s('realEstateAssets', realEstateAssets.map((r,idx)=>idx===i?{...r,[k]:v}:r))
   const rmRealEstateAsset = (i) => s('realEstateAssets', realEstateAssets.filter((_,idx)=>idx!==i))
 
   const otherAssets = struct.otherAssets || []
-  const addOtherAsset = () => s('otherAssets', [...otherAssets, { type:'', ownership:'Shared Equally', details:'', value:'', basis:'Applicant Estimate' }])
+  const addOtherAsset = () => s('otherAssets', [...otherAssets, { type:'', owners:[], details:'', value:'', basis:'Applicant Estimate' }])
   const updOtherAsset = (i,k,v) => s('otherAssets', otherAssets.map((r,idx)=>idx===i?{...r,[k]:v}:r))
   const rmOtherAsset = (i) => s('otherAssets', otherAssets.filter((_,idx)=>idx!==i))
 
   const liabilitiesReg = struct.liabilitiesReg || []
-  const addLiabilityReg = () => s('liabilitiesReg', [...liabilitiesReg, { type:'Mortgage Loan', institution:'', accountName:'', security:'', balance:'', limit:'', repayment:'', frequency:'Monthly' }])
+  const addLiabilityReg = () => s('liabilitiesReg', [...liabilitiesReg, { type:'Mortgage Loan', institution:'', accountName:'', security:'', owners:[], balance:'', limit:'', rate:'', remainingTermYears:'', repaymentType:'P&I', ioExpiry:'', investment:false, repayment:'', frequency:'Monthly' }])
   const updLiabilityReg = (i,k,v) => s('liabilitiesReg', liabilitiesReg.map((r,idx)=>idx===i?{...r,[k]:v}:r))
   const rmLiabilityReg = (i) => s('liabilitiesReg', liabilitiesReg.filter((_,idx)=>idx!==i))
 
   const employment = struct.employment || {}
   const empFor = (name) => employment[name] || []
   const setEmpFor = (name, arr) => s('employment', { ...employment, [name]: arr })
-  const addEmployment = (name) => setEmpFor(name, [...empFor(name), { type:'Primary Employment', basis:'Full Time', incomeType:'PAYG', employer:'', abn:'', position:'', payType:'Private', startDate:'', onProbation:false, incomeLines:[] }])
+  const addEmployment = (name) => setEmpFor(name, [...empFor(name), { type:'Primary Employment', basis:'Full Time', incomeType:'PAYG', employer:'', abn:'', position:'', payType:'Private', startDate:'', endDate:'', current:true, onProbation:false, incomeLines:[] }])
   const updEmployment = (name,i,k,v) => setEmpFor(name, empFor(name).map((r,idx)=>idx===i?{...r,[k]:v}:r))
   const rmEmployment = (name,i) => setEmpFor(name, empFor(name).filter((_,idx)=>idx!==i))
   const addIncomeLine = (name,i) => updEmployment(name,i,'incomeLines',[...(empFor(name)[i]?.incomeLines||[]), { type:'Salary', amount:'', frequency:'Annually' }])
+  const dateInp = { border:'1px solid #e8eaed', borderRadius:5, padding:'3px 6px', fontSize:11, fontFamily:'inherit' }
   const updIncomeLine = (name,i,li,k,v) => updEmployment(name,i,'incomeLines', empFor(name)[i].incomeLines.map((l,idx)=>idx===li?{...l,[k]:v}:l))
   const rmIncomeLine = (name,i,li) => updEmployment(name,i,'incomeLines', empFor(name)[i].incomeLines.filter((_,idx)=>idx!==li))
 
   const otherIncome = struct.otherIncome || []
-  const addOtherIncome = () => s('otherIncome', [...otherIncome, { type:'', ownership:'Shared Equally', frequency:'Monthly', amount:'' }])
+  const addOtherIncome = () => s('otherIncome', [...otherIncome, { type:'', owners:[], frequency:'Monthly', amount:'' }])
   const updOtherIncome = (i,k,v) => s('otherIncome', otherIncome.map((r,idx)=>idx===i?{...r,[k]:v}:r))
   const rmOtherIncome = (i) => s('otherIncome', otherIncome.filter((_,idx)=>idx!==i))
+
+  const individualNames = individuals.map(e => e.name)
+  const entityList = allEntities.map(c => ({ name: c.name, type: c.type }))
+  // One owner control for every register — see components/OwnerSplit.jsx.
+  // The whole patch goes in ONE update: applying {owners, ownership} as two
+  // sequential field writes made the second spread the pre-first state and
+  // silently discard the owners that had just been set.
+  const updRowPatch = (key, list, i, patch) =>
+    s(key, list.map((row, idx) => idx === i ? { ...row, ...patch } : row))
+  // A plain render function, NOT an inline component: declaring a component
+  // inside render gives it a new identity every pass, so React unmounts and
+  // remounts it on each change — which closed the picker the moment you set
+  // the first owner.
+  const Owner = (rows, i, listKey) => (
+    <OwnerSplit row={rows[i]} entities={entityList} individualNames={individualNames}
+      onChange={patch => updRowPatch(listKey, rows, i, patch)} />
+  )
+
+  // Everything a liability could be secured against, so the security is
+  // picked from what's already on the file rather than retyped as free text.
+  const securityOptions = [
+    ...(struct.realEstateAssets || []).map(r => r.address).filter(Boolean),
+    ...(struct.otherAssets || []).map(r => [r.type, r.details].filter(Boolean).join(' — ')).filter(Boolean),
+    ...(struct.securities || []).map(r => r.description || r.type).filter(Boolean),
+  ].filter((v, i, a) => v && a.indexOf(v) === i)
 
   // Splits a register's monthly-equivalent total across named individuals
   // based on each row's Ownership field ("Shared Equally" or "100% Name").
   function perApplicantTotals(rows) {
     const totals = {}
-    individuals.forEach(e => { totals[e.name] = 0 })
+    allEntities.forEach(e => { totals[e.name] = 0 })
+    const entityNames = allEntities.map(e => e.name)
     rows.forEach(r => {
       const monthly = toMonthly(r.amount, r.frequency)
-      const named = individuals.find(e => r.ownership === `100% ${e.name}`)
-      if (named) {
-        totals[named.name] = (totals[named.name]||0) + monthly
-      } else if (individuals.length) {
-        individuals.forEach(e => { totals[e.name] = (totals[e.name]||0) + monthly/individuals.length })
-      }
+      const owners = ownersOf(r, entityNames, individualNames)
+      const totalPct = owners.reduce((sum, o) => sum + (Number(o.pct) || 0), 0)
+      if (!owners.length) return
+      owners.forEach(o => {
+        const share = totalPct > 0 ? (Number(o.pct) || 0) / totalPct : 1 / owners.length
+        totals[o.name] = (totals[o.name] || 0) + monthly * share
+      })
     })
     return totals
   }
@@ -2131,12 +2226,13 @@ function StructureTab({ d, editing, set, updateDeal }) {
         {sub === 'security' && (
           <TabCard title="Securities Held" right={<button onClick={addSecurity} style={addBtnStyle}>+ Add security</button>}>
             <div style={{ fontSize:11, color:'#9ca3af', marginBottom:10 }}>Security types shown are the ones typically used for a <strong style={{color:'#2A3545'}}>{d.Categories || 'this'}</strong> deal — change Category on Loan Details if this list isn't right.</div>
-            <MiniTable columns={['Type','Description','Value','Lending Value','Owner','Band','']} rows={securities.map((r,i) => [
+            <MiniTable columns={['Type','Description','Owners','Value','Max LV %','Lending Value','Band','']} rows={securities.map((r,i) => [
               <LiveSelect small value={r.type} onCommit={v=>updSecurity(i,'type',v)} options={securityTypeOptions} allowBlank={false} />,
               <LiveText small value={r.description} onCommit={v=>updSecurity(i,'description',v)} placeholder="e.g. address, or asset description" />,
-              <LiveNumber small value={r.value} onCommit={v=>updSecurity(i,'value',v)} />,
-              <LiveNumber small value={r.lendingValue} onCommit={v=>updSecurity(i,'lendingValue',v)} />,
-              <LiveText small value={r.owner} onCommit={v=>updSecurity(i,'owner',v)} />,
+              Owner(securities, i, "securities"),
+              <LiveNumber small value={r.value} onCommit={v=>setSecurityValue(i, v)} />,
+              <LiveNumber small value={r.maxLvPct} onCommit={v=>setSecurityLvPct(i, v)} />,
+              <LiveNumber small value={r.lendingValue} onCommit={v=>setSecurityLendingValue(i, v)} />,
               <LiveSelect small value={r.band} onCommit={v=>updSecurity(i,'band',v)} options={SEC_BANDS.map(b=>b.code)} allowBlank={false} />,
               <button onClick={()=>rmSecurity(i)} style={rmBtnStyle}>✕</button>,
             ])} empty="No security added yet"/>
@@ -2144,27 +2240,12 @@ function StructureTab({ d, editing, set, updateDeal }) {
         )}
 
       {sub === 'financials' && (
-        <TabCard title="Trading Analysis">
-          <div style={{ overflowX:'auto' }}>
-            <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
-              <thead><tr>
-                <th style={{textAlign:'left',padding:'6px 8px',background:'#3D4F6B',color:'#fff',fontSize:10}}>Metric</th>
-                {years.map(y=><th key={y} style={{textAlign:'left',padding:'6px 8px',background:'#3D4F6B',color:'#fff',fontSize:10}}>{y}</th>)}
-              </tr></thead>
-              <tbody>
-                {[['sales','Sales / Revenue'],['grossMargin','Gross Margin (%)'],['ebitda','EBITDA'],['npbt','NPBT']].map(([k,label]) => (
-                  <tr key={k}>
-                    <td style={{padding:'6px 8px',borderBottom:'0.5px solid #f0f0f0',color:'#7A8090'}}>{label}</td>
-                    {years.map(y => (
-                      <td key={y} style={{padding:'4px 6px',borderBottom:'0.5px solid #f0f0f0'}}>
-                        <input style={rowInp} value={fin[y]?.[k]||''} onChange={e=>setFin(y,k,e.target.value)}/>
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        <TabCard title="Business Financials">
+          <div style={{ fontSize:11, color:'#9ca3af', marginBottom:12, lineHeight:1.5 }}>
+            One set of financials per trading entity, with add-backs and ownership. The <strong style={{color:'#2A3545'}}>Eliminations</strong> tab
+            strips out money that moves between entities on this deal so the consolidated figure isn't counting the same dollar twice.
           </div>
+          <BusinessFinancials contacts={d.Contacts || []} structure={struct} onChange={sLive} />
         </TabCard>
       )}
 
@@ -2178,6 +2259,7 @@ function StructureTab({ d, editing, set, updateDeal }) {
             funding={fundingFigures}
             fundingLabels={fundingLabels}
             onFundingChange={setFunding}
+            onContributionsChange={setContributions}
           />
           <TabCard title="Home Loan Servicing">
             <div style={{ fontSize:12, color:'#7A8090', marginBottom:10 }}>For a straight residential/PAYG assessment, link to a Quickli assessment rather than duplicating buffer logic here.</div>
@@ -2189,22 +2271,63 @@ function StructureTab({ d, editing, set, updateDeal }) {
 
       {sub === 'livingExpenses' && (() => {
           const { grand, perApp } = registerTotalRow(livingExpenses)
+          const group = kind => livingExpenses
+            .map((r, i) => ({ r, i }))
+            .filter(({ r }) => kind === 'rent' ? RENT_EXPENSE_TYPES.includes(r.type)
+              : kind === 'hem' ? (!RENT_EXPENSE_TYPES.includes(r.type) && isHemExpense(r.type))
+              : (!RENT_EXPENSE_TYPES.includes(r.type) && !isHemExpense(r.type)))
+          const subtotal = list => list.reduce((sum, { r }) => sum + toMonthly(r.amount, r.frequency), 0)
+          const hemRows = group('hem'), nonHemRows = group('nonHem'), rentRows = group('rent')
+
+          const table = (list, types) => (
+            <MiniTable columns={['Type','Owners','Frequency','Amount','']} rows={list.map(({ r, i }) => [
+              <LiveSelect small value={r.type} onCommit={v=>updLivingExpense(i,'type',v)} options={types} />,
+              Owner(livingExpenses, i, "livingExpenses"),
+              <LiveSelect small value={r.frequency} onCommit={v=>updLivingExpense(i,'frequency',v)} options={FREQUENCIES} allowBlank={false} />,
+              <LiveNumber small value={r.amount} onCommit={v=>updLivingExpense(i,'amount',v)} />,
+              <button onClick={()=>rmLivingExpense(i)} style={rmBtnStyle}>✕</button>,
+            ])} empty="Nothing here yet"/>
+          )
+          const subRow = (label, amount, tone) => (
+            <div style={{ display:'flex', justifyContent:'space-between', padding:'7px 2px', borderTop:'1px solid #e8eaed', marginTop:8, fontSize:12 }}>
+              <span style={{ color:'#7A8090', fontWeight:600 }}>{label}</span>
+              <strong style={{ color: tone || '#2A3545' }}>${amount.toLocaleString(undefined,{maximumFractionDigits:2})} / month</strong>
+            </div>
+          )
+
           return (
-            <TabCard title="Living Expenses" right={<button onClick={addLivingExpense} style={addBtnStyle}>+ Add expense</button>}>
-              <MiniTable columns={['Type','Ownership','Frequency','Amount','']} rows={livingExpenses.map((r,i) => [
-                <LiveSelect small value={r.type} onCommit={v=>updLivingExpense(i,'type',v)} options={LIVING_EXPENSE_TYPES} />,
-                <LiveSelect small value={r.ownership} onCommit={v=>updLivingExpense(i,'ownership',v)} options={OWNERSHIP_OPTIONS} allowBlank={false} />,
-                <LiveSelect small value={r.frequency} onCommit={v=>updLivingExpense(i,'frequency',v)} options={FREQUENCIES} allowBlank={false} />,
-                <LiveNumber small value={r.amount} onCommit={v=>updLivingExpense(i,'amount',v)} />,
-                <button onClick={()=>rmLivingExpense(i)} style={rmBtnStyle}>✕</button>,
-              ])} empty="No living expenses added yet"/>
-              {livingExpenses.length > 0 && (
-                <div style={{ marginTop:12, paddingTop:10, borderTop:'1px solid #e8eaed' }}>
-                  {individuals.map(e => <div key={e.name} style={{fontSize:11.5,color:'#7A8090',textAlign:'right'}}>{e.name}: <strong style={{color:'#2A3545'}}>${(perApp[e.name]||0).toLocaleString(undefined,{maximumFractionDigits:2})}</strong> / month</div>)}
-                  <ComputedRow label="Total (All Applicants, monthly)" value={`$${grand.toLocaleString(undefined,{maximumFractionDigits:2})}`} tone="navy" big />
+            <>
+              <TabCard title="Living Expenses — HEM comparable" right={<button onClick={()=>addLivingExpense(HEM_EXPENSE_TYPES[0])} style={addBtnStyle}>+ Add expense</button>}>
+                <div style={{ fontSize:11, color:'#9ca3af', marginBottom:10, lineHeight:1.5 }}>
+                  The basket the HEM benchmark covers. These are assessed at the <strong style={{color:'#2A3545'}}>greater of what's declared here and the benchmark</strong> — so understating them doesn't help, the benchmark takes over.
                 </div>
+                {table(hemRows, HEM_EXPENSE_TYPES)}
+                {hemRows.length > 0 && subRow('HEM-comparable subtotal', subtotal(hemRows))}
+              </TabCard>
+
+              <TabCard title="Additional Expenses — not HEM comparable" right={<button onClick={()=>addLivingExpense(NON_HEM_EXPENSE_TYPES[0])} style={addBtnStyle}>+ Add expense</button>}>
+                <div style={{ fontSize:11, color:'#9ca3af', marginBottom:10, lineHeight:1.5 }}>
+                  School fees, private health, investment property costs and the rest sit <strong style={{color:'#2A3545'}}>outside</strong> the benchmark and are added on top of it.
+                  Putting them in the basket above is the usual way a real commitment disappears into HEM and the file comes back short.
+                </div>
+                {table(nonHemRows, NON_HEM_EXPENSE_TYPES)}
+                {nonHemRows.length > 0 && subRow('Additional subtotal', subtotal(nonHemRows))}
+              </TabCard>
+
+              <TabCard title="Rent / Board" right={<button onClick={()=>addLivingExpense(RENT_EXPENSE_TYPES[0])} style={addBtnStyle}>+ Add rent</button>}>
+                <div style={{ fontSize:11, color:'#9ca3af', marginBottom:10 }}>Rent or board paid, where the applicant isn't living in their own property. Added on top of the benchmark, same as the additional expenses.</div>
+                {table(rentRows, RENT_EXPENSE_TYPES)}
+                {rentRows.length > 0 && subRow('Rent subtotal', subtotal(rentRows))}
+              </TabCard>
+
+              {livingExpenses.length > 0 && (
+                <TabCard>
+                  {allEntities.map(e => (perApp[e.name] ? <div key={e.name} style={{fontSize:11.5,color:'#7A8090',textAlign:'right'}}>{e.name}: <strong style={{color:'#2A3545'}}>${(perApp[e.name]||0).toLocaleString(undefined,{maximumFractionDigits:2})}</strong> / month</div> : null))}
+                  <ComputedRow label="Total declared expenses (monthly)" value={`$${grand.toLocaleString(undefined,{maximumFractionDigits:2})}`} tone="navy" big />
+                  <div style={{ fontSize:10.5, color:'#9ca3af', marginTop:6 }}>What's actually assessed — benchmark applied to the basket, additional expenses on top — is on Financials → Servicing.</div>
+                </TabCard>
               )}
-            </TabCard>
+            </>
           )
         })()}
 
@@ -2213,9 +2336,10 @@ function StructureTab({ d, editing, set, updateDeal }) {
           const totalLoanBalance = realEstateAssets.reduce((sum,r)=>sum+(Number(r.loanBalance)||0),0)
           return (
             <TabCard title="Assets — Real Estate" right={<button onClick={addRealEstateAsset} style={addBtnStyle}>+ Add property</button>}>
-              <MiniTable columns={['Address','Purpose','Security','Purchasing','Value','Loan Balance','']} rows={realEstateAssets.map((r,i) => [
+              <MiniTable columns={['Address','Purpose','Owners','Security','Purchasing','Value','Loan Balance','']} rows={realEstateAssets.map((r,i) => [
                 <LiveText small value={r.address} onCommit={v=>updRealEstateAsset(i,'address',v)} placeholder="Address" />,
                 <LiveSelect small value={r.purpose} onCommit={v=>updRealEstateAsset(i,'purpose',v)} options={REAL_ESTATE_PURPOSES} allowBlank={false} />,
+                Owner(realEstateAssets, i, "realEstateAssets"),
                 <input type="checkbox" checked={!!r.isSecurity} onChange={e=>updRealEstateAsset(i,'isSecurity',e.target.checked)} />,
                 <input type="checkbox" checked={!!r.isPurchasing} onChange={e=>updRealEstateAsset(i,'isPurchasing',e.target.checked)} />,
                 <LiveNumber small value={r.value} onCommit={v=>updRealEstateAsset(i,'value',v)} />,
@@ -2236,9 +2360,9 @@ function StructureTab({ d, editing, set, updateDeal }) {
           const totalValue = otherAssets.reduce((sum,r)=>sum+(Number(r.value)||0),0)
           return (
             <TabCard title="Assets — Other" right={<button onClick={addOtherAsset} style={addBtnStyle}>+ Add asset</button>}>
-              <MiniTable columns={['Type','Ownership','Details','Value','Basis','']} rows={otherAssets.map((r,i) => [
+              <MiniTable columns={['Type','Owners','Details','Value','Basis','']} rows={otherAssets.map((r,i) => [
                 <LiveSelect small value={r.type} onCommit={v=>updOtherAsset(i,'type',v)} options={OTHER_ASSET_TYPES} />,
-                <LiveSelect small value={r.ownership} onCommit={v=>updOtherAsset(i,'ownership',v)} options={OWNERSHIP_OPTIONS} allowBlank={false} />,
+                Owner(otherAssets, i, "otherAssets"),
                 <LiveText small value={r.details} onCommit={v=>updOtherAsset(i,'details',v)} />,
                 <LiveNumber small value={r.value} onCommit={v=>updOtherAsset(i,'value',v)} />,
                 <LiveSelect small value={r.basis} onCommit={v=>updOtherAsset(i,'basis',v)} options={ASSET_BASIS} allowBlank={false} />,
@@ -2253,18 +2377,30 @@ function StructureTab({ d, editing, set, updateDeal }) {
           const totalBalance = liabilitiesReg.reduce((sum,r)=>sum+(Number(r.balance)||0),0)
           return (
             <TabCard title="Liabilities" right={<button onClick={addLiabilityReg} style={addBtnStyle}>+ Add liability</button>}>
-              <MiniTable columns={['Type','Institution','Account Name','Security','Balance','Limit','Repayment','']} rows={liabilitiesReg.map((r,i) => [
+              <div style={{ fontSize:11, color:'#9ca3af', marginBottom:10, lineHeight:1.5 }}>
+                Rate, term and the repayment type feed the servicing assessment directly — a loan is re-rated at the buffered rate and
+                re-amortised P&amp;I over its remaining term, so an interest-only facility is tested on what it will cost once it isn't.
+                Security is picked from Real Estate, Other Assets and the Security tab rather than retyped.
+              </div>
+              <datalist id="liability-security-options">{securityOptions.map(o=><option key={o} value={o}/>)}</datalist>
+              <MiniTable columns={['Type','Institution','Owners','Security','Balance','Limit','Rate %','Term yrs','Repmt type','IO expiry','Repayment','']} rows={liabilitiesReg.map((r,i) => [
                 <LiveSelect small value={r.type} onCommit={v=>updLiabilityReg(i,'type',v)} options={LIABILITY_TYPES} allowBlank={false} />,
                 <LiveText small value={r.institution} onCommit={v=>updLiabilityReg(i,'institution',v)} />,
-                <LiveText small value={r.accountName} onCommit={v=>updLiabilityReg(i,'accountName',v)} />,
-                <LiveText small value={r.security} onCommit={v=>updLiabilityReg(i,'security',v)} placeholder="Address, if secured" />,
+                Owner(liabilitiesReg, i, "liabilitiesReg"),
+                <LiveText small value={r.security} onCommit={v=>updLiabilityReg(i,'security',v)} list="liability-security-options" placeholder="Pick or type" />,
                 <LiveNumber small value={r.balance} onCommit={v=>updLiabilityReg(i,'balance',v)} />,
                 <LiveNumber small value={r.limit} onCommit={v=>updLiabilityReg(i,'limit',v)} />,
+                <LiveNumber small value={r.rate} onCommit={v=>updLiabilityReg(i,'rate',v)} step="0.01" />,
+                <LiveNumber small value={r.remainingTermYears} onCommit={v=>updLiabilityReg(i,'remainingTermYears',v)} />,
+                <LiveSelect small value={r.repaymentType} onCommit={v=>updLiabilityReg(i,'repaymentType',v)} options={REPAYMENT_TYPES} allowBlank={false} />,
+                r.repaymentType === 'Interest Only'
+                  ? <input type="date" value={r.ioExpiry||''} onChange={e=>updLiabilityReg(i,'ioExpiry',e.target.value)} style={{ border:'1px solid #e8eaed', borderRadius:5, padding:'3px 5px', fontSize:11, fontFamily:'inherit' }} />
+                  : <span style={{ fontSize:10.5, color:'#cbd5e1' }}>—</span>,
                 <div style={{display:'flex',gap:4,alignItems:'center'}}>
                   <LiveNumber small value={r.repayment} onCommit={v=>updLiabilityReg(i,'repayment',v)} />
                   <LiveSelect small value={r.frequency} onCommit={v=>updLiabilityReg(i,'frequency',v)} options={FREQUENCIES} allowBlank={false} />
-                  <button onClick={()=>rmLiabilityReg(i)} style={rmBtnStyle}>✕</button>
                 </div>,
+                <button onClick={()=>rmLiabilityReg(i)} style={rmBtnStyle}>✕</button>,
               ])} empty="No liabilities added yet"/>
               {liabilitiesReg.length > 0 && <div style={{ marginTop:12, paddingTop:10, borderTop:'1px solid #e8eaed' }}><ComputedRow label="Total Balance" value={fmtM(totalBalance)} tone="yellow" /></div>}
             </TabCard>
@@ -2279,6 +2415,15 @@ function StructureTab({ d, editing, set, updateDeal }) {
               return (
                 <TabCard key={e.name} title={e.name} right={<button onClick={()=>addEmployment(e.name)} style={addBtnStyle}>+ Add employment</button>}>
                   {records.length === 0 && <div style={{fontSize:11.5,color:'#9ca3af',padding:'6px 0'}}>No employment added yet</div>}
+                  {records.length > 0 && (() => {
+                    const yrs = records.reduce((sum, rec) => sum + employmentYears(rec), 0)
+                    const ok = yrs >= 3
+                    return (
+                      <div style={{ fontSize:11, color: ok ? '#166534' : '#92600A', marginBottom:12, background: ok ? '#f0fdf4' : '#FEF9E7', border:`1px solid ${ok ? '#bbf7d0' : '#f5e6a8'}`, borderRadius:6, padding:'6px 10px' }}>
+                        {yrs.toFixed(1)} years of employment history recorded{ok ? ' — covers the three years a lender asks for.' : ' — add previous roles to reach three years.'}
+                      </div>
+                    )
+                  })()}
                   {records.map((r,i) => (
                     <div key={i} style={{ marginBottom:16, paddingBottom:14, borderBottom: i<records.length-1 ? '1px solid #e8eaed' : 'none' }}>
                       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:8, marginBottom:8 }}>
@@ -2290,10 +2435,34 @@ function StructureTab({ d, editing, set, updateDeal }) {
                         <LiveText small value={r.employer} onCommit={v=>updEmployment(e.name,i,'employer',v)} placeholder="Employer name" />
                         <LiveText small value={r.position} onCommit={v=>updEmployment(e.name,i,'position',v)} placeholder="Position" />
                       </div>
+                      {/* Lenders want three years of history, so a role needs
+                          a start date and — unless it's the current one — an
+                          end date. The running total below says at a glance
+                          whether the three years is covered. */}
+                      <div style={{ display:'flex', gap:10, alignItems:'center', flexWrap:'wrap', marginBottom:8, fontSize:11, color:'#7A8090' }}>
+                        <label style={{ display:'flex', gap:4, alignItems:'center' }}>Start
+                          <input type="date" value={r.startDate||''} onChange={ev=>updEmployment(e.name,i,'startDate',ev.target.value)} style={dateInp} />
+                        </label>
+                        <label style={{ display:'flex', gap:4, alignItems:'center' }}>
+                          <input type="checkbox" checked={r.current !== false && r.type !== 'Previous Employment'}
+                            onChange={ev=>{ updEmployment(e.name,i,'current',ev.target.checked); if (ev.target.checked) updEmployment(e.name,i,'endDate','') }} />
+                          Currently employed
+                        </label>
+                        {(r.current === false || r.type === 'Previous Employment') && (
+                          <label style={{ display:'flex', gap:4, alignItems:'center' }}>End
+                            <input type="date" value={r.endDate||''} onChange={ev=>updEmployment(e.name,i,'endDate',ev.target.value)} style={dateInp} />
+                          </label>
+                        )}
+                        <span style={{ color:'#9ca3af' }}>{employmentLengthLabel(r)}</span>
+                        <label style={{ display:'flex', gap:4, alignItems:'center', marginLeft:'auto' }}>
+                          <input type="checkbox" checked={!!r.onProbation} onChange={ev=>updEmployment(e.name,i,'onProbation',ev.target.checked)} />
+                          On probation
+                        </label>
+                      </div>
                       <datalist id={`income-line-types-${e.name}-${i}`}>{INCOME_LINE_TYPES.map(t=><option key={t} value={t}/>)}</datalist>
                       {(r.incomeLines||[]).map((l,li) => (
                         <div key={li} style={{ display:'flex', gap:8, alignItems:'center', padding:'4px 0' }}>
-                          <LiveText small value={l.type} onCommit={v=>updIncomeLine(e.name,i,li,'type',v)} list={`income-line-types-${e.name}-${i}`} />
+                          <LiveSelect small value={l.type} onCommit={v=>updIncomeLine(e.name,i,li,'type',v)} options={INCOME_LINE_TYPES} allowBlank={false} />
                           <LiveNumber small value={l.amount} onCommit={v=>updIncomeLine(e.name,i,li,'amount',v)} />
                           <LiveSelect small value={l.frequency} onCommit={v=>updIncomeLine(e.name,i,li,'frequency',v)} options={FREQUENCIES} allowBlank={false} />
                           <button onClick={()=>rmIncomeLine(e.name,i,li)} style={rmBtnStyle}>✕</button>
@@ -2315,9 +2484,9 @@ function StructureTab({ d, editing, set, updateDeal }) {
           const { grand, perApp } = registerTotalRow(otherIncome)
           return (
             <TabCard title="Other Income" right={<button onClick={addOtherIncome} style={addBtnStyle}>+ Add income</button>}>
-              <MiniTable columns={['Type','Ownership','Frequency','Amount','']} rows={otherIncome.map((r,i) => [
+              <MiniTable columns={['Type','Owners','Frequency','Amount','']} rows={otherIncome.map((r,i) => [
                 <LiveSelect small value={r.type} onCommit={v=>updOtherIncome(i,'type',v)} options={OTHER_INCOME_TYPES} />,
-                <LiveSelect small value={r.ownership} onCommit={v=>updOtherIncome(i,'ownership',v)} options={OWNERSHIP_OPTIONS} allowBlank={false} />,
+                Owner(otherIncome, i, "otherIncome"),
                 <LiveSelect small value={r.frequency} onCommit={v=>updOtherIncome(i,'frequency',v)} options={FREQUENCIES} allowBlank={false} />,
                 <LiveNumber small value={r.amount} onCommit={v=>updOtherIncome(i,'amount',v)} />,
                 <button onClick={()=>rmOtherIncome(i)} style={rmBtnStyle}>✕</button>,

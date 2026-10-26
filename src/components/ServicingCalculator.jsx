@@ -55,7 +55,7 @@ const GST_TREATMENTS = ['Going concern (no GST)', 'GST applies — claimable', '
 const RENT_BASIS = ['Net', 'Gross']
 const REVIEW_BASIS = ['CPI', 'Fixed %', 'Market', 'None']
 
-export default function ServicingCalculator({ contacts, structure, settingsPolicy, onChange, funding, onFundingChange, fundingLabels }) {
+export default function ServicingCalculator({ contacts, structure, settingsPolicy, onChange, funding, onFundingChange, fundingLabels, onContributionsChange }) {
   const st = structure || {}
   const property = st.commercialProperty || {}
   const entityDetail = st.entityDetail || {}
@@ -149,12 +149,48 @@ export default function ServicingCalculator({ contacts, structure, settingsPolic
 
         {onFundingChange ? (
           <div style={{ borderTop: '0.5px solid #e8eaed', paddingTop: 10 }}>
+            <div style={{ fontSize: 10, color: '#7A8090', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>{funding?.title || 'Funding table'}</div>
             {(fundingLabels || []).map(([key, label]) => (
               <FRow key={key} label={label} value={funding?.[key]} onCommit={v => onFundingChange(key, v)} />
             ))}
-            <FRow label="Total costs" value={money(funding?.totalCosts)} readOnly tone="navy" />
-            <FRow label="Loan from lender" value={money(funding?.loanAmount)} readOnly tone="navy"
+            {funding?.lmiIncluded && <FRow label="LMI est." value={funding.lmi} onCommit={v => onFundingChange('lmi', v)} />}
+            <FRow label="Total Costs" value={money(funding?.totalCosts)} readOnly tone="navy" />
+            <FRow label="Loan From Lender" value={money(funding?.loanAmount)} readOnly tone="navy"
               hint={funding?.lvr ? `${pct(funding.lvr)} LVR — set on the Strategy tab` : 'Set on the Strategy tab'} />
+
+            <div style={{ height: 10 }} />
+            <FRow label="Equity" value={funding?.equity} onCommit={v => onFundingChange('equity', v)} />
+            <FRow label="Savings" value={funding?.savings} onCommit={v => onFundingChange('savings', v)} />
+            {funding?.includeSaleProceeds && (funding.saleRows || []).map((r, i) => (
+              <FRow key={r.id || i} readOnly tone="navy" value={money(r.net)}
+                label={r.label ? `Proceeds from Sale — ${r.label}` : (funding.saleRows.length > 1 ? `Proceeds from Sale of Property ${i + 1}` : 'Proceeds from Sale of Property')} />
+            ))}
+            {(funding?.contributions || []).map((c, i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '7px 0', borderBottom: '0.5px solid #f1f3f5' }}>
+                <input value={c.label || ''} placeholder="Contribution"
+                  onChange={e => onContributionsChange(funding.contributions.map((x, ix) => ix === i ? { ...x, label: e.target.value } : x))}
+                  style={{ ...inp, flex: 1, maxWidth: 260 }} />
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <input type="number" value={c.amount ?? ''}
+                    onChange={e => onContributionsChange(funding.contributions.map((x, ix) => ix === i ? { ...x, amount: e.target.value === '' ? '' : Number(e.target.value) } : x))}
+                    style={{ ...inp, width: 170, textAlign: 'right' }} />
+                  <button onClick={() => onContributionsChange(funding.contributions.filter((_, ix) => ix !== i))}
+                    style={{ fontSize: 10, padding: '3px 8px', border: '1px solid #fecaca', background: '#fff', color: RED, borderRadius: 5, cursor: 'pointer' }}>✕</button>
+                </div>
+              </div>
+            ))}
+            {onContributionsChange && (
+              <button onClick={() => onContributionsChange([...(funding.contributions || []), { label: '', amount: '' }])}
+                style={{ marginTop: 8, fontSize: 11, fontWeight: 600, color: NAVY, background: '#fff', border: '1px solid #e8eaed', borderRadius: 6, padding: '5px 12px', cursor: 'pointer' }}>+ Add contribution</button>
+            )}
+
+            <div style={{ marginTop: 12, paddingTop: 8, borderTop: '1px solid #e8eaed' }}>
+              <FRow label="Total Funds Available" value={money(funding?.totalFundsAvailable)} readOnly tone="navy" />
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 10px', borderRadius: 7, background: (funding?.surplusDeficit ?? 0) < 0 ? '#fef2f2' : '#f0fdf4', marginTop: 6 }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: (funding?.surplusDeficit ?? 0) < 0 ? RED : GREEN }}>Surplus / (Deficit)</span>
+                <span style={{ fontSize: 13, fontWeight: 800, color: (funding?.surplusDeficit ?? 0) < 0 ? RED : GREEN }}>{money(funding?.surplusDeficit)}</span>
+              </div>
+            </div>
           </div>
         ) : (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
