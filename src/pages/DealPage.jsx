@@ -16,6 +16,7 @@ import BusinessFinancials from '../components/BusinessFinancials'
 import { HEM_EXPENSE_TYPES, NON_HEM_EXPENSE_TYPES, RENT_EXPENSE_TYPES, isHemExpense, investmentPropertyExpenses } from '../lib/servicing'
 import { assessServicing, resolvePolicy } from '../lib/servicing'
 import { getServicingPolicy } from '../lib/settings'
+import { calcDevFunding, devValue, DEV_DEFAULTS, GST_METHODS, copyDevFundingReport, downloadDevFundingReportDoc } from '../lib/developmentFunding'
 import { newSplit, newGroup, newScenario, normalizeScenario, rowRepayment, groupTotals, findRecommendedGroups, toggleRecommendation, isRecommended, pruneRecommendation, recommendationColumns, recommendationTotals, recommendedLenderLabel } from '../lib/comparisonUtils'
 
 // Category list and per-category Transaction Type options, per Cameron's
@@ -1489,6 +1490,239 @@ function LiveRowCheckbox({ label, checked, onChange }) {
 // groupTotals now live in lib/comparisonUtils.js so the Comparison Email
 // builder can share the exact same data shapes and calculations.
 
+// ── Development Funding Table (Category = Development) ──────────────────
+// Replaces the standard funding table + Repayment Calculator for
+// development deals. Calculations and the one-page Word report live in
+// lib/developmentFunding.js; data is stored on deal._strategy.dev.
+
+// One cost line with two bare currency inputs: Senior Debt (to be funded)
+// and Developer Equity (spent to date / paid by the developer).
+function DevCostRow({ label, debt, equity, onDebt, onEquity, onLabel, onRemove }) {
+  const [labelVal, setLabelVal] = useState(label ?? '')
+  const [labelFocused, setLabelFocused] = useState(false)
+  useEffect(() => { if (!labelFocused) setLabelVal(label ?? '') }, [label, labelFocused])
+  return (
+    <div style={rowWrap}>
+      {onLabel ? (
+        <div style={{ display:'flex', alignItems:'center', gap:6, flex:1, minWidth:0 }}>
+          <input value={labelVal} placeholder="Cost description"
+            onFocus={()=>setLabelFocused(true)} onChange={e=>setLabelVal(e.target.value)}
+            onBlur={()=>{ setLabelFocused(false); if ((labelVal||'') !== (label||'')) onLabel(labelVal) }}
+            style={{ border:'none', borderBottom: labelFocused ? '1px solid #EB99C2' : '1px solid transparent', background:'transparent', fontSize:11, color:'#7A8090', outline:'none', flex:1, minWidth:0, padding:'2px 0', fontFamily:'inherit' }} />
+          <button onClick={onRemove} style={rmBtnStyle}>✕</button>
+        </div>
+      ) : <span style={{ ...rowLabel, flex:1 }}>{label}</span>}
+      <StampDutyAmountInput value={debt} onCommit={onDebt} />
+      <StampDutyAmountInput value={equity} onCommit={onEquity} />
+    </div>
+  )
+}
+
+function DevColumnHeads() {
+  const h = { fontSize:9.5, fontWeight:700, color:'#9ca3af', textTransform:'uppercase', letterSpacing:'0.04em', width:AMOUNT_COL_WIDTH, textAlign:'right', flexShrink:0 }
+  return (
+    <div style={{ display:'flex', justifyContent:'space-between', gap:10, padding:'2px 0 4px', borderBottom:'1px solid #e8eaed' }}>
+      <span style={{ ...h, width:'auto', textAlign:'left', flex:1 }}>Cost item</span>
+      <span style={h}>Senior Debt</span>
+      <span style={h}>Developer Equity</span>
+    </div>
+  )
+}
+
+function DevSplitRow({ label, debt, equity, tone='navy' }) {
+  const tones = { navy:{ bg:'#EEF2F6', fg:'#3D4F6B' }, red:{ bg:'#FEF2F2', fg:'#dc2626' }, green:{ bg:'#F0FDF4', fg:'#16a34a' } }
+  const t = tones[tone]
+  const cell = { fontSize:12, fontWeight:800, color:t.fg, width:AMOUNT_COL_WIDTH, textAlign:'right', flexShrink:0 }
+  return (
+    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:10, padding:'8px 10px', margin:'4px 0', borderRadius:6, background:t.bg }}>
+      <span style={{ fontSize:11.5, fontWeight:700, color:t.fg, flex:1 }}>{label}</span>
+      <span style={cell}>{debt}</span>
+      <span style={cell}>{equity}</span>
+    </div>
+  )
+}
+
+// Senior-debt row sized by an LVR — land against its As Is value, the
+// facility against NRV. Type the LVR % or the dollar amount; either one
+// solves the other. With nothing to measure against, the amount is stored.
+function DevLvrRow({ label, base, amount, onLvr, onAmount, equity, tone='plain', baseLabel }) {
+  const lvr = base ? Math.round(amount / base * 10000) / 100 : ''
+  const [lvrEdit, setLvrEdit] = useState('')
+  const [lvrFocused, setLvrFocused] = useState(false)
+  const [amtEdit, setAmtEdit] = useState('')
+  const [amtFocused, setAmtFocused] = useState(false)
+  const strong = tone === 'navy'
+  const fg = strong ? '#3D4F6B' : '#2A3545'
+  const wrap = strong
+    ? { display:'flex', justifyContent:'space-between', alignItems:'center', gap:10, padding:'8px 10px', margin:'4px 0', borderRadius:6, background:'#EEF2F6' }
+    : rowWrap
+  const inputBase = { border:'none', background:'transparent', textAlign:'right', outline:'none', fontFamily:'inherit', color:fg, padding:'2px 0' }
+  return (
+    <div style={wrap}>
+      <span style={{ ...(strong ? { fontSize:11.5, fontWeight:700, color:fg } : rowLabel), flex:1, display:'flex', alignItems:'center', gap:6 }}>
+        {label}
+        <input type="text" inputMode="decimal" placeholder="—" disabled={!base}
+          title={!base ? `Enter the ${baseLabel} first to size this by LVR` : undefined}
+          value={lvrFocused ? lvrEdit : lvr}
+          onFocus={()=>{ setLvrFocused(true); setLvrEdit(lvr) }}
+          onChange={e=>setLvrEdit(e.target.value.replace(/[^0-9.]/g,''))}
+          onBlur={()=>{ setLvrFocused(false); if (lvrEdit !== '' && base) onLvr(Number(lvrEdit)) }}
+          style={{ ...inputBase, width:46, fontSize:11, fontWeight:700, border:'1px solid #e8eaed', borderRadius:4, background:'#fff', padding:'1px 4px' }} />
+        <span style={{ fontSize:10.5, color:'#9ca3af', fontWeight:500 }}>% of {baseLabel}</span>
+      </span>
+      <input placeholder="—"
+        value={amtFocused ? amtEdit : (amount ? `$${Math.round(amount).toLocaleString()}` : '')}
+        onFocus={()=>{ setAmtFocused(true); setAmtEdit(amount ? String(Math.round(amount)) : '') }}
+        onChange={e=>setAmtEdit(e.target.value.replace(/[^0-9.]/g,''))}
+        onBlur={()=>{
+          setAmtFocused(false)
+          if (amtEdit === '') return
+          const num = Number(amtEdit)
+          if (base) onLvr(num / base * 100)
+          else onAmount(num)
+        }}
+        style={{ ...inputBase, width:AMOUNT_COL_WIDTH, flexShrink:0, fontSize: strong ? 12.5 : 11, fontWeight: strong ? 800 : 500, borderBottom: amtFocused ? '1px solid #EB99C2' : '1px solid transparent' }} />
+      <span style={{ width:AMOUNT_COL_WIDTH, flexShrink:0, textAlign:'right', fontSize: strong ? 12.5 : 11, fontWeight: strong ? 800 : 500, color:fg }}>{equity}</span>
+    </div>
+  )
+}
+
+function DevelopmentFundingPanel({ deal, dev, setDev }) {
+  const c = calcDevFunding(dev)
+  const d = k => devValue(dev, k)
+  const sv = (k, v) => setDev({ [k]: v })
+  const costs = dev.costs || {}
+  const setCost = (key, side, v) => setDev({ costs: { ...costs, [key]: { ...(costs[key]||{}), [side]: v } } })
+  const custom = dev.customCosts || []
+  const addCustom = () => setDev({ customCosts: [...custom, { id:`dc-${Date.now()}`, label:'', debt:'', equity:'' }] })
+  const updCustom = (i, k, v) => setDev({ customCosts: custom.map((r,idx)=> idx===i ? { ...r, [k]: v } : r) })
+  const rmCustom = (i) => setDev({ customCosts: custom.filter((_,idx)=> idx!==i) })
+  const [copyMsg, setCopyMsg] = useState('')
+  const pc = v => `${(v*100).toFixed(2)}%`
+  const gstLabels = Object.fromEntries(GST_METHODS)
+  const gstFromLabel = Object.fromEntries(GST_METHODS.map(([k,l])=>[l,k]))
+  const INTEREST_LABELS = { utilisation:'Average utilisation %', drawdown:'Monthly drawdown schedule' }
+  const interestFromLabel = { 'Average utilisation %':'utilisation', 'Monthly drawdown schedule':'drawdown' }
+
+  async function copyReport() {
+    const ok = await copyDevFundingReport(deal, dev)
+    setCopyMsg(ok ? 'Copied — paste into your Word document' : 'Copy not supported in this browser — use Download .doc')
+    setTimeout(()=>setCopyMsg(''), 4000)
+  }
+
+  return (
+    <div style={{ display:'grid', gridTemplateColumns:'minmax(0,1.35fr) minmax(0,1fr)', gap:16 }}>
+      <div>
+        <TabCard title="Development Funding Table" right={
+          <div style={{ display:'flex', gap:6, alignItems:'center' }}>
+            {copyMsg && <span style={{ fontSize:10.5, color:'#16a34a' }}>{copyMsg}</span>}
+            <button onClick={copyReport} style={addBtnStyle}>Copy for Word</button>
+            <button onClick={()=>downloadDevFundingReportDoc(deal, dev)} style={{ ...addBtnStyle, background:'#DA408D', color:'#fff', border:'none' }}>Download .doc</button>
+          </div>
+        }>
+          <DevColumnHeads />
+          <DevLvrRow label="Land 'As Is'" base={c.landValue} baseLabel="land value" amount={c.landDebt}
+            onLvr={v=>sv('landLvr', v)} onAmount={v=>sv('landDebtAmount', v)} equity={c.landValue ? fmtM(c.landEquity) : '—'} />
+          {c.rows.map((r, i) => (
+            <React.Fragment key={r.key}>
+              <DevCostRow label={r.label} debt={costs[r.key]?.debt} equity={costs[r.key]?.equity}
+                onDebt={v=>setCost(r.key,'debt',v)} onEquity={v=>setCost(r.key,'equity',v)} />
+              {i === 0 && (
+                <div style={rowWrap}>
+                  <span style={{ ...rowLabel, flex:1, display:'flex', alignItems:'center', gap:6 }}>
+                    Contingency
+                    <input type="number" step="0.5" value={dev.contingencyPct ?? DEV_DEFAULTS.contingencyPct}
+                      onChange={e=>sv('contingencyPct', e.target.value===''?'':Number(e.target.value))}
+                      style={{ width:44, border:'1px solid #e8eaed', borderRadius:4, padding:'1px 4px', fontSize:11, textAlign:'right', fontFamily:'inherit' }} />
+                    % of construction
+                  </span>
+                  <span style={{ fontSize:11, fontWeight:500, color:'#2A3545', width:AMOUNT_COL_WIDTH, textAlign:'right', flexShrink:0 }}>{fmtM(c.contingency)}</span>
+                  <span style={{ width:AMOUNT_COL_WIDTH, flexShrink:0 }} />
+                </div>
+              )}
+            </React.Fragment>
+          ))}
+          {custom.map((r, i) => (
+            <DevCostRow key={r.id} label={r.label} debt={r.debt} equity={r.equity}
+              onLabel={v=>updCustom(i,'label',v)} onDebt={v=>updCustom(i,'debt',v)} onEquity={v=>updCustom(i,'equity',v)} onRemove={()=>rmCustom(i)} />
+          ))}
+          <button onClick={addCustom} style={{ ...addBtnStyle, margin:'8px 0 6px' }}>+ Add cost</button>
+          <DevSplitRow label="Finance costs" debt={fmtM(c.financeCosts)} equity="—" />
+          <DevSplitRow label="Sub-total" debt={fmtM(c.seniorSubtotal)} equity={fmtM(c.equitySubtotal)} />
+          <DevSplitRow label={c.buffer >= 0 ? 'Buffer' : 'Shortfall — more equity required'} debt={fmtM(c.buffer)} equity="" tone={c.buffer < 0 ? 'red' : 'green'} />
+          <DevLvrRow label="Total facility" tone="navy" base={c.nrv} baseLabel="NRV" amount={c.loan}
+            onLvr={v=>sv('lvrNrv', v)} onAmount={v=>sv('loanAmount', v)} equity="" />
+          <div style={{ fontSize:10.5, color:'#9ca3af', marginTop:6 }}>
+            Senior Debt = costs still to be funded by the lender. Developer Equity = costs already paid / spent to date. Construction is entered ex. GST. The facility amount keeps the deal Amount on Loan Details in sync.
+          </div>
+        </TabCard>
+
+        <TabCard title="Realisation">
+          <LiveRowCurrency label="Gross realisation value (GRV, incl. GST)" value={dev.grv} onCommit={v=>sv('grv', v)} pink />
+          <LiveRowNumber label="No. of units / lots" value={dev.lots} onCommit={v=>sv('lots', v)} />
+          <LiveRowSelect label="GST calculation" value={gstLabels[d('gstMethod')]} onCommit={v=>sv('gstMethod', gstFromLabel[v])} options={GST_METHODS.map(([,l])=>l)} allowBlank={false} />
+          {d('gstMethod') === 'margin' && (
+            <LiveRowCurrency label="Original site purchase price" value={dev.originalPurchasePrice} onCommit={v=>sv('originalPurchasePrice', v)} />
+          )}
+          <ComputedRow label={d('gstMethod')==='margin' ? 'GST — (GRV − purchase price) ÷ 11' : 'GST'} value={fmtM(c.gst)} tone="yellow" />
+          <LiveRowNumber label="Agent selling commission" value={dev.agentCommPct ?? DEV_DEFAULTS.agentCommPct} onCommit={v=>sv('agentCommPct', v)} suffix="%" step="0.1" />
+          <LiveRowCheckbox label="Agent commission + GST" checked={d('agentCommGst')} onChange={v=>sv('agentCommGst', v)} />
+          <LiveRowCheckbox label="Deduct agent commission from NRV" checked={d('deductAgentFromNrv')} onChange={v=>sv('deductAgentFromNrv', v)} />
+          <ComputedRow label="Net realisation value (NRV)" value={fmtM(c.nrv)} tone="navy" />
+        </TabCard>
+      </div>
+
+      <div>
+        <TabCard title="Funding Metrics">
+          <ComputedRow label="Loan amount" value={fmtM(c.loan)} tone="navy" big />
+          <ComputedRow label="Total development costs (TDC)" value={fmtM(c.tdc)} tone="navy" />
+          <ComputedRow label="LVR against land 'As Is'" value={pc(c.lvrAsIs)} tone="navy" />
+          <ComputedRow label="LVR on NRV" value={pc(c.lvrNrv)} tone="navy" />
+          <ComputedRow label="LVR on GRV" value={pc(c.lvrGrv)} tone="navy" />
+          <ComputedRow label="LTC ratio" value={pc(c.ltc)} tone="navy" />
+          <ComputedRow label="Project profit" value={fmtM(c.profit)} tone={c.profit < 0 ? 'red' : 'green'} />
+          <ComputedRow label="Profit on TDC" value={pc(c.profitOnTdc)} tone={c.profit < 0 ? 'red' : 'green'} />
+          <ComputedRow label="Return on equity" value={pc(c.roe)} tone={c.profit < 0 ? 'red' : 'green'} />
+        </TabCard>
+
+        <TabCard title="Land & Lender Terms">
+          <LiveRowCurrency label="Land value 'As Is'" value={dev.landValue} onCommit={v=>sv('landValue', v)} />
+          <LiveRowCurrency label="Existing debt to refinance" value={dev.existingDebt} onCommit={v=>sv('existingDebt', v)} />
+          {c.settlementShortfall > 0 && (
+            <div style={{ fontSize:10.5, color:'#dc2626', margin:'2px 0 6px', textAlign:'right' }}>
+              Land advance is {fmtM(c.settlementShortfall)} short of the existing debt — developer cash needed at settlement.
+            </div>
+          )}
+          <LiveRowNumber label="Interest rate" value={dev.rate} onCommit={v=>sv('rate', v)} suffix="% p.a." step="0.01" />
+          <LiveRowNumber label="Loan term" value={dev.termMonths ?? DEV_DEFAULTS.termMonths} onCommit={v=>sv('termMonths', v)} suffix="months" />
+          <LiveRowSelect label="Interest calculation" value={INTEREST_LABELS[d('interestMethod')]} onCommit={v=>sv('interestMethod', interestFromLabel[v])} options={Object.values(INTEREST_LABELS)} allowBlank={false} />
+          {d('interestMethod') === 'utilisation'
+            ? <LiveRowNumber label="Average facility drawn" value={dev.utilisationPct ?? DEV_DEFAULTS.utilisationPct} onCommit={v=>sv('utilisationPct', v)} suffix="%" />
+            : <LiveRowNumber label="Construction program (draw period)" value={dev.buildMonths} onCommit={v=>sv('buildMonths', v)} suffix="months" />}
+          <LiveRowNumber label="Establishment fee" value={dev.estFeePct ?? DEV_DEFAULTS.estFeePct} onCommit={v=>sv('estFeePct', v)} suffix="%" step="0.05" />
+          <LiveRowNumber label="Line fee" value={dev.lineFeePct ?? DEV_DEFAULTS.lineFeePct} onCommit={v=>sv('lineFeePct', v)} suffix="% p.a." step="0.05" />
+          <LiveRowNumber label="Broker fee" value={dev.brokerFeePct ?? DEV_DEFAULTS.brokerFeePct} onCommit={v=>sv('brokerFeePct', v)} suffix="%" step="0.05" />
+          <LiveRowCheckbox label="Broker fee + GST" checked={d('brokerFeeGst')} onChange={v=>sv('brokerFeeGst', v)} />
+          <LiveRowCurrency label="Other lender fees ($)" value={dev.otherFees} onCommit={v=>sv('otherFees', v)} />
+          <div style={{ marginTop:10, paddingTop:8, borderTop:'1px solid #e8eaed' }}>
+            <ComputedRow label={`Interest${d('interestMethod')==='drawdown' ? ` (${pc(c.effectiveUtilisation)} effective)` : ''}`} value={fmtM(c.interest)} tone="navy" />
+            <ComputedRow label="Establishment fee" value={fmtM(c.estFee)} tone="navy" />
+            {c.lineFee > 0 && <ComputedRow label="Line fee" value={fmtM(c.lineFee)} tone="navy" />}
+            <ComputedRow label="Broker fee" value={fmtM(c.brokerFee)} tone="navy" />
+            {c.otherFees > 0 && <ComputedRow label="Other fees" value={fmtM(c.otherFees)} tone="navy" />}
+            <ComputedRow label="Total finance costs" value={fmtM(c.financeCosts)} tone="yellow" />
+            {d('interestMethod') === 'drawdown' && c.peakBalance > 0 && (
+              <div style={{ fontSize:10.5, color:'#9ca3af', marginTop:4 }}>
+                Land advance + upfront fees drawn at settlement, senior-funded costs drawn evenly over the construction program. Peak drawn balance {fmtM(c.peakBalance)} (excl. capitalised interest).
+              </div>
+            )}
+          </div>
+        </TabCard>
+      </div>
+    </div>
+  )
+}
+
 function StrategyTab({ deal, updateDeal }) {
   const navigate = useNavigate()
   const strat = deal._strategy || {}
@@ -1504,15 +1738,23 @@ function StrategyTab({ deal, updateDeal }) {
   const dealType = deriveDealType(deal['Transaction Type'])
   const calc = calcFunding(strat, dealType)
 
+  // Development deals get the two-column development funding table instead
+  // of the standard one. Its inputs live on _strategy.dev so the standard
+  // table's data is untouched (and vice versa) if the category changes.
+  const isDevelopment = deal.Categories === 'Development'
+  const dev = strat.dev || {}
+  const setDev = (patch) => updateDeal({ _strategy: { ...strat, dev: { ...dev, ...patch } } })
+  const devLoan = isDevelopment ? calcDevFunding(dev).loan : 0
+
   // Loan From Lender is the deal's real facility amount, so it keeps the
   // top-level Deal Amount in sync — the same field shown on Loan Details, in
   // the header, and on the CRM dashboard/pipeline. Unlike Legals/Stamp Duty
   // this isn't a one-off default: it tracks continuously, since the two
   // numbers should always be the same thing.
   useEffect(() => {
-    const rounded = Math.round(calc.loanFromLender)
+    const rounded = Math.round(isDevelopment ? devLoan : calc.loanFromLender)
     if (rounded > 0 && rounded !== deal.Amount) updateDeal({ Amount: rounded })
-  }, [calc.loanFromLender]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [calc.loanFromLender, devLoan, isDevelopment]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const equityTables = strat.equityTables || []
   const addEquityTable = () => s('equityTables', [...equityTables, { id: Date.now(), label:'', rows:[] }])
@@ -1589,7 +1831,11 @@ function StrategyTab({ deal, updateDeal }) {
         <SideTabs tabs={STRATEGY_SUB_TABS} active={subTab} onChange={setSubTab} />
 
         <div style={{ flex:1, minWidth:0 }}>
-          {subTab === 'funding' && (
+          {subTab === 'funding' && isDevelopment && (
+            <DevelopmentFundingPanel deal={deal} dev={dev} setDev={setDev} />
+          )}
+
+          {subTab === 'funding' && !isDevelopment && (
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
               <TabCard title={fundingTableTitle}>
                 {calc.fields.filter(([k])=>k!=='stampDuty').map(([key,label]) => {
@@ -3430,6 +3676,18 @@ function SummaryTab({ deal }) {
       </div>
 
       <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+        {deal.Categories === 'Development' ? (() => {
+          const dc = calcDevFunding(strat.dev || {})
+          return (
+            <TabCard title="Development Funding Summary">
+              <ComputedRow label="Total development costs" value={fmtM(dc.tdc)} tone="navy" />
+              <ComputedRow label="Facility" value={fmtM(dc.loan)} tone="navy" side={dc.nrv ? `${(dc.lvrNrv*100).toFixed(1)}% NRV` : null} />
+              <ComputedRow label="Developer equity" value={fmtM(dc.equitySubtotal)} tone="navy" />
+              <ComputedRow label="LTC" value={`${(dc.ltc*100).toFixed(1)}%`} tone="navy" />
+              <ComputedRow label={dc.buffer < 0 ? 'Shortfall' : 'Buffer'} value={fmtM(dc.buffer)} tone={dc.buffer < 0 ? 'red' : 'green'} big />
+            </TabCard>
+          )
+        })() : (
         <TabCard title="Funding Summary">
           <ComputedRow label="Total Costs" value={fmtM(calc.totalCosts)} tone="navy" />
           <ComputedRow label="Loan From Lender" value={fmtM(calc.loanFromLender)} tone="navy" side={calc.lvrBase ? `${(calc.totalLVR*100).toFixed(1)}% LVR` : null} />
@@ -3439,6 +3697,7 @@ function SummaryTab({ deal }) {
           <ComputedRow label="Total Funds Available" value={fmtM(calc.totalFundsAvailable)} tone="navy" />
           <ComputedRow label="Surplus / (Deficit)" value={fmtM(calc.surplusDeficit)} tone={calc.surplusDeficit < 0 ? 'red' : 'green'} big />
         </TabCard>
+        )}
 
         {(dscr || icr || groupSurplus !== undefined) && (
           <TabCard title="Servicing Summary">
