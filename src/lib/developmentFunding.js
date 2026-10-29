@@ -28,6 +28,10 @@ export const DEV_COST_ROWS = [
   ['other',        'Other costs'],
 ]
 
+// Cash the customer is putting in on top of the facility (and on top of
+// anything already spent, which sits in the Developer Equity column).
+export const DEV_CONTRIBUTION_TYPES = ['Developer cash contribution','Deposit paid','Savings','Gifted funds','Equity release','Second mortgage','Proceeds of sale','Other']
+
 export const GST_METHODS = [
   ['margin', 'Margin scheme'],
   ['full',   'Full GST (GRV ÷ 11)'],
@@ -142,6 +146,18 @@ export function calcDevFunding(devIn) {
 
   const profit = nrv - tdc - (deductAgent ? 0 : agentComm)
 
+  // ── Customer contributions ──
+  // Funds Available = facility + contributions, measured against what still
+  // has to be paid (the Senior Debt column). Costs already spent aren't
+  // counted again here — they're in the Developer Equity column.
+  const contributions = (dev.contributions || []).map(r => ({ ...r, amount: n(r.amount) }))
+  const contributionsTotal = contributions.reduce((sum, r) => sum + r.amount, 0)
+  const totalFundsAvailable = loan + contributionsTotal
+  const surplusDeficit = totalFundsAvailable - seniorSubtotal
+  // Rounded to cents so an LVR-derived land advance (e.g. 52.43%) doesn't
+  // leave a floating-point sliver that reads as 'not covered'.
+  const settlementShortfall = Math.max(0, Math.round((n(dev.existingDebt) - landDebt) * 100) / 100)
+
   const div = (a, b) => (b ? a / b : 0)
   return {
     grv, gst, gstMethod, agentComm, deductAgent, nrv, lots: n(dev.lots),
@@ -152,6 +168,7 @@ export function calcDevFunding(devIn) {
     estFee, lineFee, brokerFee, otherFees, interest, financeCosts,
     interestMethod, schedule, peakBalance, effectiveUtilisation,
     seniorSubtotal, equitySubtotal, tdc, buffer,
+    contributions, contributionsTotal, totalFundsAvailable, surplusDeficit,
     profit,
     lvrAsIs: div(landDebt, landValue),
     lvrNrv: div(loan, nrv),
@@ -160,7 +177,8 @@ export function calcDevFunding(devIn) {
     profitOnTdc: div(profit, tdc),
     roe: div(profit, equitySubtotal),
     existingDebt: n(dev.existingDebt),
-    settlementShortfall: Math.max(0, n(dev.existingDebt) - landDebt),
+    settlementShortfall,
+    settlementCovered: settlementShortfall > 0 && contributionsTotal >= settlementShortfall,
   }
 }
 
@@ -208,6 +226,15 @@ export function buildDevFundingReportHtml(deal, dev) {
   const totalsRows = `
     <tr>${td(bufferLabel)}${tdR(money(c.buffer), c.buffer < 0 ? 'color:#dc2626;' : '')}${td('')}${td('')}</tr>
     <tr>${td('Total facility', `font-weight:bold;color:#ffffff;background:${NAVY};`)}${tdR(money(c.loan), `font-weight:bold;color:#ffffff;background:${NAVY};`)}${td('', `background:${NAVY};`)}${td('', `background:${NAVY};`)}</tr>`
+
+  const fundsSection = c.contributions.some(r => r.amount) ? `${heading('Funds available')}
+<table style="width:100%;border-collapse:collapse;">
+  <tr>${td('Total facility')}${tdR(money(c.loan))}</tr>
+  ${c.contributions.filter(r => r.amount).map(r => `<tr>${td(esc(r.label || 'Customer contribution'))}${tdR(money(r.amount))}</tr>`).join('')}
+  <tr>${td('Total funds available', `font-weight:bold;background:${LIGHT};`)}${tdR(money(c.totalFundsAvailable), `font-weight:bold;background:${LIGHT};`)}</tr>
+  <tr>${td('Less funds required (Senior Debt sub-total)')}${tdR(money(c.seniorSubtotal))}</tr>
+  <tr>${td('Surplus / (Deficit)', `font-weight:bold;color:#ffffff;background:${c.surplusDeficit < 0 ? '#dc2626' : NAVY};`)}${tdR(money(c.surplusDeficit), `font-weight:bold;color:#ffffff;background:${c.surplusDeficit < 0 ? '#dc2626' : NAVY};`)}</tr>
+</table>` : ''
 
   const gstLabel = c.gstMethod === 'margin' ? 'GST (margin scheme)' : c.gstMethod === 'full' ? 'GST' : 'GST (n/a)'
   const leftMetrics = [
@@ -265,6 +292,7 @@ ${heading('Funding table')}
   ${totalsRows}
 </table>
 ${financeNote ? `<p style="${font}font-size:8pt;color:${GREY};margin:4pt 0 0 0;">Finance costs: ${financeNote}</p>` : ''}
+${fundsSection}
 ${heading('Funding metrics')}
 <table style="width:100%;border-collapse:collapse;"><tr>
   <td style="width:50%;vertical-align:top;padding-right:8pt;">${metricTable(leftMetrics)}</td>

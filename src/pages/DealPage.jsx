@@ -16,7 +16,7 @@ import BusinessFinancials from '../components/BusinessFinancials'
 import { HEM_EXPENSE_TYPES, NON_HEM_EXPENSE_TYPES, RENT_EXPENSE_TYPES, isHemExpense, investmentPropertyExpenses } from '../lib/servicing'
 import { assessServicing, resolvePolicy } from '../lib/servicing'
 import { getServicingPolicy } from '../lib/settings'
-import { calcDevFunding, devValue, DEV_DEFAULTS, GST_METHODS, copyDevFundingReport, downloadDevFundingReportDoc } from '../lib/developmentFunding'
+import { calcDevFunding, devValue, DEV_DEFAULTS, GST_METHODS, DEV_CONTRIBUTION_TYPES, copyDevFundingReport, downloadDevFundingReportDoc } from '../lib/developmentFunding'
 import { newSplit, newGroup, newScenario, normalizeScenario, rowRepayment, groupTotals, findRecommendedGroups, toggleRecommendation, isRecommended, pruneRecommendation, recommendationColumns, recommendationTotals, recommendedLenderLabel } from '../lib/comparisonUtils'
 
 // Category list and per-category Transaction Type options, per Cameron's
@@ -1597,6 +1597,10 @@ function DevelopmentFundingPanel({ deal, dev, setDev }) {
   const addCustom = () => setDev({ customCosts: [...custom, { id:`dc-${Date.now()}`, label:'', debt:'', equity:'' }] })
   const updCustom = (i, k, v) => setDev({ customCosts: custom.map((r,idx)=> idx===i ? { ...r, [k]: v } : r) })
   const rmCustom = (i) => setDev({ customCosts: custom.filter((_,idx)=> idx!==i) })
+  const contribs = dev.contributions || []
+  const addContrib = () => setDev({ contributions: [...contribs, { label:'', amount:'' }] })
+  const updContrib = (i, k, v) => setDev({ contributions: contribs.map((r,idx)=> idx===i ? { ...r, [k]: v } : r) })
+  const rmContrib = (i) => setDev({ contributions: contribs.filter((_,idx)=> idx!==i) })
   const [copyMsg, setCopyMsg] = useState('')
   const pc = v => `${(v*100).toFixed(2)}%`
   const gstLabels = Object.fromEntries(GST_METHODS)
@@ -1657,6 +1661,25 @@ function DevelopmentFundingPanel({ deal, dev, setDev }) {
           </div>
         </TabCard>
 
+        <TabCard title="Customer Contributions">
+          <div style={{ fontSize:10.5, color:'#9ca3af', marginBottom:6 }}>
+            Cash the customer is putting in on top of the facility — e.g. developer cash at settlement, savings, a second mortgage. Costs already spent belong in the Developer Equity column above instead.
+          </div>
+          <datalist id="dev-contribution-types">{DEV_CONTRIBUTION_TYPES.map(t=><option key={t} value={t}/>)}</datalist>
+          {contribs.map((r, i) => (
+            <ContributionRow key={i} label={r.label} amount={r.amount} listId="dev-contribution-types"
+              onLabelCommit={v=>updContrib(i,'label',v)} onAmountCommit={v=>updContrib(i,'amount',v)} onRemove={()=>rmContrib(i)} />
+          ))}
+          <button onClick={addContrib} style={{ ...addBtnStyle, margin: contribs.length ? '8px 0 6px' : '0 0 6px' }}>+ Add contribution</button>
+          <div style={{ marginTop:6, paddingTop:8, borderTop:'1px solid #e8eaed' }}>
+            <ComputedRow label="Total facility" value={fmtM(c.loan)} tone="navy" />
+            <ComputedRow label="Customer contributions" value={fmtM(c.contributionsTotal)} tone="navy" />
+            <ComputedRow label="Total funds available" value={fmtM(c.totalFundsAvailable)} tone="navy" big />
+            <ComputedRow label="Less funds required (Senior Debt sub-total)" value={fmtM(c.seniorSubtotal)} tone="navy" />
+            <ComputedRow label="Surplus / (Deficit)" value={fmtM(c.surplusDeficit)} tone={c.surplusDeficit < 0 ? 'red' : 'green'} big />
+          </div>
+        </TabCard>
+
         <TabCard title="Realisation">
           <LiveRowCurrency label="Gross realisation value (GRV, incl. GST)" value={dev.grv} onCommit={v=>sv('grv', v)} pink />
           <LiveRowNumber label="No. of units / lots" value={dev.lots} onCommit={v=>sv('lots', v)} />
@@ -1689,8 +1712,10 @@ function DevelopmentFundingPanel({ deal, dev, setDev }) {
           <LiveRowCurrency label="Land value 'As Is'" value={dev.landValue} onCommit={v=>sv('landValue', v)} />
           <LiveRowCurrency label="Existing debt to refinance" value={dev.existingDebt} onCommit={v=>sv('existingDebt', v)} />
           {c.settlementShortfall > 0 && (
-            <div style={{ fontSize:10.5, color:'#dc2626', margin:'2px 0 6px', textAlign:'right' }}>
-              Land advance is {fmtM(c.settlementShortfall)} short of the existing debt — developer cash needed at settlement.
+            <div style={{ fontSize:10.5, color: c.settlementCovered ? '#16a34a' : '#dc2626', margin:'2px 0 6px', textAlign:'right' }}>
+              Land advance is {fmtM(c.settlementShortfall)} short of the existing debt — {c.settlementCovered
+                ? 'covered by customer contributions.'
+                : `developer cash needed at settlement${c.contributionsTotal ? ` (contributions entered: ${fmtM(c.contributionsTotal)})` : ''}.`}
             </div>
           )}
           <LiveRowNumber label="Interest rate" value={dev.rate} onCommit={v=>sv('rate', v)} suffix="% p.a." step="0.01" />
@@ -3684,7 +3709,8 @@ function SummaryTab({ deal }) {
               <ComputedRow label="Facility" value={fmtM(dc.loan)} tone="navy" side={dc.nrv ? `${(dc.lvrNrv*100).toFixed(1)}% NRV` : null} />
               <ComputedRow label="Developer equity" value={fmtM(dc.equitySubtotal)} tone="navy" />
               <ComputedRow label="LTC" value={`${(dc.ltc*100).toFixed(1)}%`} tone="navy" />
-              <ComputedRow label={dc.buffer < 0 ? 'Shortfall' : 'Buffer'} value={fmtM(dc.buffer)} tone={dc.buffer < 0 ? 'red' : 'green'} big />
+              {dc.contributionsTotal > 0 && <ComputedRow label="Customer contributions" value={fmtM(dc.contributionsTotal)} tone="navy" />}
+              <ComputedRow label="Surplus / (Deficit)" value={fmtM(dc.surplusDeficit)} tone={dc.surplusDeficit < 0 ? 'red' : 'green'} big />
             </TabCard>
           )
         })() : (
