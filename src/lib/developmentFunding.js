@@ -156,6 +156,15 @@ export function calcDevFunding(devIn) {
   const surplusDeficit = totalFundsAvailable - seniorSubtotal
   // Rounded to cents so an LVR-derived land advance (e.g. 52.43%) doesn't
   // leave a floating-point sliver that reads as 'not covered'.
+  // Total developer equity in the project = what's already spent (Developer
+  // Equity column) + any senior-column costs the facility doesn't cover,
+  // which the developer has to fund in cash. When the facility covers
+  // everything (positive buffer) this is just the Developer Equity column,
+  // which is how ThinkPrivate calculates ROE.
+  const facilityShortfall = Math.max(0, -buffer)
+  const totalEquity = equitySubtotal + facilityShortfall
+  const shortfallCovered = facilityShortfall > 0 && contributionsTotal >= Math.round(facilityShortfall * 100) / 100
+
   const settlementShortfall = Math.max(0, Math.round((n(dev.existingDebt) - landDebt) * 100) / 100)
 
   const div = (a, b) => (b ? a / b : 0)
@@ -169,13 +178,14 @@ export function calcDevFunding(devIn) {
     interestMethod, schedule, peakBalance, effectiveUtilisation,
     seniorSubtotal, equitySubtotal, tdc, buffer,
     contributions, contributionsTotal, totalFundsAvailable, surplusDeficit,
+    facilityShortfall, totalEquity, shortfallCovered,
     profit,
     lvrAsIs: div(landDebt, landValue),
     lvrNrv: div(loan, nrv),
     lvrGrv: div(loan, grv),
     ltc: div(loan, tdc),
     profitOnTdc: div(profit, tdc),
-    roe: div(profit, equitySubtotal),
+    roe: div(profit, totalEquity),
     existingDebt: n(dev.existingDebt),
     settlementShortfall,
     settlementCovered: settlementShortfall > 0 && contributionsTotal >= settlementShortfall,
@@ -222,7 +232,8 @@ export function buildDevFundingReportHtml(deal, dev) {
     fundRow('Sub-total', c.seniorSubtotal, c.equitySubtotal, true),
   ].join('')
 
-  const bufferLabel = c.buffer >= 0 ? 'Buffer' : 'Shortfall (additional equity required)'
+  const bufferLabel = c.buffer >= 0 ? 'Buffer'
+    : c.shortfallCovered ? 'Facility shortfall (funded by customer contributions)' : 'Facility shortfall (additional equity required)'
   const totalsRows = `
     <tr>${td(bufferLabel)}${tdR(money(c.buffer), c.buffer < 0 ? 'color:#dc2626;' : '')}${td('')}${td('')}</tr>
     <tr>${td('Total facility', `font-weight:bold;color:#ffffff;background:${NAVY};`)}${tdR(money(c.loan), `font-weight:bold;color:#ffffff;background:${NAVY};`)}${td('', `background:${NAVY};`)}${td('', `background:${NAVY};`)}</tr>`
@@ -245,6 +256,7 @@ export function buildDevFundingReportHtml(deal, dev) {
     ['Total development costs (TDC)', money(c.tdc)],
     ['Project profit', money(c.profit)],
     ['Profit on TDC', pc(c.profitOnTdc)],
+    ...(c.facilityShortfall > 0 ? [['Total developer equity', money(c.totalEquity)]] : []),
     ['Return on equity', pc(c.roe)],
   ]
   const rightMetrics = [

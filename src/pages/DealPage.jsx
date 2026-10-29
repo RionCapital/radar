@@ -1530,7 +1530,7 @@ function DevColumnHeads() {
 }
 
 function DevSplitRow({ label, debt, equity, tone='navy' }) {
-  const tones = { navy:{ bg:'#EEF2F6', fg:'#3D4F6B' }, red:{ bg:'#FEF2F2', fg:'#dc2626' }, green:{ bg:'#F0FDF4', fg:'#16a34a' } }
+  const tones = { navy:{ bg:'#EEF2F6', fg:'#3D4F6B' }, red:{ bg:'#FEF2F2', fg:'#dc2626' }, green:{ bg:'#F0FDF4', fg:'#16a34a' }, amber:{ bg:'#FEF9E7', fg:'#92600A' } }
   const t = tones[tone]
   const cell = { fontSize:12, fontWeight:800, color:t.fg, width:AMOUNT_COL_WIDTH, textAlign:'right', flexShrink:0 }
   return (
@@ -1653,7 +1653,13 @@ function DevelopmentFundingPanel({ deal, dev, setDev }) {
           <button onClick={addCustom} style={{ ...addBtnStyle, margin:'8px 0 6px' }}>+ Add cost</button>
           <DevSplitRow label="Finance costs" debt={fmtM(c.financeCosts)} equity="—" />
           <DevSplitRow label="Sub-total" debt={fmtM(c.seniorSubtotal)} equity={fmtM(c.equitySubtotal)} />
-          <DevSplitRow label={c.buffer >= 0 ? 'Buffer' : 'Shortfall — more equity required'} debt={fmtM(c.buffer)} equity="" tone={c.buffer < 0 ? 'red' : 'green'} />
+          <DevSplitRow
+            label={c.buffer >= 0 ? 'Buffer'
+              : c.shortfallCovered ? 'Facility shortfall — funded by customer contributions'
+              : 'Facility shortfall — more equity required'}
+            debt={c.buffer >= 0 ? fmtM(c.buffer) : `(${fmtM(-c.buffer)})`}
+            equity={c.buffer < 0 ? `+${fmtM(-c.buffer)}` : ''}
+            tone={c.buffer >= 0 ? 'green' : c.shortfallCovered ? 'amber' : 'red'} />
           <DevLvrRow label="Total facility" tone="navy" base={c.nrv} baseLabel="NRV" amount={c.loan}
             onLvr={v=>sv('lvrNrv', v)} onAmount={v=>sv('loanAmount', v)} equity="" />
           <div style={{ fontSize:10.5, color:'#9ca3af', marginTop:6 }}>
@@ -1705,6 +1711,7 @@ function DevelopmentFundingPanel({ deal, dev, setDev }) {
           <ComputedRow label="LTC ratio" value={pc(c.ltc)} tone="navy" />
           <ComputedRow label="Project profit" value={fmtM(c.profit)} tone={c.profit < 0 ? 'red' : 'green'} />
           <ComputedRow label="Profit on TDC" value={pc(c.profitOnTdc)} tone={c.profit < 0 ? 'red' : 'green'} />
+          {c.facilityShortfall > 0 && <ComputedRow label="Total developer equity (incl. shortfall)" value={fmtM(c.totalEquity)} tone="navy" />}
           <ComputedRow label="Return on equity" value={pc(c.roe)} tone={c.profit < 0 ? 'red' : 'green'} />
         </TabCard>
 
@@ -3707,7 +3714,7 @@ function SummaryTab({ deal }) {
             <TabCard title="Development Funding Summary">
               <ComputedRow label="Total development costs" value={fmtM(dc.tdc)} tone="navy" />
               <ComputedRow label="Facility" value={fmtM(dc.loan)} tone="navy" side={dc.nrv ? `${(dc.lvrNrv*100).toFixed(1)}% NRV` : null} />
-              <ComputedRow label="Developer equity" value={fmtM(dc.equitySubtotal)} tone="navy" />
+              <ComputedRow label="Developer equity" value={fmtM(dc.totalEquity)} tone="navy" />
               <ComputedRow label="LTC" value={`${(dc.ltc*100).toFixed(1)}%`} tone="navy" />
               {dc.contributionsTotal > 0 && <ComputedRow label="Customer contributions" value={fmtM(dc.contributionsTotal)} tone="navy" />}
               <ComputedRow label="Surplus / (Deficit)" value={fmtM(dc.surplusDeficit)} tone={dc.surplusDeficit < 0 ? 'red' : 'green'} big />
