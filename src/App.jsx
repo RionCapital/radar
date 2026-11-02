@@ -86,9 +86,12 @@ export default function App() {
     } catch {}
     return null // CRM page loads its own data
   })
-  function updateCrmDeals(updated) {
+  function updateCrmDeals(updated, opts) {
     setCrmDeals(updated)
-    libSaveDeals(updated)
+    // A rename has already written both localStorage and the cloud through
+    // its own path; saving again here would run the ordinary merge and bring
+    // the old name back.
+    if (!opts?.alreadySaved) libSaveDeals(updated)
   } // show on load
 
   // ─── Supabase startup sync ───────────────────────────────────────────────

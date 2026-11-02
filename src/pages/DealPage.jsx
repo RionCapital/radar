@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { loadDeals, saveDeals, syncDealsFromSupabase } from '../lib/deals'
+import { loadDeals, saveDeals, syncDealsFromSupabase, renameDealEverywhere } from '../lib/deals'
 import { sbDeleteDeal } from '../lib/supabase'
 import { sbUploadAttachment, sbGetAttachmentUrl, sbDeleteAttachment } from '../lib/supabase'
 import { notifySaveFailed } from '../lib/saveStatus'
@@ -3853,7 +3853,9 @@ export default function DealPage({ onUpdateDeals, clients = [], onUpdateClients 
     setSettleModal(null)
   }
   function saveEdit() {
-    const finalDraft = {...draft}
+    // The name is owned by the header's rename control, never by this form,
+    // so whatever the deal is called right now wins over the draft's copy.
+    const finalDraft = { ...draft, 'Transaction Name': deal['Transaction Name'] }
     // Always sync Month of Settlement from Finance Due Date on save
     if (finalDraft['Finance Due Date']) {
       finalDraft['Month of Settlement'] = finalDraft['Finance Due Date']
@@ -3875,10 +3877,16 @@ export default function DealPage({ onUpdateDeals, clients = [], onUpdateClients 
       setNameError('A deal with that name already exists.')
       return
     }
-    const updated = deals.map(x => x['Transaction Name'] === decodedName ? { ...x, 'Transaction Name': trimmed } : x)
+    // Goes through the dedicated rename path, not saveDeals — see
+    // renameDealEverywhere. Passing `updated` to onUpdateDeals would trigger
+    // a second, ordinary save whose recovery pass would resurrect the old
+    // name, so App's copy is updated without re-saving.
+    const updated = renameDealEverywhere(deals, decodedName, trimmed)
     setDeals(updated)
-    saveDeals(updated)
-    if (onUpdateDeals) onUpdateDeals(updated)
+    // An open Edit-deal draft still holds the pre-rename name, and saving it
+    // would write that name straight back.
+    if (editing) setDraft(dr => (dr ? { ...dr, 'Transaction Name': trimmed } : dr))
+    if (onUpdateDeals) onUpdateDeals(updated, { alreadySaved: true })
     // The URL is keyed on the deal name, so move to the new one — otherwise
     // every subsequent updateDeal() call would keep looking for the old name.
     navigate(`/crm/deal/${encodeURIComponent(trimmed)}`, { replace: true })

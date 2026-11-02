@@ -227,6 +227,45 @@ async function _doDeleteDeal(transactionName) {
   }
 }
 
+// Deliberate rename — same reasoning as sbDeleteDeal above, and the same
+// shape. A rename makes the OLD name disappear from the local write, which
+// sbSaveDeals' recovery logic reads as accidental loss and helpfully puts
+// back: that's what was leaving a second, old-named copy of the deal behind.
+// Renaming the row in the cloud directly, with no recovery pass, is the only
+// way the old name can actually go away.
+export async function sbRenameDeal(oldName, newName) {
+  return queued('deals', () => _doRenameDeal(oldName, newName))
+}
+
+async function _doRenameDeal(oldName, newName) {
+  try {
+    const { data: existing } = await supabase
+      .from('deals')
+      .select('data')
+      .eq('id', 1)
+      .single()
+
+    const wrapped = existing?.data
+    const current = Array.isArray(wrapped) ? wrapped : (wrapped?.data || [])
+    // Rename in place. If a row already carries the new name — a duplicate
+    // left behind by this bug before it was fixed — it's cleared out first
+    // so the rename lands on one deal, not two. Only when the deal being
+    // renamed is actually there, so a repeated call can't delete the result
+    // of the first one.
+    const hasOld = current.some(d => d['Transaction Name'] === oldName)
+    const base = hasOld ? current.filter(d => d['Transaction Name'] !== newName) : current
+    const renamed = base.map(d => d['Transaction Name'] === oldName ? { ...d, 'Transaction Name': newName } : d)
+
+    const payload = Array.isArray(wrapped) ? renamed : { ...wrapped, data: renamed, savedAt: Date.now() }
+    const { error } = await supabase
+      .from('deals')
+      .upsert({ id: 1, data: payload, updated_at: new Date().toISOString() })
+    return !error
+  } catch {
+    return false
+  }
+}
+
 // ─── Referrers (Marketing) ────────────────────────────────────────────────────
 
 export async function sbLoadReferrers() {

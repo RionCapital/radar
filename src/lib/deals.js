@@ -1,4 +1,4 @@
-import { sbLoadDeals, sbSaveDeals } from './supabase'
+import { sbLoadDeals, sbSaveDeals, sbRenameDeal } from './supabase'
 import { notifySaveFailed } from './saveStatus'
 
 export const STORAGE_KEY = 'rion-crm-deals'
@@ -48,6 +48,23 @@ export function saveDeals(deals) {
     notifySaveFailed('deals', { error: String(err) })
   })
   return true
+}
+
+// Renaming a deal is NOT an ordinary save. sbSaveDeals protects against a
+// stale write by putting back anything that's in the cloud but missing from
+// the local array — and after a rename the old name is exactly that, so it
+// came straight back as a second deal. This writes the local array and
+// renames the cloud row directly, with no recovery pass, the same way
+// deletion already works.
+export function renameDealEverywhere(deals, oldName, newName) {
+  const updated = deals.map(d => d['Transaction Name'] === oldName ? { ...d, 'Transaction Name': newName } : d)
+  const payload = { data: updated, savedAt: Date.now(), lastSyncedAt: getLastSyncedAt() }
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(payload)) } catch {}
+  sbRenameDeal(oldName, newName).then(ok => {
+    if (ok) setLastSyncedAt(Date.now())
+    else notifySaveFailed('deals')
+  }).catch(err => notifySaveFailed('deals', { error: String(err) }))
+  return updated
 }
 
 // Call this once on mount, wherever deals are loaded. Unlike the old
