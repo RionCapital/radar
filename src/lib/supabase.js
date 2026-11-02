@@ -112,7 +112,15 @@ async function _doSaveClients(payload) {
       }
     }
 
-    const mergedPayload = Array.isArray(payload) ? mergedArr : { ...payload, data: mergedArr }
+    // Whatever the merge produced, a deal that's been renamed stays renamed.
+    const renames = cloudRenames(cloudWrapped)
+    const finalArr = applyRenameTombstones(mergedArr, renames)
+
+    // The record lives with the deals, so it has to survive every write —
+    // an ordinary save spreading `payload` would otherwise drop it.
+    const mergedPayload = Array.isArray(payload)
+      ? finalArr
+      : { ...payload, data: finalArr, ...(renames.length ? { renames } : {}) }
 
     const { error } = await supabase
       .from('clients')
@@ -137,6 +145,52 @@ export async function sbLoadDeals() {
 
 export async function sbSaveDeals(payload) {
   return queued('deals', () => _doSaveDeals(payload))
+}
+
+// ─── Rename tombstones ───────────────────────────────────────────────────────
+// Routing the rename around the recovery pass wasn't enough on its own. The
+// recovery pass has no memory, so ANY later write that still carries the old
+// name — a stale array held by a page that was open across the rename, a
+// push-up from another device, a queued save that resolved late — puts the
+// old name straight back, and from then on every save re-confirms it.
+//
+// So a rename now leaves a record in the cloud payload itself: from, to, when.
+// Every subsequent save consults it. A row carrying a superseded name is
+// dropped if the new name is already present, or renamed if it isn't — which
+// means a stale write can no longer undo a rename, however late it lands or
+// which device it comes from. Tombstones expire, so this doesn't grow forever.
+const RENAME_TOMBSTONE_TTL_MS = 30 * 24 * 60 * 60 * 1000
+const MAX_RENAME_TOMBSTONES = 50
+
+function pruneRenames(renames) {
+  const cutoff = Date.now() - RENAME_TOMBSTONE_TTL_MS
+  return (Array.isArray(renames) ? renames : [])
+    .filter(r => r && r.from && r.to && (r.at || 0) > cutoff)
+    .slice(-MAX_RENAME_TOMBSTONES)
+}
+
+// Applies the record to an array of deals. Oldest first, so a chain of
+// renames (A→B→C) lands on the final name rather than an intermediate one.
+export function applyRenameTombstones(arr, renames) {
+  const list = pruneRenames(renames).sort((a, b) => (a.at || 0) - (b.at || 0))
+  let out = Array.isArray(arr) ? [...arr] : []
+  list.forEach(({ from, to }) => {
+    const hasFrom = out.some(d => d['Transaction Name'] === from)
+    if (!hasFrom) return
+    const hasTo = out.some(d => d['Transaction Name'] === to)
+    out = hasTo
+      // The renamed deal is already there — the old-named row is the stale
+      // one, so it goes.
+      ? out.filter(d => d['Transaction Name'] !== from)
+      // Only the old name is present: this write predates the rename, so
+      // carry it forward rather than dropping the deal entirely.
+      : out.map(d => d['Transaction Name'] === from ? { ...d, 'Transaction Name': to } : d)
+  })
+  return out
+}
+
+function cloudRenames(wrapped) {
+  return Array.isArray(wrapped) ? [] : pruneRenames(wrapped?.renames)
 }
 
 async function _doSaveDeals(payload) {
@@ -215,12 +269,19 @@ async function _doDeleteDeal(transactionName) {
       .eq('id', 1)
       .single()
 
-    const current = Array.isArray(existing?.data) ? existing.data : []
+    // The stored shape is a wrapped { data, savedAt } object, not a bare
+    // array — reading it as an array meant `current` came back empty and the
+    // delete wrote an empty list over everything.
+    const wrapped = existing?.data
+    const current = Array.isArray(wrapped) ? wrapped : (wrapped?.data || [])
     const filtered = current.filter(d => d['Transaction Name'] !== transactionName)
+    const payload = Array.isArray(wrapped)
+      ? filtered
+      : { ...wrapped, data: filtered, savedAt: Date.now() }
 
     const { error } = await supabase
       .from('deals')
-      .upsert({ id: 1, data: filtered, updated_at: new Date().toISOString() })
+      .upsert({ id: 1, data: payload, updated_at: new Date().toISOString() })
     return !error
   } catch {
     return false
@@ -256,7 +317,10 @@ async function _doRenameDeal(oldName, newName) {
     const base = hasOld ? current.filter(d => d['Transaction Name'] !== newName) : current
     const renamed = base.map(d => d['Transaction Name'] === oldName ? { ...d, 'Transaction Name': newName } : d)
 
-    const payload = Array.isArray(wrapped) ? renamed : { ...wrapped, data: renamed, savedAt: Date.now() }
+    const renames = pruneRenames([...(Array.isArray(wrapped) ? [] : wrapped?.renames || []), { from: oldName, to: newName, at: Date.now() }])
+    const payload = Array.isArray(wrapped)
+      ? { data: renamed, savedAt: Date.now(), renames }
+      : { ...wrapped, data: renamed, savedAt: Date.now(), renames }
     const { error } = await supabase
       .from('deals')
       .upsert({ id: 1, data: payload, updated_at: new Date().toISOString() })

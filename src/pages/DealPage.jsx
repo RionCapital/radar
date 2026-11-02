@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { loadDeals, saveDeals, syncDealsFromSupabase, renameDealEverywhere } from '../lib/deals'
 import { sbDeleteDeal } from '../lib/supabase'
@@ -3787,11 +3787,25 @@ export default function DealPage({ onUpdateDeals, clients = [], onUpdateClients 
   const settledDisplay = dealStagesFull.find(s => s.id === 'settled')?.display
   const withdrawnDisplay = dealStagesFull.find(s => s.id === 'withdrawn')?.display
 
+  // Handlers created in an earlier render close over that render's `deals`.
+  // After a rename that array still carries the OLD name, and a blur or a
+  // late-resolving promise firing a save from it writes the old name back —
+  // which was the other half of the duplicate-deal problem. Everything that
+  // saves reads the newest array from here instead.
+  const dealsRef = useRef(deals)
+  useEffect(() => { dealsRef.current = deals }, [deals])
+  const nameRef = useRef(decodedName)
+  useEffect(() => { nameRef.current = decodedName }, [decodedName])
+
   // If the local cache was empty on load (e.g. cache just cleared), pull the
   // real deals down from Supabase rather than working from nothing.
   useEffect(() => {
     syncDealsFromSupabase().then(cloud => {
-      const base = cloud || deals
+      // A cloud snapshot fetched before a rename landed doesn't know about it,
+      // and applying it would put the old name back on screen. If the deal
+      // we're looking at isn't in it, it's stale — keep what we have.
+      if (cloud && !cloud.some(d => d['Transaction Name'] === nameRef.current)) return
+      const base = cloud || dealsRef.current
       // Same one-time rename as CRM.jsx — "1. Lead" to "1. Discovery" —
       // applied here too in case a deal gets opened directly (a bookmarked
       // link, say) without visiting the pipeline list first.
@@ -3831,7 +3845,10 @@ export default function DealPage({ onUpdateDeals, clients = [], onUpdateClients 
   // it reverted if the person happens to be mid-edit on Structure/Notes at
   // the same time.
   function updateDeal(patch) {
-    const updated = deals.map(x => x['Transaction Name'] === decodedName ? { ...x, ...patch } : x)
+    const current = dealsRef.current
+    const name = nameRef.current
+    const updated = current.map(x => x['Transaction Name'] === name ? { ...x, ...patch } : x)
+    dealsRef.current = updated
     setDeals(updated)
     saveDeals(updated)
     if (onUpdateDeals) onUpdateDeals(updated)
@@ -3855,12 +3872,13 @@ export default function DealPage({ onUpdateDeals, clients = [], onUpdateClients 
   function saveEdit() {
     // The name is owned by the header's rename control, never by this form,
     // so whatever the deal is called right now wins over the draft's copy.
-    const finalDraft = { ...draft, 'Transaction Name': deal['Transaction Name'] }
+    const finalDraft = { ...draft, 'Transaction Name': nameRef.current }
     // Always sync Month of Settlement from Finance Due Date on save
     if (finalDraft['Finance Due Date']) {
       finalDraft['Month of Settlement'] = finalDraft['Finance Due Date']
     }
-    const updated = deals.map(d => d['Transaction Name'] === decodedName ? finalDraft : d)
+    const updated = dealsRef.current.map(d => d['Transaction Name'] === nameRef.current ? finalDraft : d)
+    dealsRef.current = updated
     setDeals(updated)
     saveDeals(updated)
     if (onUpdateDeals) onUpdateDeals(updated)
@@ -3881,7 +3899,11 @@ export default function DealPage({ onUpdateDeals, clients = [], onUpdateClients 
     // renameDealEverywhere. Passing `updated` to onUpdateDeals would trigger
     // a second, ordinary save whose recovery pass would resurrect the old
     // name, so App's copy is updated without re-saving.
-    const updated = renameDealEverywhere(deals, decodedName, trimmed)
+    const updated = renameDealEverywhere(dealsRef.current, decodedName, trimmed)
+    // Set both immediately — a handler that fires before React re-renders
+    // must still see the new name, not the old one.
+    dealsRef.current = updated
+    nameRef.current = trimmed
     setDeals(updated)
     // An open Edit-deal draft still holds the pre-rename name, and saving it
     // would write that name straight back.
