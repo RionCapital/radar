@@ -5,7 +5,7 @@ import { sbLoadMarketing, sbSaveMarketing } from '../lib/supabase'
 import { loadSettings, getDealStages, dealUpfrontCommission, getCurrentUser } from '../lib/settings'
 import { loadUnsubRequests, clearUnsubRequests, applyUnsubRequests, ensureUnsubToken,
   unsubscribeUrl, buildUnsubFooterHtml, buildUnsubFooterText, reasonLabel,
-  CONTACT_ACTOR, staleUnmatchedRequests } from '../lib/unsubscribe'
+  CONTACT_ACTOR, staleUnmatchedRequests, requestKey } from '../lib/unsubscribe'
 import { loadDirectIncomeLocal, syncDirectIncomeFromSupabase, directIncomeForClient, entryMatchesLoan, entryCommissionSplit } from '../lib/directIncome'
 
 // Dot colour per CRM stage, keyed by permanent stage id (Settings > CRM >
@@ -2027,6 +2027,11 @@ export default function Marketing() {
   const [others,    setOthers]    = useState(() => loadStore(STORAGE_KEYS.others))
 
   const [unsubApplied, setUnsubApplied] = useState(0)
+  // Requests that reached Rradar but matched nobody. These MUST be visible:
+  // the Spam Act gives five working days to honour an unsubscribe, and one
+  // sitting silently in a queue is the worst of both worlds — we have the
+  // request and we aren't acting on it.
+  const [unsubPending, setUnsubPending] = useState([])
 
   // ─── Supabase startup sync ────────────────────────────────────────────────
   useEffect(() => {
@@ -2042,15 +2047,17 @@ export default function Marketing() {
       // Apply them here, where we're signed in, then clear what was applied.
       try {
         const requests = await loadUnsubRequests()
-        if (!requests.length) return
+        if (!requests.length) { setUnsubPending([]); return }
+        const done = []
+        let touched = false
+
+        // Referrers, lenders and others ARE the contacts — the stored array
+        // is the list itself, so matching against it is matching against them.
         const lists = [
           ['referrers', ref || loadStore(STORAGE_KEYS.referrers), setReferrers],
           ['lenders',   len || loadStore(STORAGE_KEYS.lenders),   setLenders],
           ['others',    oth || loadStore(STORAGE_KEYS.others),    setOthers],
-          ['clientOv',  cov || loadStore(STORAGE_KEYS.clientOv),  setClientOverrides],
         ]
-        const done = []
-        let touched = false
         lists.forEach(([key, list, setter]) => {
           const { contacts, applied, changed } = applyUnsubRequests(list || [], requests)
           done.push(...applied)
@@ -2059,6 +2066,49 @@ export default function Marketing() {
           saveStore(STORAGE_KEYS[key], contacts)
           setter(contacts)
         })
+
+        // Clients are NOT. A client contact lives on the client record in
+        // Rradar; clientOv holds only the EDITS made to one here, and a
+        // client nobody has ever edited has no row in it at all. Matching
+        // the queue against clientOv was therefore matching against a list
+        // that mostly doesn't contain the people being matched — the
+        // request would sit unapplied forever, and the contact would keep
+        // showing as subscribed. Compose the real contacts, match those,
+        // and write an override row back for whoever was hit.
+        const overrides = cov || loadStore(STORAGE_KEYS.clientOv) || []
+        const ovByKey = new Map(overrides.map(o => [o._ovKey, o]))
+        const clientContacts = (rradarClients || []).flatMap(rc =>
+          (rc.contacts || [])
+            .filter(ct => ct.type === 'Ind' && (ct.first || ct.last))
+            .map(ct => {
+              const _ovKey = `${rc.name}__${ct.first}_${ct.last}`
+              const ov = ovByKey.get(_ovKey) || {}
+              return {
+                ...ov,
+                _ovKey,
+                name: [ct.first, ct.last].filter(Boolean).join(' '),
+                // The address is on the client record; an override only has
+                // one if someone edited it here.
+                email: ov.email || ct.email || '',
+              }
+            }))
+        const cRes = applyUnsubRequests(clientContacts, requests)
+        done.push(...cRes.applied)
+        if (cRes.changed) {
+          touched = true
+          const hit = new Set(
+            cRes.contacts.filter((c, i) => c !== clientContacts[i]).map(c => c._ovKey))
+          const nextOv = [
+            ...overrides.filter(o => !hit.has(o._ovKey)),
+            ...cRes.contacts.filter(c => hit.has(c._ovKey)),
+          ]
+          saveStore(STORAGE_KEYS.clientOv, nextOv)
+          setClientOverrides(nextOv)
+        }
+
+        // Whatever is left matched nobody. Surface it rather than swallow it.
+        const hitKeys = new Set(done)
+        setUnsubPending(requests.filter(r => !hitKeys.has(requestKey(r))))
         // Also let go of typed addresses that have been sitting unmatched
         // for a fortnight — see staleUnsubRequests. They are cleared, not
         // applied, so they don't show in the "applied" count.
@@ -2273,6 +2323,39 @@ export default function Marketing() {
 
       {/* ── main ── */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+
+        {/* What came back from the unsubscribe links. Silence here was the
+            whole problem: a request could arrive, match nobody and sit in
+            the queue with nothing on screen to say so. */}
+        {unsubApplied > 0 && (
+          <div data-unsub-applied style={{ padding: '9px 16px', background: '#F0FDF4', borderBottom: '1px solid #BBF7D0',
+            fontSize: 12, color: '#166534', fontFamily: 'Montserrat,sans-serif' }}>
+            ✓ {unsubApplied} unsubscribe {unsubApplied === 1 ? 'request' : 'requests'} from email links applied.
+          </div>
+        )}
+        {unsubPending.length > 0 && (
+          <div data-unsub-pending style={{ padding: '10px 16px', background: '#FEF9E7', borderBottom: '1px solid #f5e6a8',
+            fontSize: 12, color: '#92600A', fontFamily: 'Montserrat,sans-serif', lineHeight: 1.6 }}>
+            <strong>
+              {unsubPending.length} unsubscribe {unsubPending.length === 1 ? 'request' : 'requests'} could not be matched to a contact.
+            </strong>
+            <div style={{ marginTop: 3 }}>
+              {unsubPending.map((r, i) => (
+                <span key={i} style={{ marginRight: 10 }}>
+                  {r.email
+                    ? r.email
+                    : 'a one-click link issued to someone no longer in these lists'}
+                </span>
+              ))}
+            </div>
+            <div style={{ marginTop: 4, fontSize: 11 }}>
+              They are still waiting, and still have to be honoured. Usually this means the address isn't in
+              Clients, Referral Partners, Lenders or Others — or it's held here under a different address.
+              Find them and unsubscribe them by hand, and the request clears itself.
+            </div>
+          </div>
+        )}
+
         {/* top bar */}
         <div style={{ padding: '18px 32px', background: '#fff', borderBottom: `1px solid ${C.border}`,
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
