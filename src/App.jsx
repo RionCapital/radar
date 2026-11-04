@@ -17,6 +17,7 @@ import CRM from './pages/CRM'
 import CRMDashboard from './pages/CRMDashboard'
 import DealPage from './pages/DealPage'
 import AdminSettings from './pages/AdminSettings'
+import Unsubscribe from './pages/Unsubscribe'
 import BirthdayNotifier from './components/BirthdayNotifier'
 import CRMTopbar from './components/CRMTopbar'
 import OpportunityScore from './pages/OpportunityScore'
@@ -229,6 +230,11 @@ export default function App() {
   const isCRM = location.pathname.startsWith('/crm')
   const isSettings = location.pathname === '/settings' || location.pathname === '/crm/settings'
   const isPlanner = location.pathname === '/planner'
+  // The unsubscribe page is reachable by anyone with the link. None of
+  // Rradar's chrome belongs on it: a Home button would bounce a stranger
+  // into the login screen, and the birthday notifier (which opens by
+  // default) would put client names and birthdays in front of them.
+  const isPublic = location.pathname.startsWith('/u/')
 
   function showToast(msg) { setToast(msg); setTimeout(() => setToast(null), 2500) }
 
@@ -382,14 +388,17 @@ export default function App() {
   }
 
   return (
-    <div style={{ minHeight:'100vh', background: isHome||isLogin ? '#3D5570' : 'var(--bg)' }}>
-      {!isHome && !isLogin && !isStudio && !isCRM && !isSettings && !isPlanner && <Topbar clients={clients} onOpenBirthdays={() => setShowBirthdays(true)} />}
-      {showBirthdays && !isHome && !isLogin && !isStudio && !isCRM && !isSettings && !isPlanner && <BirthdayNotifier clients={clients} onClose={() => setShowBirthdays(false)} />}
+    <div style={{ minHeight:'100vh', background: isHome||isLogin ? '#3D5570' : isPublic ? '#F4F6F9' : 'var(--bg)' }}>
+      {!isHome && !isLogin && !isStudio && !isCRM && !isSettings && !isPlanner && !isPublic && <Topbar clients={clients} onOpenBirthdays={() => setShowBirthdays(true)} />}
+      {showBirthdays && !isHome && !isLogin && !isStudio && !isCRM && !isSettings && !isPlanner && !isPublic && <BirthdayNotifier clients={clients} onClose={() => setShowBirthdays(false)} />}
       <Toast message={toast} />
       <SaveFailedBanner failure={saveFailure} onDismiss={()=>setSaveFailure(null)} />
       <AppErrorBoundary>
         <Routes>
           <Route path="/login" element={<Login />} />
+          {/* Public on purpose — an unsubscribe facility can't require a
+              login (ACMA), so this is the one route outside RequireAuth. */}
+          <Route path="/u/:token" element={<Unsubscribe />} />
           <Route path="/" element={<RequireAuth><Home /></RequireAuth>} />
           <Route path="/radar/dashboard" element={<RequireAuth><Dashboard clients={clients} onImport={handleImport} onUpdateClients={updateAllClients} /></RequireAuth>} />
           <Route path="/radar/clients" element={<RequireAuth><ClientList clients={clients} onAddClient={addClient} onUpdateClients={updateAllClients} /></RequireAuth>} />

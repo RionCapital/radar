@@ -2,7 +2,10 @@ import { useState, useEffect, useMemo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { loadClients } from '../lib/data'
 import { sbLoadMarketing, sbSaveMarketing } from '../lib/supabase'
-import { loadSettings, getDealStages, dealUpfrontCommission } from '../lib/settings'
+import { loadSettings, getDealStages, dealUpfrontCommission, getCurrentUser } from '../lib/settings'
+import { loadUnsubRequests, clearUnsubRequests, applyUnsubRequests, ensureUnsubToken,
+  unsubscribeUrl, buildUnsubFooterHtml, buildUnsubFooterText, reasonLabel,
+  CONTACT_ACTOR } from '../lib/unsubscribe'
 import { loadDirectIncomeLocal, syncDirectIncomeFromSupabase, directIncomeForClient, entryMatchesLoan, entryCommissionSplit } from '../lib/directIncome'
 
 // Dot colour per CRM stage, keyed by permanent stage id (Settings > CRM >
@@ -221,15 +224,66 @@ function ContactActions({ email, mobile }) {
   )
 }
 
-function OutreachModal({ contacts, groupLabel, onClose }) {
+function OutreachModal({ contacts, groupLabel, onClose, onSaveContacts }) {
   const [subject, setSubject] = useState('Message from Cameron – Rion Capital')
   const [body, setBody]       = useState('')
   const [copied, setCopied]   = useState(false)
+  const [footerCopied, setFooterCopied] = useState(false)
 
   // exclude unsubscribed
   const eligible = contacts.filter(c => !c.unsubscribed)
   const emails   = eligible.map(c => c.email).filter(Boolean)
   const skipped  = contacts.length - eligible.length
+
+  const co = (loadSettings().companyDetails) || {}
+  const sender = {
+    business: co.fullCompanyName || co.tradingName || 'Rion Capital',
+    abn: co.abn, acl: co.acl, address: co.address, phone: co.phone, email: co.email,
+  }
+
+  // Minting has to be idempotent across clicks. `contacts` is the snapshot
+  // from when the modal opened, so after the first save it still shows no
+  // tokens — mint straight off it twice and the same person gets a different
+  // link in every email, silently breaking the one in the email they got
+  // last week. The facility has to keep working for at least 30 days after
+  // a message was sent, so a token, once given out, is permanent.
+  const [minted, setMinted] = useState({})
+  const keyOf = c => c._ovKey || c.id || c.email
+
+  function tokensFor(list) {
+    const updated = []
+    const out = list.map(c => {
+      const k = keyOf(c)
+      const existing = c.unsubToken || minted[k]
+      if (existing) return { contact: { ...c, unsubToken: existing }, token: existing }
+      const { token, contact } = ensureUnsubToken(c)
+      updated.push(contact)
+      return { contact, token }
+    })
+    if (updated.length) {
+      setMinted(prev => {
+        const n = { ...prev }
+        updated.forEach(c => { n[keyOf(c)] = c.unsubToken })
+        return n
+      })
+      if (onSaveContacts) onSaveContacts(updated)
+    }
+    return out
+  }
+
+  // One mailto carries every recipient in a single message, so it cannot
+  // carry a per-recipient link. Mint the tokens anyway and hand over a
+  // generic footer — the page asks nothing of the person beyond the click,
+  // and the per-recipient link is available one contact at a time from their
+  // own page. Sending individually (one mailto each) is the way to get a
+  // personal link into a group send.
+  function copyFooter() {
+    tokensFor(eligible)
+    const url = unsubscribeUrl('')
+    navigator.clipboard.writeText(buildUnsubFooterText({ ...sender, url: url.replace(/\/$/, '') }))
+      .then(() => { setFooterCopied(true); setTimeout(() => setFooterCopied(false), 2500) })
+      .catch(() => {})
+  }
 
   function copyEmails() {
     navigator.clipboard.writeText(emails.join('; ')).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000) })
@@ -238,6 +292,21 @@ function OutreachModal({ contacts, groupLabel, onClose }) {
     const sub = encodeURIComponent(subject)
     const bod = encodeURIComponent(body)
     window.location.href = `mailto:${emails.join(';')}?subject=${sub}&body=${bod}`
+  }
+
+  // One message per recipient, each with their own unsubscribe link. Slower
+  // to send, but it's the only way a group send can carry a working
+  // one-click link — and the only way a reply doesn't go to everyone.
+  function openIndividually() {
+    const withLinks = tokensFor(eligible.filter(c => c.email))
+      .map(({ contact, token }) => ({ email: contact.email, url: unsubscribeUrl(token) }))
+    if (!withLinks.length) return
+    if (!window.confirm(`This opens ${withLinks.length} separate draft${withLinks.length === 1 ? '' : 's'}, each with that person's own unsubscribe link. Continue?`)) return
+    withLinks.forEach((r, i) => {
+      const footer = buildUnsubFooterText({ ...sender, url: r.url })
+      const bod = encodeURIComponent(`${body}\n${footer}`)
+      setTimeout(() => { window.open(`mailto:${r.email}?subject=${encodeURIComponent(subject)}&body=${bod}`, '_blank') }, i * 400)
+    })
   }
 
   return (
@@ -260,6 +329,23 @@ function OutreachModal({ contacts, groupLabel, onClose }) {
           cursor: 'pointer', fontFamily: 'Montserrat,sans-serif', color: C.text }}>
           {copied ? '✓ Copied!' : 'Copy Emails'}
         </button>
+        <button onClick={openIndividually} style={{ padding: '9px 18px', borderRadius: 8,
+          border: `1px solid ${C.navy}`, background: '#fff', fontWeight: 600, fontSize: 13,
+          cursor: 'pointer', fontFamily: 'Montserrat,sans-serif', color: C.navy }}>
+          Send individually (personal unsubscribe links)
+        </button>
+        <button onClick={copyFooter} style={{ padding: '9px 18px', borderRadius: 8,
+          border: `1px solid ${C.border}`, background: '#fff', fontWeight: 600, fontSize: 13,
+          cursor: 'pointer', fontFamily: 'Montserrat,sans-serif', color: C.text }}>
+          {footerCopied ? '✓ Footer copied!' : 'Copy footer'}
+        </button>
+      </div>
+
+      <div style={{ marginTop: 12, padding: '10px 13px', background: '#FEF9E7', border: '1px solid #f5e6a8',
+        borderRadius: 8, fontSize: 11.5, color: '#92600A', lineHeight: 1.65, fontFamily: 'Montserrat,sans-serif' }}>
+        <strong>Every marketing email needs an unsubscribe link and your business details.</strong>{' '}
+        <em>Open in Outlook</em> puts everyone in one message, which can't carry a personal link — paste the copied footer into it.
+        <em> Send individually</em> opens one draft per person, each with their own one-click link.
       </div>
       <div style={{ marginTop: 16, fontSize: 11, color: C.muted, fontFamily: 'Montserrat,sans-serif',
         padding: '8px 10px', background: '#F9FAFB', borderRadius: 6, border: `1px solid ${C.border}`, wordBreak: 'break-all' }}>
@@ -1001,9 +1087,19 @@ function ContactDetail({ contact, section, onBack, onSave, onDelete, onMove, rra
           ]
 
           const unsub = !!contact.unsubscribed
-          const unsubDate = contact.unsubscribedAt
-            ? (() => { try { return new Date(contact.unsubscribedAt).toLocaleDateString('en-AU',{day:'2-digit',month:'short',year:'numeric'}) } catch { return '' } })()
-            : ''
+          const fmtWhen = v => { try { return new Date(v).toLocaleDateString('en-AU',{day:'2-digit',month:'short',year:'numeric'}) } catch { return '' } }
+          const unsubDate = contact.unsubscribedAt ? fmtWhen(contact.unsubscribedAt) : ''
+
+          // Only an admin may change someone's subscription from inside
+          // Rradar. Everyone else sees the status and the trail — it governs
+          // whether this person may be emailed, so it has to be visible to
+          // whoever is about to email them — but can't flip it. The contact's
+          // own link is unaffected: that never required a login in the first
+          // place, and it isn't gated by anything here.
+          const me = getCurrentUser()
+          const canChangeSub = me?.role === 'admin'
+          const actor = me?.name || me?.email || 'Rradar user'
+          const trail = subscriptionTrail(contact).slice().reverse()
 
           return (
             <>
@@ -1025,20 +1121,84 @@ function ContactDetail({ contact, section, onBack, onSave, onDelete, onMove, rra
                   </span>
                   {unsub && unsubDate && <span style={{ color:C.muted, fontSize:11 }}>since {unsubDate}</span>}
                   {unsub && contact.unsubscribedVia && <span style={{ color:C.muted, fontSize:11 }}>· {contact.unsubscribedVia}</span>}
+                  {unsub && contact.unsubscribedBy && <span style={{ color:C.muted, fontSize:11 }}>· by {contact.unsubscribedBy}</span>}
                 </div>
-                <button
-                  onClick={() => onSave(setSubscription(contact, !unsub, 'Marketing page'))}
-                  title={unsub ? 'Put this contact back on the list' : 'Stop this contact receiving group emails'}
-                  style={{ fontSize:11, fontWeight:600, padding:'5px 12px', borderRadius:7, cursor:'pointer',
-                    fontFamily:'Montserrat,sans-serif',
-                    border:`1px solid ${unsub ? '#bbf7d0' : '#fecaca'}`,
-                    background:'#fff', color: unsub ? '#166534' : '#dc2626' }}>
-                  {unsub ? 'Resubscribe' : 'Unsubscribe'}
-                </button>
+                {canChangeSub ? (
+                  <button
+                    data-sub-toggle
+                    onClick={() => {
+                      // Unsubscribing on someone's behalf needs no ceremony —
+                      // it's the safe direction. Putting someone BACK on a
+                      // list they took themselves off does not get to be a
+                      // stray click, so it asks, and says who asked for it.
+                      if (unsub) {
+                        const who = contact.unsubscribedVia === 'Email link'
+                          ? `${contact.name || 'This contact'} unsubscribed themselves via the link in an email`
+                          : `${contact.name || 'This contact'} was unsubscribed by ${contact.unsubscribedBy || 'a Rradar user'}`
+                        if (!window.confirm(`${who}${unsubDate ? ` on ${unsubDate}` : ''}.\n\nOnly put them back on the list if they have asked you to. This will be recorded against your name.`)) return
+                      }
+                      onSave(setSubscription(contact, !unsub, 'Rradar (admin)', actor))
+                    }}
+                    title={unsub ? 'Put this contact back on the list' : 'Stop this contact receiving group emails'}
+                    style={{ fontSize:11, fontWeight:600, padding:'5px 12px', borderRadius:7, cursor:'pointer',
+                      fontFamily:'Montserrat,sans-serif',
+                      border:`1px solid ${unsub ? '#bbf7d0' : '#fecaca'}`,
+                      background:'#fff', color: unsub ? '#166534' : '#dc2626' }}>
+                    {unsub ? 'Resubscribe' : 'Unsubscribe'}
+                  </button>
+                ) : (
+                  <span data-sub-locked style={{ fontSize:10.5, color:C.muted, fontFamily:'Montserrat,sans-serif',
+                    padding:'5px 10px', borderRadius:7, background:'#F9FAFB', border:`1px solid ${C.border}` }}>
+                    🔒 Admin only
+                  </span>
+                )}
               </div>
               {unsub && (
-                <div style={{ fontSize:10.5, color:'#dc2626', marginTop:6, fontFamily:'Montserrat,sans-serif' }}>
+                <div style={{ fontSize:10.5, color:'#dc2626', marginTop:6, fontFamily:'Montserrat,sans-serif', lineHeight:1.6 }}>
                   Excluded from Outreach sends and flagged in every export.
+                  {contact.unsubReason && <><br/>Reason given: <strong>{reasonLabel(contact.unsubReason)}</strong></>}
+                  {contact.unsubNote && <><br/>“{contact.unsubNote}”</>}
+                </div>
+              )}
+              {!unsub && contact.email && (
+                <div style={{ fontSize:10.5, color:C.muted, marginTop:6, fontFamily:'Montserrat,sans-serif' }}>
+                  <button onClick={() => onSave(copyPersonalUnsubLink(contact))}
+                    style={{ background:'none', border:'none', padding:0, color:C.navy, fontSize:10.5, textDecoration:'underline', cursor:'pointer', fontFamily:'inherit' }}>
+                    Copy this contact's unsubscribe link
+                  </button>
+                  {' '}— for pasting into a one-off email.
+                </div>
+              )}
+
+              {/* The trail. The current status says whether we may email
+                  them; this says who decided that and when — which is the
+                  question that actually comes up when someone says they
+                  never unsubscribed, or says they did and still got an
+                  email. A change the contact made themselves and a change a
+                  Rradar admin made are kept visibly apart. */}
+              {trail.length > 0 && (
+                <div data-sub-trail style={{ marginTop:8, paddingTop:8, borderTop:`1px dashed ${C.border}` }}>
+                  <div style={{ fontSize:9.5, fontWeight:700, color:C.slate, fontFamily:'Montserrat,sans-serif',
+                    textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:4 }}>
+                    Subscription history
+                  </div>
+                  {trail.map((h, i) => {
+                    const byContact = h.by === CONTACT_ACTOR || h.via === 'Email link'
+                    return (
+                      <div key={i} style={{ fontSize:10.5, color:C.muted, fontFamily:'Montserrat,sans-serif',
+                        lineHeight:1.65, display:'flex', gap:6, flexWrap:'wrap' }}>
+                        <span style={{ fontWeight:700, color: h.action === 'Unsubscribed' ? '#dc2626' : '#166534' }}>
+                          {h.action}
+                        </span>
+                        <span>{fmtWhen(h.at)}</span>
+                        <span>·</span>
+                        <span style={{ color: byContact ? C.navy : C.muted, fontWeight: byContact ? 700 : 400 }}>
+                          {byContact ? 'by the contact (email link)' : `by ${h.by || 'a Rradar user'}`}
+                        </span>
+                        {h.reason && <span>· {reasonLabel(h.reason)}</span>}
+                      </div>
+                    )
+                  })}
                 </div>
               )}
             </>
@@ -1167,15 +1327,31 @@ function ContactDetail({ contact, section, onBack, onSave, onDelete, onMove, rra
 
 // ─── Edit Modal ───────────────────────────────────────────────────────────────
 // Keeps the Edit form's consent toggle writing the same record as the one on
-// the contact page — date and source, not just a flag.
+// the contact page — date, source and who, not just a flag — and behind the
+// same admin gate, so the Edit form isn't a way around it.
 function SubscriptionToggle({ f, onChange }) {
+  const me = getCurrentUser()
+  const canChangeSub = me?.role === 'admin'
+  const actor = me?.name || me?.email || 'Rradar user'
+  if (!canChangeSub) {
+    return (
+      <div style={{ fontSize:11.5, color:C.muted, fontFamily:'Montserrat,sans-serif',
+        padding:'9px 12px', background:'#F9FAFB', borderRadius:8, border:`1px solid ${C.border}` }}>
+        <strong style={{ color: f.unsubscribed ? '#dc2626' : '#166534' }}>
+          {f.unsubscribed ? 'Unsubscribed' : 'Subscribed'}
+        </strong> from group emails · 🔒 only an admin can change this
+      </div>
+    )
+  }
   return (
     <div>
       <Toggle label="Unsubscribed from group emails" checked={!!f.unsubscribed}
-        onChange={v => onChange(setSubscription(f, v, 'Marketing page'))} />
+        onChange={v => onChange(setSubscription(f, v, 'Rradar (admin)', actor))} />
       {f.unsubscribed && f.unsubscribedAt && (
         <div style={{ fontSize:10.5, color:'#9ca3af', marginTop:3, fontFamily:'Montserrat,sans-serif' }}>
-          Recorded {String(f.unsubscribedAt).slice(0,10)}{f.unsubscribedVia ? ` · ${f.unsubscribedVia}` : ''}
+          Recorded {String(f.unsubscribedAt).slice(0,10)}
+          {f.unsubscribedVia ? ` · ${f.unsubscribedVia}` : ''}
+          {f.unsubscribedBy ? ` · by ${f.unsubscribedBy}` : ''}
         </div>
       )}
     </div>
@@ -1299,33 +1475,71 @@ function splitName(fullName) {
   return { first: parts[0], last: parts.slice(1).join(' ') }
 }
 
+// Each contact's link carries their own token. Minted on first use rather
+// than up front, so a contact who is never emailed never gets one.
+function copyPersonalUnsubLink(contact) {
+  const { token, contact: withToken } = ensureUnsubToken(contact)
+  try { navigator.clipboard.writeText(unsubscribeUrl(token)) } catch {}
+  return withToken
+}
+
 // ─── Marketing consent ───────────────────────────────────────────────────────
 // A boolean alone isn't enough: an unsubscribe request has to be evidenced,
-// so the date and where it came from are recorded with it. `via` is 'Manual'
-// today; when Rradar sends its own emails and notifications an unsubscribe
-// link will set it to something else, and the record will already be there
-// to hold it.
-export function setSubscription(contact, unsubscribed, via) {
+// so the date, the channel it came through, and WHO made the change are
+// recorded with it.
+//
+// Two things can change this status, and the record has to tell them apart:
+//
+//   · the contact themselves, by clicking the link in an email — via
+//     'Email link', by 'The contact'. That is their own decision and the
+//     evidence that matters if they ever query it.
+//   · a Rradar admin, from this page — via 'Rradar (admin)', by the signed-in
+//     user's name. Someone rang up and asked, or asked in person.
+//
+// The current status answers "may we email them". The TRAIL answers "who
+// did this, and when" — which is the question that actually gets asked when
+// a contact says they never unsubscribed, or says they did and still got an
+// email. So every change appends; nothing is overwritten.
+const SUB_TRAIL_MAX = 40
+
+export function subscriptionTrail(contact) {
+  return Array.isArray(contact?.subHistory) ? contact.subHistory : []
+}
+
+export function setSubscription(contact, unsubscribed, via, by) {
+  const entry = {
+    at: new Date().toISOString(),
+    action: unsubscribed ? 'Unsubscribed' : 'Resubscribed',
+    via: via || 'Manual',
+    by: by || '',
+  }
+  const subHistory = [...subscriptionTrail(contact), entry].slice(-SUB_TRAIL_MAX)
+
   if (!unsubscribed) {
-    // Resubscribing clears the record rather than leaving a stale date
-    // sitting against someone who is back on the list.
-    const { unsubscribedAt, unsubscribedVia, ...rest } = contact
-    return { ...rest, unsubscribed: false }
+    // Resubscribing clears the current record rather than leaving a stale
+    // date sitting against someone who is back on the list — but the trail
+    // keeps the fact that they were once off it, and who put them back.
+    const { unsubscribedAt, unsubscribedVia, unsubscribedBy, unsubReason, unsubNote, ...rest } = contact
+    return { ...rest, unsubscribed: false, subHistory }
   }
   return {
     ...contact,
     unsubscribed: true,
-    unsubscribedAt: contact.unsubscribedAt || new Date().toISOString(),
-    unsubscribedVia: contact.unsubscribedVia || via || 'Manual',
+    unsubscribedAt:  contact.unsubscribedAt  || entry.at,
+    unsubscribedVia: contact.unsubscribedVia || entry.via,
+    unsubscribedBy:  contact.unsubscribedBy  || entry.by,
+    subHistory,
   }
 }
 
-const subscriptionCols = ['Subscribed', 'Unsubscribed', 'Unsubscribed On', 'Unsubscribed Via']
+const subscriptionCols = ['Subscribed', 'Unsubscribed', 'Unsubscribed On', 'Unsubscribed Via', 'Changed By', 'Reason Given']
 const subscriptionVals = c => [
   c.unsubscribed ? 'No' : 'Yes',
   c.unsubscribed ? 'Yes' : 'No',
   c.unsubscribed && c.unsubscribedAt ? String(c.unsubscribedAt).slice(0, 10) : '',
   c.unsubscribed ? (c.unsubscribedVia || 'Manual') : '',
+  c.unsubscribed ? (c.unsubscribedBy || '') : '',
+  c.unsubscribed ? reasonLabel(c.unsubReason) : '',
 ]
 
 // ─── CSV Export ──────────────────────────────────────────────────────────────
@@ -1811,14 +2025,44 @@ export default function Marketing() {
   const [lenders,   setLenders]   = useState(() => loadStore(STORAGE_KEYS.lenders))
   const [others,    setOthers]    = useState(() => loadStore(STORAGE_KEYS.others))
 
+  const [unsubApplied, setUnsubApplied] = useState(0)
+
   // ─── Supabase startup sync ────────────────────────────────────────────────
   useEffect(() => {
-    sbLoadMarketing().then(cloud => {
-      if (!cloud) return
-      if (cloud.referrers?.length) { saveStore(STORAGE_KEYS.referrers, cloud.referrers); setReferrers(cloud.referrers) }
-      if (cloud.lenders?.length)   { saveStore(STORAGE_KEYS.lenders,   cloud.lenders);   setLenders(cloud.lenders) }
-      if (cloud.others?.length)    { saveStore(STORAGE_KEYS.others,    cloud.others);     setOthers(cloud.others) }
-      if (cloud.clientOv?.length)  { saveStore(STORAGE_KEYS.clientOv,  cloud.clientOv);  setClientOverrides(cloud.clientOv) }
+    sbLoadMarketing().then(async cloud => {
+      let ref = cloud?.referrers, len = cloud?.lenders, oth = cloud?.others, cov = cloud?.clientOv
+      if (ref?.length) { saveStore(STORAGE_KEYS.referrers, ref); setReferrers(ref) }
+      if (len?.length) { saveStore(STORAGE_KEYS.lenders,   len); setLenders(len) }
+      if (oth?.length) { saveStore(STORAGE_KEYS.others,    oth); setOthers(oth) }
+      if (cov?.length) { saveStore(STORAGE_KEYS.clientOv,  cov); setClientOverrides(cov) }
+
+      // Anyone who clicked the unsubscribe link in an email is sitting in a
+      // separate queue (the public endpoint never touches the contact store).
+      // Apply them here, where we're signed in, then clear what was applied.
+      try {
+        const requests = await loadUnsubRequests()
+        if (!requests.length) return
+        const lists = [
+          ['referrers', ref || loadStore(STORAGE_KEYS.referrers), setReferrers],
+          ['lenders',   len || loadStore(STORAGE_KEYS.lenders),   setLenders],
+          ['others',    oth || loadStore(STORAGE_KEYS.others),    setOthers],
+          ['clientOv',  cov || loadStore(STORAGE_KEYS.clientOv),  setClientOverrides],
+        ]
+        const done = []
+        let touched = false
+        lists.forEach(([key, list, setter]) => {
+          const { contacts, applied, changed } = applyUnsubRequests(list || [], requests)
+          done.push(...applied)
+          if (!changed) return
+          touched = true
+          saveStore(STORAGE_KEYS[key], contacts)
+          setter(contacts)
+        })
+        if (done.length) {
+          if (touched) { syncMarketingToSupabase(); setUnsubApplied(done.length) }
+          clearUnsubRequests(done).catch(() => {})
+        }
+      } catch {}
     }).catch(() => {})
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
   // ─────────────────────────────────────────────────────────────────────────
@@ -1882,6 +2126,42 @@ export default function Marketing() {
     if (sec === 'lenders')   { const n = fn(lenders);   setLenders(n);   saveStore(STORAGE_KEYS.lenders, n) }
     if (sec === 'others')    { const n = fn(others);    setOthers(n);    saveStore(STORAGE_KEYS.others, n) }
     syncMarketingToSupabase()
+  }
+
+  // Several contacts changed at once — minting an unsubscribe token for every
+  // recipient of a group send. One state write and one cloud sync rather than
+  // one per contact, which with 200 referrers would be 200 saves.
+  function saveContactsBatch(updatedList) {
+    if (!updatedList?.length) return
+    const ovs  = updatedList.filter(c => c._ovKey)
+    const rest = updatedList.filter(c => !c._ovKey)
+
+    if (ovs.length) {
+      const keys = new Set(ovs.map(c => c._ovKey))
+      const next = clientOverrides.filter(o => !keys.has(o._ovKey)).concat(ovs)
+      setClientOverrides(next)
+      saveStore(STORAGE_KEYS.clientOv, next)
+    }
+    if (rest.length && section !== 'clients') {
+      const byId = new Map(rest.map(c => [c.id, c]))
+      // saveList writes the store and syncs, which also picks up the
+      // overrides written just above.
+      saveList(section, list => list.map(c => byId.get(c.id) || c))
+      refreshOutreachSnapshot(updatedList)
+      return
+    }
+    syncMarketingToSupabase()
+    refreshOutreachSnapshot(updatedList)
+  }
+
+  // The Outreach modal holds the list it was opened with. Fold anything just
+  // saved back into it so its snapshot doesn't drift from what's stored.
+  function refreshOutreachSnapshot(updatedList) {
+    setOutreach(prev => {
+      if (!prev) return prev
+      const byKey = new Map(updatedList.map(c => [c._ovKey || c.id || c.email, c]))
+      return prev.map(c => byKey.get(c._ovKey || c.id || c.email) || c)
+    })
   }
 
   function handleSaveContact(updated) {
@@ -2061,7 +2341,7 @@ export default function Marketing() {
           onSave={handleAdd} onClose={() => setAdding(false)} />
       )}
       {outreach && (
-        <OutreachModal contacts={outreach}
+        <OutreachModal contacts={outreach} onSaveContacts={saveContactsBatch}
           groupLabel={`${sectionLabel[section]} (${outreach.length})`}
           onClose={() => setOutreach(null)} />
       )}
