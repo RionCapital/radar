@@ -8,14 +8,28 @@ import { loadSettings } from '../lib/settings'
 // can't require an account or a login, so this is the one route in Rradar that
 // anyone can open.
 //
-// The unsubscribe is sent the moment the page opens, before anything is asked.
-// That ordering is the whole point: the request is honoured first, and the
-// reason is a genuinely optional afterthought. A page that collected a reason
-// before acting would be requiring additional personal information to
-// unsubscribe, which isn't allowed — and would be a worse experience anyway.
+// There are two ways in, because there have to be:
+//
+//   /u/<token>  — the one-click link, personal to one recipient. The
+//                 unsubscribe is sent the moment the page opens, before
+//                 anything is asked. That ordering is the whole point: the
+//                 request is honoured first and the reason is a genuinely
+//                 optional afterthought. A page that collected a reason
+//                 before acting would be requiring additional personal
+//                 information to unsubscribe, which isn't allowed.
+//
+//   /u          — the generic link, for a footer pasted into a bulk send
+//                 from Outlook. One mailto carries one body to everyone, so
+//                 it cannot carry a link per person. This page asks which
+//                 address to remove. Asking for the address the message was
+//                 sent to is not "additional personal information" — it is
+//                 the electronic address the Act is about — but it is one
+//                 more step, so the one-click link is still the better path
+//                 wherever it can be used.
 
 const NAVY = '#3D4F6B'
 const PINK = '#EB99C2'
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
 
 export default function Unsubscribe() {
   const { token } = useParams()
@@ -23,17 +37,26 @@ export default function Unsubscribe() {
   const co = settings.companyDetails || {}
   const business = co.fullCompanyName || co.tradingName || 'Rion Capital'
 
-  const [state, setState] = useState('working') // working | done | failed
+  // With a token there is nothing to ask, so the page opens already working.
+  // Without one it has to ask for the address first.
+  const [state, setState] = useState(token ? 'working' : 'ask') // ask | working | done | failed
+  const [email, setEmail] = useState('')
+  const [emailErr, setEmailErr] = useState('')
   const [reason, setReason] = useState('')
   const [note, setNote] = useState('')
   const [sent, setSent] = useState(false)
   const [resubscribed, setResubscribed] = useState(false)
 
+  // Whatever identifies this person for the rest of the session. Set once —
+  // the reason, and a change of mind, have to go to the same place as the
+  // unsubscribe did.
+  const identity = useRef(token ? { token } : null)
+
   async function post(payload) {
     const res = await fetch('/api/unsubscribe', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token, ...payload }),
+      body: JSON.stringify({ ...(identity.current || {}), ...payload }),
     })
     if (!res.ok) throw new Error('failed')
     return res.json()
@@ -41,18 +64,31 @@ export default function Unsubscribe() {
 
   // Honour it immediately, on arrival. The ref means one request per token
   // even under StrictMode's double-invoke in development — the endpoint is
-  // idempotent, but there is no reason to send it twice.
-  // The ref is the dedupe, so the result is applied whichever mount it
-  // belongs to — cancelling on unmount would leave StrictMode's second
-  // mount waiting forever for a request the first one already sent.
+  // idempotent, but there is no reason to send it twice. The ref is the
+  // dedupe, so the result is applied whichever mount it belongs to:
+  // cancelling on unmount would leave StrictMode's second mount waiting
+  // forever for a request the first one already sent.
   const sentFor = useRef(null)
   useEffect(() => {
+    if (!token) return
     if (sentFor.current === token) return
     sentFor.current = token
     post({})
       .then(() => setState('done'))
       .catch(() => setState('failed'))
   }, [token]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  function submitEmail(ev) {
+    ev?.preventDefault?.()
+    const v = email.trim().toLowerCase()
+    if (!EMAIL_RE.test(v)) { setEmailErr('That doesn’t look like an email address.'); return }
+    setEmailErr('')
+    identity.current = { email: v }
+    setState('working')
+    post({})
+      .then(() => setState('done'))
+      .catch(() => setState('failed'))
+  }
 
   const card = { background: '#fff', border: '1px solid #E2E8F0', borderRadius: 10 }
   const wrap = { minHeight: '100vh', background: '#F4F6F9', fontFamily: 'Aptos,Calibri,Arial,sans-serif' }
@@ -85,6 +121,51 @@ export default function Unsubscribe() {
     try { await post({ resubscribe: true }); setResubscribed(true) } catch {}
   }
 
+  // ── No token: ask which address to take off the list ──
+  if (state === 'ask') {
+    return (
+      <div style={wrap}>
+        <Header />
+        <div style={{ maxWidth: 680, margin: '0 auto', padding: '40px 20px 56px' }}>
+          <h1 style={{ margin: 0, fontSize: 21, fontWeight: 700, color: '#2A3545' }}>Unsubscribe from our emails</h1>
+          <p style={{ margin: '8px 0 0', fontSize: 13.5, color: '#6B7686', lineHeight: 1.7 }}>
+            Enter the email address you received our message at and we'll take it off our marketing list.
+            Nothing else is needed — no account, no password.
+          </p>
+          {/* noValidate: the browser's own bubble varies by browser and
+              vanishes on the next click. One message, in the page, that
+              stays put until it's fixed. */}
+          <form onSubmit={submitEmail} noValidate style={{ marginTop: 20, ...card, padding: '20px 22px' }}>
+            <label htmlFor="unsub-email" style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#6B7686', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>
+              Your email address
+            </label>
+            <input id="unsub-email" type="email" inputMode="email" autoComplete="email" autoFocus
+              value={email} onChange={e => { setEmail(e.target.value); if (emailErr) setEmailErr('') }}
+              placeholder="you@example.com.au"
+              style={{
+                width: '100%', boxSizing: 'border-box', border: `1.5px solid ${emailErr ? '#FCA5A5' : '#E2E8F0'}`,
+                borderRadius: 9, padding: '12px 13px', fontSize: 14, fontFamily: 'inherit', color: '#2A3545',
+                minHeight: 44,
+              }} />
+            {emailErr && <div role="alert" style={{ fontSize: 12, color: '#B91C1C', marginTop: 6 }}>{emailErr}</div>}
+            <button type="submit"
+              style={{
+                marginTop: 14, background: NAVY, color: '#fff', border: 'none', fontWeight: 700, fontSize: 13.5,
+                padding: '12px 24px', borderRadius: 9, minHeight: 44, cursor: 'pointer', fontFamily: 'inherit',
+              }}>
+              Unsubscribe me
+            </button>
+          </form>
+          <div style={{ marginTop: 16, fontSize: 11.5, color: '#96A0AE', lineHeight: 1.7 }}>
+            This only stops marketing and newsletter emails. We will still contact you about any loan or
+            application in progress.
+          </div>
+          <SenderDetails />
+        </div>
+      </div>
+    )
+  }
+
   if (state === 'working') {
     return (
       <div style={wrap}>
@@ -104,7 +185,7 @@ export default function Unsubscribe() {
           <div style={{ ...card, borderColor: '#FECACA', background: '#FEF2F2', padding: '18px 22px' }}>
             <div style={{ fontSize: 16, fontWeight: 700, color: '#B91C1C' }}>We couldn't complete that</div>
             <p style={{ fontSize: 13.5, color: '#7F3B3B', lineHeight: 1.7, margin: '6px 0 0' }}>
-              Something went wrong at our end, so we can't confirm you've been removed. Please try the link again,
+              Something went wrong at our end, so we can't confirm you've been removed. Please try again,
               or email {co.email ? <a href={`mailto:${co.email}`} style={{ color: '#B91C1C', fontWeight: 700 }}>{co.email}</a> : 'us'} and
               we will take care of it by hand.
             </p>
@@ -143,7 +224,13 @@ export default function Unsubscribe() {
           <div>
             <div style={{ fontSize: 15, fontWeight: 700, color: '#166534' }}>You have been unsubscribed</div>
             <div style={{ fontSize: 12.5, color: '#3F6B4C', lineHeight: 1.6, marginTop: 3 }}>
-              You've been removed from our email list. Nothing further is needed from you.
+              {/* With a typed address, "if it was on our list" is the honest
+                  wording AND the safe one: confirming that a given address
+                  is on the list would make this page a way of finding out
+                  who we email. */}
+              {identity.current?.email
+                ? <>If <strong>{identity.current.email}</strong> was on our marketing list, it has been removed. Nothing further is needed from you.</>
+                : <>You've been removed from our email list. Nothing further is needed from you.</>}
             </div>
           </div>
         </div>

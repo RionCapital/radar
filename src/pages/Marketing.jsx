@@ -5,7 +5,7 @@ import { sbLoadMarketing, sbSaveMarketing } from '../lib/supabase'
 import { loadSettings, getDealStages, dealUpfrontCommission, getCurrentUser } from '../lib/settings'
 import { loadUnsubRequests, clearUnsubRequests, applyUnsubRequests, ensureUnsubToken,
   unsubscribeUrl, buildUnsubFooterHtml, buildUnsubFooterText, reasonLabel,
-  CONTACT_ACTOR } from '../lib/unsubscribe'
+  CONTACT_ACTOR, staleUnmatchedRequests } from '../lib/unsubscribe'
 import { loadDirectIncomeLocal, syncDirectIncomeFromSupabase, directIncomeForClient, entryMatchesLoan, entryCommissionSplit } from '../lib/directIncome'
 
 // Dot colour per CRM stage, keyed by permanent stage id (Settings > CRM >
@@ -279,8 +279,7 @@ function OutreachModal({ contacts, groupLabel, onClose, onSaveContacts }) {
   // personal link into a group send.
   function copyFooter() {
     tokensFor(eligible)
-    const url = unsubscribeUrl('')
-    navigator.clipboard.writeText(buildUnsubFooterText({ ...sender, url: url.replace(/\/$/, '') }))
+    navigator.clipboard.writeText(buildUnsubFooterText({ ...sender, url: unsubscribeUrl('') }))
       .then(() => { setFooterCopied(true); setTimeout(() => setFooterCopied(false), 2500) })
       .catch(() => {})
   }
@@ -344,8 +343,10 @@ function OutreachModal({ contacts, groupLabel, onClose, onSaveContacts }) {
       <div style={{ marginTop: 12, padding: '10px 13px', background: '#FEF9E7', border: '1px solid #f5e6a8',
         borderRadius: 8, fontSize: 11.5, color: '#92600A', lineHeight: 1.65, fontFamily: 'Montserrat,sans-serif' }}>
         <strong>Every marketing email needs an unsubscribe link and your business details.</strong>{' '}
-        <em>Open in Outlook</em> puts everyone in one message, which can't carry a personal link — paste the copied footer into it.
-        <em> Send individually</em> opens one draft per person, each with their own one-click link.
+        <em>Open in Outlook</em> puts everyone in one message, which can't carry a link per person — paste the copied
+        footer into it. Its link asks the person which address to remove, so it's one extra step for them.
+        <em> Send individually</em> opens one draft per person, each with their own one-click link — better for
+        the recipient, and the stronger record if anyone ever queries it.
       </div>
       <div style={{ marginTop: 16, fontSize: 11, color: C.muted, fontFamily: 'Montserrat,sans-serif',
         padding: '8px 10px', background: '#F9FAFB', borderRadius: 6, border: `1px solid ${C.border}`, wordBreak: 'break-all' }}>
@@ -2058,9 +2059,15 @@ export default function Marketing() {
           saveStore(STORAGE_KEYS[key], contacts)
           setter(contacts)
         })
+        // Also let go of typed addresses that have been sitting unmatched
+        // for a fortnight — see staleUnsubRequests. They are cleared, not
+        // applied, so they don't show in the "applied" count.
+        const stale = staleUnmatchedRequests(requests, done)
         if (done.length) {
           if (touched) { syncMarketingToSupabase(); setUnsubApplied(done.length) }
-          clearUnsubRequests(done).catch(() => {})
+        }
+        if (done.length || stale.length) {
+          clearUnsubRequests([...done, ...stale]).catch(() => {})
         }
       } catch {}
     }).catch(() => {})

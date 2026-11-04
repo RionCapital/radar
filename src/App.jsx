@@ -234,7 +234,7 @@ export default function App() {
   // Rradar's chrome belongs on it: a Home button would bounce a stranger
   // into the login screen, and the birthday notifier (which opens by
   // default) would put client names and birthdays in front of them.
-  const isPublic = location.pathname.startsWith('/u/')
+  const isPublic = location.pathname === '/u' || location.pathname.startsWith('/u/')
 
   function showToast(msg) { setToast(msg); setTimeout(() => setToast(null), 2500) }
 
@@ -399,6 +399,9 @@ export default function App() {
           {/* Public on purpose — an unsubscribe facility can't require a
               login (ACMA), so this is the one route outside RequireAuth. */}
           <Route path="/u/:token" element={<Unsubscribe />} />
+          {/* Tokenless — the generic footer link for a bulk send, which
+              asks which address to remove. */}
+          <Route path="/u" element={<Unsubscribe />} />
           <Route path="/" element={<RequireAuth><Home /></RequireAuth>} />
           <Route path="/radar/dashboard" element={<RequireAuth><Dashboard clients={clients} onImport={handleImport} onUpdateClients={updateAllClients} /></RequireAuth>} />
           <Route path="/radar/clients" element={<RequireAuth><ClientList clients={clients} onAddClient={addClient} onUpdateClients={updateAllClients} /></RequireAuth>} />

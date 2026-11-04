@@ -23,7 +23,19 @@ const ROW_ID = 8
 const MAX_REQUESTS = 2000
 const VALID_TOKEN = /^[a-z0-9]{8,64}$/i
 const VALID_REASON = /^[a-z-]{1,32}$/
+const VALID_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
 const MAX_NOTE = 2000
+const MAX_EMAIL = 254
+
+// A request is identified by the token we minted, or — for the generic
+// footer that goes into a bulk send, which cannot carry a link per person —
+// by the address the person typed. This mirrors requestKey() in
+// src/lib/unsubscribe.js; the two have to agree or a request would be queued
+// under one key and looked for under another. It is duplicated rather than
+// imported because this function is bundled on its own, away from src/.
+const keyOf = r => r?.token
+  ? `t:${r.token}`
+  : `e:${String(r?.email || '').trim().toLowerCase()}`
 
 async function sb(path, init) {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
@@ -48,11 +60,20 @@ export default async function handler(req, res) {
   try {
     const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {})
     const token = String(body.token || '').trim()
+    const email = String(body.email || '').trim().toLowerCase().slice(0, MAX_EMAIL)
     const reason = String(body.reason || '').trim()
     const note = String(body.note || '').trim().slice(0, MAX_NOTE)
     const resubscribe = !!body.resubscribe
 
-    if (!VALID_TOKEN.test(token)) return res.status(400).json({ error: 'Invalid link' })
+    // One or the other. A token is preferred where there is one; an address
+    // is what the tokenless footer has to work with.
+    if (token) {
+      if (!VALID_TOKEN.test(token)) return res.status(400).json({ error: 'Invalid link' })
+    } else if (email) {
+      if (!VALID_EMAIL.test(email)) return res.status(400).json({ error: 'Invalid email address' })
+    } else {
+      return res.status(400).json({ error: 'Invalid link' })
+    }
     if (reason && !VALID_REASON.test(reason)) return res.status(400).json({ error: 'Invalid reason' })
 
     const read = await sb(`marketing?id=eq.${ROW_ID}&select=data`)
@@ -60,12 +81,14 @@ export default async function handler(req, res) {
     const existing = Array.isArray(rows) && rows[0]?.data ? rows[0].data : {}
     const requests = Array.isArray(existing.requests) ? existing.requests : []
 
-    // One live request per token — a second click updates the first rather
+    // One live request per person — a second click updates the first rather
     // than stacking up, and a resubscribe simply withdraws it.
-    const others = requests.filter(r => r.token !== token)
+    const key = token ? `t:${token}` : `e:${email}`
+    const others = requests.filter(r => keyOf(r) !== key)
+    const entry = token ? { token } : { email }
     const next = resubscribe
       ? others
-      : [...others, { token, reason, note, at: new Date().toISOString(), action: 'unsubscribe' }]
+      : [...others, { ...entry, reason, note, at: new Date().toISOString(), action: 'unsubscribe' }]
 
     const upsert = await sb('marketing', {
       method: 'POST',
@@ -82,7 +105,10 @@ export default async function handler(req, res) {
       return res.status(502).json({ error: 'Could not record that just now' })
     }
 
-    // Deliberately the same response whether or not the token matches anyone.
+    // Deliberately the same response whether or not the token or address
+    // matches anyone. With an address this matters more, not less: a
+    // different answer for a known and an unknown address would turn the
+    // page into a way of testing who is on the list.
     return res.status(200).json({ ok: true })
   } catch {
     return res.status(500).json({ error: 'Something went wrong' })
