@@ -1000,10 +1000,48 @@ function ContactDetail({ contact, section, onBack, onSave, onDelete, onMove, rra
             { label:'Twitter/X',      value:contact.twitter,        icon:'𝕏' },
           ]
 
+          const unsub = !!contact.unsubscribed
+          const unsubDate = contact.unsubscribedAt
+            ? (() => { try { return new Date(contact.unsubscribedAt).toLocaleDateString('en-AU',{day:'2-digit',month:'short',year:'numeric'}) } catch { return '' } })()
+            : ''
+
           return (
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'7px 16px' }}>
-              {fields.map(f => <DetailRow key={f.label} label={f.label} value={f.value} icon={f.icon} />)}
-            </div>
+            <>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'7px 16px' }}>
+                {fields.map(f => <DetailRow key={f.label} label={f.label} value={f.value} icon={f.icon} />)}
+              </div>
+
+              {/* Marketing consent sits in the contact's details rather than
+                  only inside the Edit form — it governs whether this person
+                  may be emailed at all, so it has to be visible without
+                  opening anything. Toggling it here records the date, which
+                  is what an unsubscribe request has to be evidenced by. */}
+              <div style={{ marginTop:12, paddingTop:10, borderTop:`1px solid ${C.border}`,
+                display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, flexWrap:'wrap' }}>
+                <div style={{ display:'flex', alignItems:'center', gap:8, fontSize:12, fontFamily:'Montserrat,sans-serif', minWidth:0 }}>
+                  <span style={{ color:C.slate, fontWeight:600, whiteSpace:'nowrap' }}>✉ Group emails:</span>
+                  <span style={{ fontWeight:700, color: unsub ? '#dc2626' : '#166534' }}>
+                    {unsub ? 'Unsubscribed' : 'Subscribed'}
+                  </span>
+                  {unsub && unsubDate && <span style={{ color:C.muted, fontSize:11 }}>since {unsubDate}</span>}
+                  {unsub && contact.unsubscribedVia && <span style={{ color:C.muted, fontSize:11 }}>· {contact.unsubscribedVia}</span>}
+                </div>
+                <button
+                  onClick={() => onSave(setSubscription(contact, !unsub, 'Marketing page'))}
+                  title={unsub ? 'Put this contact back on the list' : 'Stop this contact receiving group emails'}
+                  style={{ fontSize:11, fontWeight:600, padding:'5px 12px', borderRadius:7, cursor:'pointer',
+                    fontFamily:'Montserrat,sans-serif',
+                    border:`1px solid ${unsub ? '#bbf7d0' : '#fecaca'}`,
+                    background:'#fff', color: unsub ? '#166534' : '#dc2626' }}>
+                  {unsub ? 'Resubscribe' : 'Unsubscribe'}
+                </button>
+              </div>
+              {unsub && (
+                <div style={{ fontSize:10.5, color:'#dc2626', marginTop:6, fontFamily:'Montserrat,sans-serif' }}>
+                  Excluded from Outreach sends and flagged in every export.
+                </div>
+              )}
+            </>
           )
         })()}
 
@@ -1128,6 +1166,22 @@ function ContactDetail({ contact, section, onBack, onSave, onDelete, onMove, rra
 }
 
 // ─── Edit Modal ───────────────────────────────────────────────────────────────
+// Keeps the Edit form's consent toggle writing the same record as the one on
+// the contact page — date and source, not just a flag.
+function SubscriptionToggle({ f, onChange }) {
+  return (
+    <div>
+      <Toggle label="Unsubscribed from group emails" checked={!!f.unsubscribed}
+        onChange={v => onChange(setSubscription(f, v, 'Marketing page'))} />
+      {f.unsubscribed && f.unsubscribedAt && (
+        <div style={{ fontSize:10.5, color:'#9ca3af', marginTop:3, fontFamily:'Montserrat,sans-serif' }}>
+          Recorded {String(f.unsubscribedAt).slice(0,10)}{f.unsubscribedVia ? ` · ${f.unsubscribedVia}` : ''}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function EditContactModal({ contact, section, onChange, onSave, onClose }) {
   const f = contact
   const set = (k, v) => onChange({ ...f, [k]: v })
@@ -1155,7 +1209,7 @@ function EditContactModal({ contact, section, onChange, onSave, onClose }) {
           <Input label="Twitter / X URL" value={f.twitter || ''} onChange={e => set('twitter', e.target.value)} />
           <Input label="Referred By" value={f.referredBy || ''} onChange={e => set('referredBy', e.target.value)} />
           <Toggle label="Birthday reminders" checked={!!f.birthdayReminder} onChange={v => set('birthdayReminder', v)} />
-          <Toggle label="Unsubscribed from group emails" checked={!!f.unsubscribed} onChange={v => set('unsubscribed', v)} />
+          <SubscriptionToggle f={f} onChange={next => onChange(next)} />
           {f.tier === 'contenders' && (
             <Toggle label="🎯 Add to Active Campaign" checked={!!f.targeted} onChange={v => set('targeted', v)} />
           )}
@@ -1174,7 +1228,7 @@ function EditContactModal({ contact, section, onChange, onSave, onClose }) {
           <Input label="Twitter / X URL" value={f.twitter || ''} onChange={e => set('twitter', e.target.value)} />
           <Select label="Preferred Contact Method" options={CONTACT_PREFS} value={f.preferredContact || ''} onChange={e => set('preferredContact', e.target.value)} />
           <Input label="Referral Count (all time)" value={f.referralCount || ''} onChange={e => set('referralCount', e.target.value)} />
-          <Toggle label="Unsubscribed from group emails" checked={!!f.unsubscribed} onChange={v => set('unsubscribed', v)} />
+          <SubscriptionToggle f={f} onChange={next => onChange(next)} />
           {f.tier === 'contenders' && (
             <Toggle label="🎯 Add to Active Campaign" checked={!!f.targeted} onChange={v => set('targeted', v)} />
           )}
@@ -1193,7 +1247,7 @@ function EditContactModal({ contact, section, onChange, onSave, onClose }) {
       {section === 'others' && (
         <>
           <Input label="Role / Category" value={f.type || ''} onChange={e => set('type', e.target.value)} />
-          <Toggle label="Unsubscribed from group emails" checked={!!f.unsubscribed} onChange={v => set('unsubscribed', v)} />
+          <SubscriptionToggle f={f} onChange={next => onChange(next)} />
           {f.tier === 'contenders' && (
             <Toggle label="🎯 Add to Active Campaign" checked={!!f.targeted} onChange={v => set('targeted', v)} />
           )}
@@ -1245,30 +1299,60 @@ function splitName(fullName) {
   return { first: parts[0], last: parts.slice(1).join(' ') }
 }
 
+// ─── Marketing consent ───────────────────────────────────────────────────────
+// A boolean alone isn't enough: an unsubscribe request has to be evidenced,
+// so the date and where it came from are recorded with it. `via` is 'Manual'
+// today; when Rradar sends its own emails and notifications an unsubscribe
+// link will set it to something else, and the record will already be there
+// to hold it.
+export function setSubscription(contact, unsubscribed, via) {
+  if (!unsubscribed) {
+    // Resubscribing clears the record rather than leaving a stale date
+    // sitting against someone who is back on the list.
+    const { unsubscribedAt, unsubscribedVia, ...rest } = contact
+    return { ...rest, unsubscribed: false }
+  }
+  return {
+    ...contact,
+    unsubscribed: true,
+    unsubscribedAt: contact.unsubscribedAt || new Date().toISOString(),
+    unsubscribedVia: contact.unsubscribedVia || via || 'Manual',
+  }
+}
+
+const subscriptionCols = ['Subscribed', 'Unsubscribed', 'Unsubscribed On', 'Unsubscribed Via']
+const subscriptionVals = c => [
+  c.unsubscribed ? 'No' : 'Yes',
+  c.unsubscribed ? 'Yes' : 'No',
+  c.unsubscribed && c.unsubscribedAt ? String(c.unsubscribedAt).slice(0, 10) : '',
+  c.unsubscribed ? (c.unsubscribedVia || 'Manual') : '',
+]
+
 // ─── CSV Export ──────────────────────────────────────────────────────────────
 function exportToCSV(contacts, section, label) {
-  const cols = section === 'clients'
-    ? ['Name','First Name','Last Name','Email','Mobile','Connection','Connection #','Stream','Profession','Industry','Preferred Contact','Referred By','Spouse/Partner','LinkedIn','Unsubscribed']
+  const cols = (section === 'clients'
+    ? ['Name','First Name','Last Name','Email','Mobile','Connection','Connection #','Stream','Profession','Industry','Preferred Contact','Referred By','Spouse/Partner','LinkedIn']
     : section === 'referrers'
-    ? ['Name','First Name','Last Name','Email','Mobile','Company','Type','Tier','LinkedIn','Preferred Contact','Referral Count','Unsubscribed']
+    ? ['Name','First Name','Last Name','Email','Mobile','Company','Type','Tier','LinkedIn','Preferred Contact','Referral Count']
     : section === 'lenders'
     ? ['Name','First Name','Last Name','Email','Mobile','Company','Type','BDM Name','BDM Email','BDM Mobile']
     : ['Name','First Name','Last Name','Email','Mobile','Company','Type']
+  ).concat(subscriptionCols)
 
   const rows = contacts.map(c => {
     const { first, last } = splitName(c.name)
-    if (section === 'clients') return [
+    const base = section === 'clients' ? [
       c.name, first, last, c.email, c.mobile, c._clientName, c._connNo, c.stream,
       c.profession, c.industry, c.preferredContact, c.referredBy,
-      c.spouseName, c.linkedIn, c.unsubscribed ? 'Yes' : 'No'
-    ]
-    if (section === 'referrers') return [
+      c.spouseName, c.linkedIn
+    ] : section === 'referrers' ? [
       c.name, first, last, c.email, c.mobile, c.company, c.type,
       REFERRER_TIERS.find(t => t.id === c.tier)?.label || c.tier,
-      c.linkedIn, c.preferredContact, c.referralCount, c.unsubscribed ? 'Yes' : 'No'
-    ]
-    if (section === 'lenders') return [c.name, first, last, c.email, c.mobile, c.company, c.type, c.bdmName, c.bdmEmail, c.bdmMobile]
-    return [c.name, first, last, c.email, c.mobile, c.company, c.type]
+      c.linkedIn, c.preferredContact, c.referralCount
+    ] : section === 'lenders'
+      ? [c.name, first, last, c.email, c.mobile, c.company, c.type, c.bdmName, c.bdmEmail, c.bdmMobile]
+      : [c.name, first, last, c.email, c.mobile, c.company, c.type]
+    return base.concat(subscriptionVals(c))
   })
 
   const esc = v => `"${String(v ?? '').replace(/"/g, '""')}"`
@@ -1280,6 +1364,13 @@ function exportToCSV(contacts, section, label) {
   a.download = `${label.replace(/\s+/g, '_')}_${new Date().toLocaleDateString('en-AU').replace(/\//g,'-')}.csv`
   a.click()
   URL.revokeObjectURL(url)
+}
+
+// Filtering by consent is what makes an export safe to send from — narrow to
+// Subscribed, export, and the unsubscribed never leave the building.
+const SUBSCRIPTION_FILTER = {
+  key: 'subscription', label: 'Emails',
+  opts: [{ value: 'subscribed', label: 'Subscribed' }, { value: 'unsubscribed', label: 'Unsubscribed' }],
 }
 
 function ContactList({ contacts, section, onSelect, onOutreach, onAdd, onDeleteMultiple, onMoveContacts, onBulkTarget }) {
@@ -1294,13 +1385,15 @@ function ContactList({ contacts, section, onSelect, onOutreach, onAdd, onDeleteM
     if (section === 'referrers') return [
       { key: 'tier',   label: 'Tier',   opts: REFERRER_TIERS.map(t => ({ value: t.id, label: t.label, colour: t.colour })) },
       { key: 'type',   label: 'Type',   opts: REFERRER_TYPES.map(t => ({ value: t, label: t })) },
+      SUBSCRIPTION_FILTER,
     ]
     if (section === 'clients') return [
       { key: 'stream',     label: 'Stream',     opts: ['Private Wealth','Commercial'].map(s => ({ value: s, label: s })) },
       { key: 'profession', label: 'Profession', opts: PROFESSIONS.map(p => ({ value: p, label: p })) },
       { key: 'industry',   label: 'Industry',   opts: INDUSTRIES.map(i => ({ value: i, label: i })) },
+      SUBSCRIPTION_FILTER,
     ]
-    return []
+    return [SUBSCRIPTION_FILTER]
   }, [section])
 
   const filtered = useMemo(() => {
@@ -1317,6 +1410,12 @@ function ContactList({ contacts, section, onSelect, onOutreach, onAdd, onDeleteM
     }
     Object.entries(filters).forEach(([key, val]) => {
       if (!val) return
+      // Consent is a boolean, not a text field, so it can't go through the
+      // generic string match the other filters use.
+      if (key === 'subscription') {
+        list = list.filter(c => val === 'unsubscribed' ? !!c.unsubscribed : !c.unsubscribed)
+        return
+      }
       list = list.filter(c => (c[key] || '').toLowerCase() === val.toLowerCase())
     })
     return list
