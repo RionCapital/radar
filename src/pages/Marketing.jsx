@@ -1583,6 +1583,11 @@ function exportToCSV(contacts, section, label) {
 
 // Filtering by consent is what makes an export safe to send from — narrow to
 // Subscribed, export, and the unsubscribed never leave the building.
+// A filter group's value is an array. Older state (and anything that ever
+// set one directly) could be a bare string, so read it through this rather
+// than assuming — a string would otherwise be spread into characters.
+const valsOf = v => Array.isArray(v) ? v.filter(Boolean) : (v ? [v] : [])
+
 const SUBSCRIPTION_FILTER = {
   key: 'subscription', label: 'Emails',
   opts: [{ value: 'subscribed', label: 'Subscribed' }, { value: 'unsubscribed', label: 'Unsubscribed' }],
@@ -1590,7 +1595,10 @@ const SUBSCRIPTION_FILTER = {
 
 function ContactList({ contacts, section, onSelect, onOutreach, onAdd, onDeleteMultiple, onMoveContacts, onBulkTarget }) {
   const [search,   setSearch]   = useState('')
-  const [filters,  setFilters]  = useState({}) // { tier:'gold', stream:'Commercial', type:'Accountant', ... }
+  // Each filter holds a SET of values, not one: "email the Gold, Silver and
+  // Bronze partners" is one send, not three. An empty or missing array means
+  // the filter isn't narrowing anything.
+  const [filters,  setFilters]  = useState({}) // { tier:['gold','silver'], type:['Accountant'], ... }
   const [selected, setSelected] = useState(new Set())
   const [moveTarget, setMoveTarget] = useState(null) // section to move selected to
   const [openAccordion, setOpenAccordion] = useState(null)
@@ -1623,26 +1631,41 @@ function ContactList({ contacts, section, onSelect, onOutreach, onAdd, onDeleteM
         (c.type || '').toLowerCase().includes(q)
       )
     }
-    Object.entries(filters).forEach(([key, val]) => {
-      if (!val) return
+    // Within a group the values are OR'd (Gold OR Silver), across groups
+    // they are AND'd (a Silver AND an Accountant) — which is how anyone
+    // reading the chips would expect it to read.
+    Object.entries(filters).forEach(([key, vals]) => {
+      const set = valsOf(vals)
+      if (!set.length) return
       // Consent is a boolean, not a text field, so it can't go through the
       // generic string match the other filters use.
       if (key === 'subscription') {
-        list = list.filter(c => val === 'unsubscribed' ? !!c.unsubscribed : !c.unsubscribed)
+        list = list.filter(c => set.some(v => v === 'unsubscribed' ? !!c.unsubscribed : !c.unsubscribed))
         return
       }
-      list = list.filter(c => (c[key] || '').toLowerCase() === val.toLowerCase())
+      const lower = set.map(v => String(v).toLowerCase())
+      list = list.filter(c => lower.includes(String(c[key] || '').toLowerCase()))
     })
     return list
   }, [contacts, search, filters])
 
   useMemo(() => setSelected(new Set()), [search, filters])
 
-  const activeFilters = Object.entries(filters).filter(([,v]) => v)
+  const activeFilters = Object.entries(filters).filter(([, v]) => valsOf(v).length)
   const hasFilters    = search || activeFilters.length > 0
 
   function clearAllFilters() { setSearch(''); setFilters({}) }
-  function setFilter(key, val) { setFilters(f => ({ ...f, [key]: f[key] === val ? '' : val })) }
+
+  // Toggle one value in a group, leaving the rest of the group alone.
+  function setFilter(key, val) {
+    setFilters(f => {
+      const cur = valsOf(f[key])
+      const next = cur.includes(val) ? cur.filter(v => v !== val) : [...cur, val]
+      return { ...f, [key]: next }
+    })
+  }
+  function clearFilterGroup(key) { setFilters(f => ({ ...f, [key]: [] })) }
+  function setFilterGroup(key, vals) { setFilters(f => ({ ...f, [key]: vals })) }
 
   const allSelected = filtered.length > 0 && filtered.every(c => selected.has(c.id || c._id))
   function toggleAll() {
@@ -1696,47 +1719,71 @@ function ContactList({ contacts, section, onSelect, onOutreach, onAdd, onDeleteM
 
       {/* ── Accordion filter groups ── */}
       {FILTER_GROUPS.map(group => {
-        const isOpen    = openAccordion === group.key
-        const activeVal = filters[group.key]
+        const isOpen  = openAccordion === group.key
+        const chosen  = valsOf(filters[group.key])
+        const on      = chosen.length > 0
+        const labelOf = v => group.opts.find(o => o.value === v)?.label || v
+        const allOn   = chosen.length === group.opts.length
         return (
-          <div key={group.key} style={{ marginBottom: 6, borderRadius: 9,
-            border: `1px solid ${activeVal ? C.navy + '55' : C.border}`,
-            background: activeVal ? C.navy + '06' : '#fff', overflow: 'hidden' }}>
+          <div key={group.key} data-filter-group={group.key} style={{ marginBottom: 6, borderRadius: 9,
+            border: `1px solid ${on ? C.navy + '55' : C.border}`,
+            background: on ? C.navy + '06' : '#fff', overflow: 'hidden' }}>
             {/* accordion header */}
             <button onClick={() => setOpenAccordion(isOpen ? null : group.key)}
               style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                 padding: '9px 14px', border: 'none', background: 'transparent', cursor: 'pointer',
-                fontFamily: 'Montserrat,sans-serif' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 12, fontWeight: 700, color: activeVal ? C.navy : C.text }}>
+                fontFamily: 'Montserrat,sans-serif', gap: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', minWidth: 0 }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: on ? C.navy : C.text }}>
                   {group.label}
                 </span>
-                {activeVal && (
-                  <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 10,
+                {/* Every chosen value is named. "Tier (3)" would make you
+                    open the group to find out what you're about to email. */}
+                {chosen.map(v => (
+                  <span key={v} style={{ fontSize: 11, padding: '2px 8px', borderRadius: 10,
                     background: C.navy, color: '#fff', fontWeight: 600, fontFamily: 'Montserrat,sans-serif' }}>
-                    {group.opts.find(o => o.value === activeVal)?.label || activeVal}
+                    {labelOf(v)}
                   </span>
-                )}
+                ))}
               </div>
-              <span style={{ fontSize: 12, color: C.muted, transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>▾</span>
+              <span style={{ fontSize: 12, color: C.muted, flexShrink: 0, transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>▾</span>
             </button>
-            {/* accordion body */}
+            {/* accordion body — stays open as you pick, because picking more
+                than one is the point. */}
             {isOpen && (
-              <div style={{ padding: '4px 14px 12px', display: 'flex', flexWrap: 'wrap', gap: 6, borderTop: `1px solid ${C.border}` }}>
-                {group.opts.map(opt => {
-                  const active = filters[group.key] === opt.value
-                  const colour = opt.colour || C.navy
-                  return (
-                    <button key={opt.value} onClick={() => { setFilter(group.key, opt.value); setOpenAccordion(null) }}
-                      style={{ padding: '5px 13px', borderRadius: 20,
-                        border: `1px solid ${active ? colour : C.border}`,
-                        background: active ? colour : '#fff', color: active ? '#fff' : C.text,
-                        fontSize: 12, fontWeight: active ? 700 : 500, cursor: 'pointer',
-                        fontFamily: 'Montserrat,sans-serif', transition: 'all 0.15s', whiteSpace: 'nowrap' }}>
-                      {opt.label}
+              <div style={{ padding: '4px 14px 12px', borderTop: `1px solid ${C.border}` }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {group.opts.map(opt => {
+                    const active = chosen.includes(opt.value)
+                    const colour = opt.colour || C.navy
+                    return (
+                      <button key={opt.value} data-filter-opt={opt.value}
+                        aria-pressed={active}
+                        onClick={() => setFilter(group.key, opt.value)}
+                        style={{ padding: '5px 13px', borderRadius: 20,
+                          border: `1px solid ${active ? colour : C.border}`,
+                          background: active ? colour : '#fff', color: active ? '#fff' : C.text,
+                          fontSize: 12, fontWeight: active ? 700 : 500, cursor: 'pointer',
+                          fontFamily: 'Montserrat,sans-serif', transition: 'all 0.15s', whiteSpace: 'nowrap' }}>
+                        {active ? '✓ ' : ''}{opt.label}
+                      </button>
+                    )
+                  })}
+                </div>
+                <div style={{ display: 'flex', gap: 12, marginTop: 9 }}>
+                  <button data-filter-all onClick={() => setFilterGroup(group.key, allOn ? [] : group.opts.map(o => o.value))}
+                    style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                      fontSize: 11, color: C.navy, fontWeight: 600, textDecoration: 'underline', fontFamily: 'Montserrat,sans-serif' }}>
+                    {allOn ? 'Clear all' : 'Select all'}
+                  </button>
+                  {on && !allOn && (
+                    <button data-filter-clear onClick={() => clearFilterGroup(group.key)}
+                      style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                        fontSize: 11, color: C.muted, textDecoration: 'underline', fontFamily: 'Montserrat,sans-serif' }}>
+                      Clear {group.label.toLowerCase()}
                     </button>
-                  )
-                })}
+                  )}
+                </div>
               </div>
             )}
           </div>
@@ -1751,7 +1798,7 @@ function ContactList({ contacts, section, onSelect, onOutreach, onAdd, onDeleteM
             fontFamily: 'Montserrat,sans-serif', color: C.text, whiteSpace: 'nowrap' }}>
           ✉ Outreach ({filtered.length})
         </button>
-        <button onClick={() => exportToCSV(filtered, section, `${sectionLabel[section]}${activeFilters.map(([,v])=>'_'+v).join('')}`)}
+        <button onClick={() => exportToCSV(filtered, section, `${sectionLabel[section]}${activeFilters.flatMap(([,v])=>valsOf(v)).map(v=>'_'+v).join('')}`)}
           style={{ padding: '7px 13px', borderRadius: 8, border: `1px solid ${C.border}`,
             background: '#fff', fontWeight: 600, fontSize: 12, cursor: 'pointer',
             fontFamily: 'Montserrat,sans-serif', color: C.text, whiteSpace: 'nowrap' }}>
