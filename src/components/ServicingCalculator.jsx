@@ -531,6 +531,94 @@ export default function ServicingCalculator({ contacts, structure, settingsPolic
         </table>
       </div>
 
+      {/* ── Business cover, year by year ── */}
+      {/* The ratios above are the PROPERTY's. These are the trading entity's,
+          which is the test that matters when the borrower is a company and
+          there may be no property at all — a GSA-backed facility or an
+          invoice line still has to be covered by what the business earns. */}
+      {(result.businessCover || []).length > 0 && (
+        <div style={card} data-business-cover>
+          <div style={{ fontSize: 12, fontWeight: 700, color: NAVY, marginBottom: 3 }}>Business cover, year by year</div>
+          <div style={{ fontSize: 11, color: '#7A8090', marginBottom: 12, lineHeight: 1.5 }}>
+            EBITDA against debt service, for every year held — forecasts included, marked as forecasts.
+            ICR is EBITDA ÷ interest and DSCR is EBITDA ÷ total debt service; both are struck on the entity's own debt schedule,
+            and the <strong style={{ color: '#2A3545' }}>with facility</strong> row adds the proposed loan at the assessed rate.
+          </div>
+
+          {result.businessDebtWarning && (
+            <div style={{ background: '#FEF9E7', border: '1px solid #f5e6a8', borderRadius: 8, padding: '9px 12px', marginBottom: 12, fontSize: 11, color: AMBER, lineHeight: 1.55 }}>
+              <strong>Possible double count.</strong> {result.businessDebtWarning.count} row{result.businessDebtWarning.count === 1 ? '' : 's'} on
+              the Liabilities tab {result.businessDebtWarning.count === 1 ? 'is' : 'are'} allocated to {result.businessDebtWarning.entities.join(', ')},
+              which also {result.businessDebtWarning.entities.length === 1 ? 'has' : 'have'} a debt schedule. Business facilities belong in one place or
+              the other — in both, they are charged twice.
+            </div>
+          )}
+
+          {result.businessCover.map(bc => (
+            <div key={bc.business.id || bc.business.name} style={{ marginBottom: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
+                <strong style={{ fontSize: 12, color: '#2A3545' }}>{bc.business.name || 'Unnamed entity'}</strong>
+                <span style={{ fontSize: 10.5, color: '#7A8090' }}>
+                  {bc.business.structure} · profit assessed in {bc.profitTo === 'entity' ? 'this entity' : 'the owners'} ·
+                  {' '}existing debt service {money(bc.debt.annual)} p.a.
+                  {bc.debt.residual > 0 && <span style={{ color: AMBER }}> · {money(bc.debt.residual)} residual at term</span>}
+                </span>
+              </div>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 720 }}>
+                  <thead><tr>
+                    <th style={th}>Year</th>
+                    <th style={{ ...th, textAlign: 'right' }}>EBITDA</th>
+                    <th style={{ ...th, textAlign: 'right' }}>Interest</th>
+                    <th style={{ ...th, textAlign: 'right' }}>Debt service</th>
+                    <th style={{ ...th, textAlign: 'right' }}>ICR</th>
+                    <th style={{ ...th, textAlign: 'right' }}>DSCR</th>
+                    <th style={{ ...th, textAlign: 'right' }}>Surplus</th>
+                  </tr></thead>
+                  <tbody>
+                    {bc.years.map(y => {
+                      const counted = !y.forecast || y.include
+                      return [
+                        <tr key={`${y.fy}-base`} style={{ opacity: counted ? 1 : 0.6 }}>
+                          <td style={td}>
+                            FY {y.fy}
+                            {y.forecast && <span style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', marginLeft: 6, padding: '2px 6px', borderRadius: 9, background: '#EEF2FF', color: '#4338CA', border: '1px solid #C7D2FE' }}>
+                              {y.include ? 'Forecast · counted' : 'Forecast · not counted'}
+                            </span>}
+                            {y.fy === bc.assessedFY && <span style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', marginLeft: 6, padding: '2px 6px', borderRadius: 9, background: '#F0FDF4', color: GREEN, border: '1px solid #BBF7D0' }}>Assessed</span>}
+                          </td>
+                          <td style={{ ...td, textAlign: 'right' }}>{money(y.base.ebitda)}</td>
+                          <td style={{ ...td, textAlign: 'right' }}>{y.base.interest ? money(y.base.interest) : '—'}</td>
+                          <td style={{ ...td, textAlign: 'right' }}>{y.base.debtService ? money(y.base.debtService) : '—'}</td>
+                          <td style={{ ...td, textAlign: 'right', fontWeight: 700, color: y.base.icr === null ? '#cbd5e1' : y.base.icrPass ? GREEN : RED }}>{ratio(y.base.icr)}</td>
+                          <td style={{ ...td, textAlign: 'right', fontWeight: 700, color: y.base.dscr === null ? '#cbd5e1' : y.base.dscrPass ? GREEN : RED }}>{ratio(y.base.dscr)}</td>
+                          <td style={{ ...td, textAlign: 'right', color: y.base.surplus >= 0 ? GREEN : RED }}>{money(y.base.surplus)}</td>
+                        </tr>,
+                        y.withFacility ? (
+                          <tr key={`${y.fy}-fac`} style={{ opacity: counted ? 1 : 0.6, background: '#FAFBFD' }}>
+                            <td style={{ ...td, paddingLeft: 20, color: '#7A8090', fontStyle: 'italic' }}>…with proposed facility</td>
+                            <td style={{ ...td, textAlign: 'right', color: '#7A8090' }}>{money(y.withFacility.ebitda)}</td>
+                            <td style={{ ...td, textAlign: 'right', color: '#7A8090' }}>{money(y.withFacility.interest)}</td>
+                            <td style={{ ...td, textAlign: 'right', color: '#7A8090' }}>{money(y.withFacility.debtService)}</td>
+                            <td style={{ ...td, textAlign: 'right', fontWeight: 700, color: y.withFacility.icr === null ? '#cbd5e1' : y.withFacility.icrPass ? GREEN : RED }}>{ratio(y.withFacility.icr)}</td>
+                            <td style={{ ...td, textAlign: 'right', fontWeight: 700, color: y.withFacility.dscr === null ? '#cbd5e1' : y.withFacility.dscrPass ? GREEN : RED }}>{ratio(y.withFacility.dscr)}</td>
+                            <td style={{ ...td, textAlign: 'right', color: y.withFacility.surplus >= 0 ? GREEN : RED }}>{money(y.withFacility.surplus)}</td>
+                          </tr>
+                        ) : null,
+                      ]
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ))}
+          <div style={{ fontSize: 10.5, color: '#9ca3af', lineHeight: 1.55 }}>
+            Needs ICR {ratio(policy.minICR)} and DSCR {ratio(policy.minDSCR)} — both set in Settings and overridable on this deal.
+            A forecast that isn't ticked in on the Financials tab is rated here but does not move the consolidated position above.
+          </div>
+        </div>
+      )}
+
       <div style={card}>
         <div style={{ fontSize: 12, fontWeight: 700, color: NAVY, marginBottom: 3 }}>Sensitivity</div>
         <div style={{ fontSize: 11, color: '#7A8090', marginBottom: 10 }}>What breaks it: a rate move on top of the buffer already applied, or the tenant leaving.</div>

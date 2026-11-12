@@ -2634,7 +2634,8 @@ function StructureTab({ d, editing, set, updateDeal }) {
             One set of financials per trading entity, with add-backs and ownership. The <strong style={{color:'#2A3545'}}>Eliminations</strong> tab
             strips out money that moves between entities on this deal so the consolidated figure isn't counting the same dollar twice.
           </div>
-          <BusinessFinancials contacts={d.Contacts || []} structure={struct} onChange={sLive} />
+          <BusinessFinancials contacts={d.Contacts || []} structure={struct} onChange={sLive}
+            policy={resolvePolicy(getServicingPolicy(), struct.servicingOverride)} />
         </TabCard>
       )}
 

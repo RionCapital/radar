@@ -61,6 +61,10 @@ export const DEFAULT_SERVICING_POLICY = {
     Dividends: 80,
     'Trust Distribution': 80,
     'Centrelink / Family Tax Benefit': 100,
+    // A trading entity's own EBITDA servicing its own debt is normally taken
+    // in full — the conservatism sits in the add-backs and the assessed rate,
+    // not here. Editable in Settings for a lender that shades it.
+    'Business Profit': 100,
     Other: 80,
   },
 
@@ -479,6 +483,190 @@ export function maxLoanAtDscr(property, policy, targetDscr) {
   return monthly * (1 - Math.pow(1 + r, -months)) / r
 }
 
+// ─── Business financials ─────────────────────────────────────────────────────
+// A trading entity's figures, year by year, and the debt it already carries.
+//
+// These were being captured on the Financials tab and then read by nothing:
+// the assessment was built from the deal's contacts and the personal
+// registers only, so a company's trading profit never reached the group and a
+// company borrowing in its own name showed no capacity at all. Everything
+// below is what closes that gap.
+
+export const BUSINESS_ADD_BACKS = [
+  ['interest', 'Interest'],
+  ['depreciation', 'Depreciation'],
+  ['amortisation', 'Amortisation'],
+  ['lease', 'Lease'],
+  ['hirePurchase', 'Hire Purchase'],
+]
+
+export const BUSINESS_DEBT_TYPES = [
+  'Commercial Loan', 'Equipment Finance', 'Chattel Mortgage', 'Overdraft',
+  'Line of Credit', 'Invoice Finance', 'Trade Finance', 'Hire Purchase', 'Lease', 'Other',
+]
+// Facilities with no amortisation: the limit is revolving, so the cost of
+// carrying it is interest, not a principal reduction.
+export const REVOLVING_DEBT_TYPES = ['Overdraft', 'Line of Credit', 'Invoice Finance', 'Trade Finance']
+export const BUSINESS_REPAYMENT_TYPES = ['P&I', 'Interest only', 'Interest only then P&I']
+
+// Profit before tax with the one-offs stripped out.
+export function businessNormalisedProfit(year) {
+  const y = year || {}
+  return n(y.npbt) - n(y.nonRecurringIncome) + n(y.nonRecurringExpense) + n(y.extraSuper)
+}
+// Normalised profit with the financing and non-cash charges added back —
+// what the business generated before servicing anything.
+export function businessEbitda(year) {
+  const y = year || {}
+  return businessNormalisedProfit(y) + BUSINESS_ADD_BACKS.reduce((s, [k]) => s + n(y.addBacks?.[k]), 0)
+}
+// EBITDA less the non-cash charges. Kept because the conventional ICR is
+// struck on EBIT; the ratios below report the EBITDA basis that was asked
+// for, and carry this alongside so the stricter reading is one field away.
+export function businessEbit(year) {
+  const y = year || {}
+  return businessEbitda(y) - n(y.addBacks?.depreciation) - n(y.addBacks?.amortisation)
+}
+
+// ─── The years a business carries ────────────────────────────────────────────
+// Two actuals to start with, any number addable, and forecasts added
+// deliberately rather than appearing by default. Older deals hold only
+// `recentFY` and a `years` map, so the order is derived when it's absent and
+// nothing already captured is lost.
+export function businessYears(biz) {
+  const b = biz || {}
+  if (Array.isArray(b.yearOrder) && b.yearOrder.length) {
+    return b.yearOrder.map(fy => ({ fy: String(fy), ...(b.yearMeta?.[fy] || {}) }))
+  }
+  const recent = String(b.recentFY || new Date().getFullYear())
+  return [
+    { fy: recent, forecast: false },
+    { fy: String(Number(recent) - 1), forecast: false },
+  ]
+}
+// The years that actually feed the servicing result. A forecast is in only
+// when it has been ticked in — a projection is not something a lender has
+// seen, so it never counts by accident.
+export function assessableYears(biz) {
+  return businessYears(biz).filter(y => !y.forecast || y.include)
+}
+// The single year a business is assessed on: whichever assessable year is
+// marked, else the most recent one in the list.
+export function assessmentYear(biz) {
+  const years = assessableYears(biz)
+  const picked = years.find(y => y.fy === String(biz?.assessFY))
+  return (picked || years[0] || { fy: String(biz?.recentFY || '') }).fy
+}
+
+// ─── Debt schedule ───────────────────────────────────────────────────────────
+// One schedule per entity, because the question "can this company service the
+// new facility" can't be answered without knowing what it already pays.
+//
+// Term and amortisation are separate on purpose: commercial facilities are
+// routinely written as a 5-year term amortising over 15, so the repayment is
+// struck on the longer period and a residual falls due at the end of the
+// shorter one. Taking the term as the amortisation period overstates the
+// repayment badly; ignoring the term hides the residual entirely.
+export function businessDebtService(debt, policy, { assessed = false } = {}) {
+  const d = debt || {}
+  const revolving = REVOLVING_DEBT_TYPES.includes(d.type)
+  const balance = revolving ? (n(d.limit) || n(d.balance)) : (n(d.balance) || n(d.limit))
+  const rate = assessed ? assessedRate(d.rate, policy) : n(d.rate)
+  const interest = balance * (rate / 100)
+  const amortYears = n(d.amortYears) || n(d.termYears)
+  const io = d.repaymentType === 'Interest only'
+
+  let annual
+  let basis
+  if (balance <= 0) { annual = 0; basis = 'No balance' }
+  else if (revolving) { annual = interest; basis = `Interest on $${Math.round(balance).toLocaleString()} limit at ${round2(rate)}%` }
+  else if (io) { annual = interest; basis = `Interest only at ${round2(rate)}%` }
+  else if (!amortYears) { annual = interest; basis = `Interest only at ${round2(rate)}% (no amortisation period set)` }
+  else {
+    // "Interest only then P&I" is taken at the P&I it reverts to. The IO
+    // period ends well inside the life of the loan, and assessing on the
+    // cheaper years is how a file passes today and fails at reversion.
+    annual = amortisedAnnualRepayment(balance, rate, amortYears)
+    basis = `P&I over ${amortYears}yrs at ${round2(rate)}%${d.repaymentType === 'Interest only then P&I' ? ' (assessed at the reverting P&I)' : ''}`
+  }
+  return { balance, rate, interest, annual, amortYears, revolving, basis, residual: debtResidual(d, rate) }
+}
+
+// What is still owing when the term runs out but the amortisation hasn't —
+// the balloon the client has to refinance or repay.
+export function debtResidual(debt, rateOverride) {
+  const d = debt || {}
+  if (REVOLVING_DEBT_TYPES.includes(d.type)) return 0
+  const P = n(d.balance) || n(d.limit)
+  const amortYears = n(d.amortYears)
+  const termYears = n(d.termYears)
+  if (P <= 0 || !amortYears || !termYears || termYears >= amortYears) return 0
+  const r = (rateOverride === undefined ? n(d.rate) : n(rateOverride)) / 100 / 12
+  const N = amortYears * 12
+  const m = termYears * 12
+  if (!r) return Math.max(0, P - (P / N) * m)
+  const g = Math.pow(1 + r, N)
+  const gm = Math.pow(1 + r, m)
+  return Math.max(0, P * (g - gm) / (g - 1))
+}
+
+export function businessDebtTotals(biz, policy, opts) {
+  const rows = (biz?.debts || []).map(d => ({ debt: d, ...businessDebtService(d, policy, opts) }))
+  return {
+    rows,
+    interest: rows.reduce((s, r) => s + r.interest, 0),
+    annual: rows.reduce((s, r) => s + r.annual, 0),
+    residual: rows.reduce((s, r) => s + r.residual, 0),
+  }
+}
+
+// ─── Per-year cover ──────────────────────────────────────────────────────────
+// ICR and DSCR for one financial year, on the EBITDA basis. `extra` is the
+// proposed facility, so each year can be read both as it stood and as it
+// would stand with the new debt on top.
+export function businessYearCover(biz, fy, policy, extra) {
+  const y = (biz?.years || {})[fy] || {}
+  const ebitda = businessEbitda(y)
+  const ebit = businessEbit(y)
+  const existing = businessDebtTotals(biz, policy)
+  const interest = existing.interest + n(extra?.interest)
+  const debtService = existing.annual + n(extra?.annual)
+  const icr = interest > 0 ? ebitda / interest : null
+  const dscr = debtService > 0 ? ebitda / debtService : null
+  return {
+    fy, ebitda, ebit,
+    existingInterest: existing.interest, existingService: existing.annual,
+    extraInterest: n(extra?.interest), extraService: n(extra?.annual),
+    interest, debtService,
+    icr, dscr,
+    icrEbit: interest > 0 ? ebit / interest : null,
+    icrPass: icr === null ? null : icr >= n(policy.minICR),
+    dscrPass: dscr === null ? null : dscr >= n(policy.minDSCR),
+    surplus: ebitda - debtService,
+  }
+}
+
+// The proposed facility, whether or not there's a property behind it. A GSA
+// or invoice-finance facility has no security property at all, so the new
+// debt can't be derived from the property test alone.
+export function proposedFacility(structure, funding, policy) {
+  const st = structure || {}
+  const f = funding || {}
+  const amount = n(st.proposedFacility?.amount) || n(f.loanAmount)
+  if (amount <= 0) return null
+  const rate = assessedRate(n(st.proposedFacility?.rate) || n(st.commercialProperty?.rate), policy)
+  const amortYears = n(st.proposedFacility?.amortYears) || n(st.commercialProperty?.termYears) || n(policy.commercialAmortYears)
+  const termYears = n(st.proposedFacility?.termYears) || amortYears
+  const repaymentType = st.proposedFacility?.repaymentType || 'P&I'
+  const interest = amount * (rate / 100)
+  const annual = repaymentType === 'Interest only' ? interest : amortisedAnnualRepayment(amount, rate, amortYears)
+  return {
+    amount, rate, amortYears, termYears, repaymentType, interest, annual,
+    borrower: st.proposedFacility?.borrower || '',
+    residual: debtResidual({ balance: amount, amortYears, termYears }, rate),
+  }
+}
+
 // ─── Entities ────────────────────────────────────────────────────────────────
 // Entities come straight from Loan Details → Clients & Contacts, so a person
 // or company is only ever captured once and the link runs both ways. Anything
@@ -487,8 +675,16 @@ export function maxLoanAtDscr(property, policy, targetDscr) {
 export const ENTITY_TYPES = ['Individual', 'Company', 'Trust', 'SMSF', 'Partnership']
 export const isIndividual = e => (e.type || 'Individual') === 'Individual'
 
-export function buildEntities(contacts, entityDetail) {
-  return (contacts || [])
+// Structures that aren't a separate taxpayer, or that must distribute. Their
+// profit is assessed in the owners' hands, not the entity's.
+const FLOW_THROUGH = ['Sole Trader', 'Partnership', 'Trust']
+export function businessProfitTo(biz) {
+  if (biz?.profitTo === 'entity' || biz?.profitTo === 'owners') return biz.profitTo
+  return FLOW_THROUGH.includes(biz?.structure) ? 'owners' : 'entity'
+}
+
+export function buildEntities(contacts, entityDetail, businessEntities) {
+  const fromContacts = (contacts || [])
     .filter(c => c.name && c.name.trim())
     .map(c => {
       const detail = (entityDetail || {})[c.name] || {}
@@ -508,6 +704,29 @@ export function buildEntities(contacts, entityDetail) {
         excluded: !!detail.excluded,
       }
     })
+
+  // A trading entity entered on the Financials tab is an entity on this deal
+  // whether or not anyone also added it to Clients & Contacts. Leaving it out
+  // was why a company's figures could be filled in completely and still never
+  // appear in the consolidated position.
+  const seen = new Set(fromContacts.map(e => e.name))
+  const fromBusinesses = (businessEntities || [])
+    .filter(b => b.name && b.name.trim() && !seen.has(b.name))
+    .map(b => {
+      const detail = (entityDetail || {})[b.name] || {}
+      return {
+        name: b.name,
+        type: b.structure || 'Company',
+        abn: detail.abn || '', acn: detail.acn || '', trustee: detail.trustee || '',
+        dependants: detail.dependants ?? 0, maritalStatus: detail.maritalStatus || '',
+        owners: detail.owners || b.ownership || [],
+        guarantees: detail.guarantees || [],
+        excluded: !!detail.excluded,
+        fromFinancials: true,
+      }
+    })
+
+  return [...fromContacts, ...fromBusinesses]
 }
 
 // Household composition for the HEM lookup. Two individuals who are each
@@ -596,6 +815,34 @@ export function assessEntity(entity, ctx) {
     })
   }
 
+  // Business trading profit. EBITDA, because that is what services debt —
+  // and it is paired below with this entity's own debt schedule, so the
+  // add-backs and the repayments they relate to are both in the picture.
+  const myBusinesses = (registers.businessEntities || []).filter(b => b.name === entity.name)
+  myBusinesses.forEach(b => {
+    const fy = assessmentYear(b)
+    const amount = businessEbitda((b.years || {})[fy])
+    if (businessProfitTo(b) === 'entity') {
+      addIncome(`${b.name} — trading profit (FY ${fy})`, 'Business Profit', amount)
+    }
+  })
+  // Profit from a flow-through structure owned by this entity. A trust must
+  // distribute and a sole trader isn't a separate taxpayer, so the profit is
+  // the owner's income — and is counted there instead of in the entity, never
+  // in both.
+  ;(registers.businessEntities || []).forEach(b => {
+    if (b.name === entity.name) return
+    if (businessProfitTo(b) !== 'owners') return
+    const fy = assessmentYear(b)
+    const amount = businessEbitda((b.years || {})[fy])
+    if (!amount) return
+    const owners = (b.ownership || []).filter(o => o.name === entity.name)
+    if (!owners.length) return
+    const pct = owners.reduce((s, o) => s + n(o.pct), 0)
+    if (pct <= 0) return
+    addIncome(`${b.name} — share of profit (${round2(pct)}%, FY ${fy})`, 'Business Profit', amount * (pct / 100))
+  })
+
   // Other income (rent, dividends, distributions) split by owner.
   ;(registers.otherIncome || []).forEach(r => {
     const split = splitByOwner(r, entityNames, individualNames)
@@ -668,6 +915,37 @@ export function assessEntity(entity, ctx) {
     })
   }
 
+  // This entity's own business debt. Kept apart from the Liabilities
+  // register, which is where personal debt lives — a facility entered in
+  // both places would be charged twice, so the Financials tab says which
+  // belongs where and `businessDebtWarning` below flags an overlap.
+  myBusinesses.forEach(b => {
+    businessDebtTotals(b, policy).rows.forEach(r => {
+      if (!r.annual) return
+      assessedCommitmentsTotal += r.annual
+      deductibleInterest += r.interest
+      commitments.push({
+        label: `${b.name} — ${r.debt.type || 'Business debt'}${r.debt.lender ? ` (${r.debt.lender})` : ''}`,
+        annual: r.annual, basis: r.basis, share: 1, isBusinessDebt: true,
+        residual: r.residual,
+      })
+    })
+  })
+
+  // A facility with no security property behind it — a GSA-backed business
+  // loan or an invoice line — never touches propertyTest, so without this it
+  // would be assessed as if the new debt didn't exist.
+  if (!propertyResult && ctx.facility && ctx.facility.borrower === entity.name) {
+    assessedCommitmentsTotal += ctx.facility.annual
+    deductibleInterest += ctx.facility.interest
+    commitments.push({
+      label: 'Proposed facility',
+      annual: ctx.facility.annual,
+      basis: `${ctx.facility.repaymentType} over ${ctx.facility.amortYears}yrs at ${round2(ctx.facility.rate)}% (assessed)`,
+      isNewLoan: true, share: 1,
+    })
+  }
+
   // Tax is on real income less real deductions — negative gearing is what
   // makes a lot of these deals work, so leaving it out understates capacity.
   const taxableIncome = Math.max(0, grossIncome - deductibleInterest - deductibleExpenses)
@@ -718,11 +996,13 @@ export function guaranteeExposure(entityName, entities, byEntity) {
 // commitments added up once. This is NOT a sum of the per-entity surpluses
 // where guarantees are involved — a guaranteed shortfall is already inside
 // the consolidation, so counting it again on the guarantor would double it.
-export function assessGroup(perEntity, policy, property) {
+export function assessGroup(perEntity, policy, property, eliminated = 0) {
   const included = perEntity.filter(r => !r.entity.excluded)
   const sum = k => included.reduce((s, r) => s + (r[k] || 0), 0)
   const grossIncome = sum('grossIncome')
-  const shadedIncome = sum('shadedIncome')
+  // Internal transactions come off at group level only — see assessServicing.
+  const elim = n(eliminated)
+  const shadedIncome = sum('shadedIncome') - elim
   const tax = sum('tax')
   const expenses = included.reduce((s, r) => s + (r.expenses?.amount || 0), 0)
   const assessedCommitments = sum('assessedCommitments')
@@ -733,7 +1013,8 @@ export function assessGroup(perEntity, policy, property) {
   const nsr = outgoings > 0 ? netIncomeAfterTax / outgoings : null
   const propertyRes = property && property.loanAmount ? propertyTest(property, policy) : null
   return {
-    grossIncome, shadedIncome, tax, expenses, assessedCommitments, propertyOutgoings,
+    grossIncome, grossIncomeBeforeEliminations: grossIncome, eliminated: elim,
+    shadedIncome, tax, expenses, assessedCommitments, propertyOutgoings,
     netIncomeAfterTax, surplus, surplusMonthly: surplus / 12, nsr,
     pass: surplus >= 0, property: propertyRes,
     entityCount: included.length,
@@ -743,9 +1024,11 @@ export function assessGroup(perEntity, policy, property) {
 // ─── Top level ───────────────────────────────────────────────────────────────
 export function assessServicing({ contacts, structure, policy, funding }) {
   const st = structure || {}
-  const entities = buildEntities(contacts, st.entityDetail)
+  const businesses = st.businessEntities || []
+  const entities = buildEntities(contacts, st.entityDetail, businesses)
   const entityNames = entities.map(e => e.name)
   const property = resolveProperty(st, funding)
+  const facility = proposedFacility(st, funding, policy)
   const registers = {
     employment: st.employment || {},
     otherIncome: st.otherIncome || [],
@@ -753,22 +1036,72 @@ export function assessServicing({ contacts, structure, policy, funding }) {
     liabilities: st.liabilitiesReg || [],
     securities: st.securities || [],
     realEstate: st.realEstateAssets || [],
+    businessEntities: businesses,
   }
   const individualNames = entities.filter(isIndividual).map(e => e.name)
 
   // Two passes: the HEM band is keyed off household income, so gross income
   // has to be known before expenses can be assessed, and expenses have to be
   // known before a surplus means anything.
-  const probe = { policy, entityNames, individualNames, registers, property, entities, expensesByEntity: {} }
+  const probe = { policy, entityNames, individualNames, registers, property, entities, facility, expensesByEntity: {} }
   const grossByEntity = Object.fromEntries(entities.map(e => [e.name, assessEntity(e, probe).grossIncome]))
   const expensesByEntity = householdExpenses(entities, registers, entityNames, individualNames, policy, grossByEntity)
 
-  const ctx = { policy, entityNames, individualNames, registers, property, entities, expensesByEntity }
+  const ctx = { policy, entityNames, individualNames, registers, property, entities, facility, expensesByEntity }
   const perEntity = entities.map(e => assessEntity(e, ctx))
   const byEntity = Object.fromEntries(perEntity.map(r => [r.entity.name, r]))
   perEntity.forEach(r => { r.guarantee = guaranteeExposure(r.entity.name, entities, byEntity) })
-  const group = assessGroup(perEntity, policy, property)
-  return { entities, perEntity, byEntity, group, property, policy }
+
+  // Money that moves between entities on this deal is internal to the group.
+  // Each entity's own figures stay as they are — that's what a lender tests
+  // an entity on — and the eliminations come off only here.
+  const eliminations = (st.eliminations || []).filter(e => !e.ignored)
+  const eliminated = eliminations.reduce((s, e) => s + toAnnual(e.amount, e.frequency), 0)
+  const group = assessGroup(perEntity, policy, property, eliminated)
+
+  // Cover for every year held against every trading entity, including the
+  // forecasts, each read both as it stood and with the proposed facility on
+  // top. This is the per-year ICR/DSCR the commercial files turn on.
+  const businessCover = businesses
+    .filter(b => b.name && b.name.trim())
+    .map(b => {
+      const extra = facility && (!facility.borrower || facility.borrower === b.name) ? facility : null
+      return {
+        business: b,
+        profitTo: businessProfitTo(b),
+        assessedFY: assessmentYear(b),
+        debt: businessDebtTotals(b, policy),
+        years: businessYears(b).map(y => ({
+          ...y,
+          base: businessYearCover(b, y.fy, policy, null),
+          withFacility: extra ? businessYearCover(b, y.fy, policy, extra) : null,
+        })),
+      }
+    })
+
+  return {
+    entities, perEntity, byEntity, group, property, policy,
+    facility, businessCover, eliminations, eliminated,
+    businessDebtWarning: businessDebtWarning(businesses, registers.liabilities, entityNames),
+  }
+}
+
+// A business facility entered on the Financials tab AND in the personal
+// Liabilities register would be counted twice. Rather than guess which one
+// to drop, say so and let the broker decide.
+export function businessDebtWarning(businesses, liabilities, entityNames) {
+  const withDebt = (businesses || []).filter(b => (b.debts || []).length).map(b => b.name)
+  if (!withDebt.length) return null
+  const clashes = (liabilities || []).filter(r => {
+    const owners = Array.isArray(r.owners) ? r.owners.map(o => o.name) : []
+    const named = owners.length ? owners : (r.ownership ? [r.ownership] : [])
+    return named.some(nm => withDebt.includes(nm))
+  })
+  if (!clashes.length) return null
+  return {
+    entities: [...new Set(clashes.flatMap(r => (Array.isArray(r.owners) ? r.owners.map(o => o.name) : [r.ownership])).filter(nm => withDebt.includes(nm)))],
+    count: clashes.length,
+  }
 }
 
 // ─── Sensitivity ─────────────────────────────────────────────────────────────
