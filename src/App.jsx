@@ -236,6 +236,21 @@ export default function App() {
   // default) would put client names and birthdays in front of them.
   const isPublic = location.pathname === '/u' || location.pathname.startsWith('/u/')
 
+  // A focused <input type="number"> treats the scroll wheel as up/down. Scroll
+  // the page with the pointer resting over a figure you just typed and the
+  // browser quietly changes it — no keystroke, no sign anything happened. On a
+  // servicing form that is a wrong number in a submission, so take the focus
+  // away instead and let the page scroll. Done once here rather than on each
+  // of the ~86 number inputs, so it covers the ones added next as well.
+  useEffect(() => {
+    const onWheel = ev => {
+      const el = document.activeElement
+      if (el && el.tagName === 'INPUT' && el.type === 'number' && el === ev.target) el.blur()
+    }
+    document.addEventListener('wheel', onWheel, { passive: true })
+    return () => document.removeEventListener('wheel', onWheel)
+  }, [])
+
   function showToast(msg) { setToast(msg); setTimeout(() => setToast(null), 2500) }
 
   const updateClient = useCallback((name, updater) => {

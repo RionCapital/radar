@@ -23,6 +23,28 @@ const AMBER = '#92600A'
 const inp = { border: '1px solid #e8eaed', borderRadius: 6, padding: '6px 9px', fontSize: 12, fontFamily: 'inherit', boxSizing: 'border-box' }
 const lbl = { fontSize: 10, color: '#7A8090', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }
 const card = { background: '#fff', borderRadius: 10, border: '0.5px solid #e8eaed', padding: '14px 16px', marginBottom: 14 }
+
+// Funding-table row, so the property reads the same way it does on the
+// Strategy tab — label left, figure right — rather than as a second,
+// differently-shaped form for the same numbers.
+//
+// Declared out here, not inside the component. A component declared in a
+// render body is a new function every render, so React discards the old
+// <input> and mounts a fresh one on each keystroke, taking the focus with
+// it — you type one digit and the caret jumps away.
+const FRow = ({ label, value, onCommit, hint, readOnly, tone }) => (
+  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14, padding: '7px 0', borderBottom: '0.5px solid #f1f3f5' }}>
+    <div>
+      <span style={{ fontSize: 12, color: '#2A3545' }}>{label}</span>
+      {hint && <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 1 }}>{hint}</div>}
+    </div>
+    {readOnly
+      ? <span style={{ fontSize: 12.5, fontWeight: 700, color: tone === 'navy' ? NAVY : '#2A3545', whiteSpace: 'nowrap' }}>{value}</span>
+      : <input type="number" value={value ?? ''}
+          onChange={e => onCommit(e.target.value === '' ? '' : Number(e.target.value))}
+          style={{ ...inp, width: 170, textAlign: 'right' }} />}
+  </div>
+)
 const th = { padding: '6px 8px', fontSize: 9.5, color: '#fff', background: NAVY, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.03em', textAlign: 'left', whiteSpace: 'nowrap' }
 const td = { padding: '6px 8px', fontSize: 11.5, borderBottom: '0.5px solid #f1f5f9', color: '#2A3545' }
 
@@ -102,19 +124,6 @@ export default function ServicingCalculator({ contacts, structure, settingsPolic
   // Funding-table row, so the property reads the same way it does on the
   // Strategy tab — label left, figure right — rather than as a second,
   // differently-shaped form for the same numbers.
-  const FRow = ({ label, value, onCommit, hint, readOnly, tone }) => (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14, padding: '7px 0', borderBottom: '0.5px solid #f1f3f5' }}>
-      <div>
-        <span style={{ fontSize: 12, color: '#2A3545' }}>{label}</span>
-        {hint && <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 1 }}>{hint}</div>}
-      </div>
-      {readOnly
-        ? <span style={{ fontSize: 12.5, fontWeight: 700, color: tone === 'navy' ? NAVY : '#2A3545', whiteSpace: 'nowrap' }}>{value}</span>
-        : <input type="number" value={value ?? ''} onChange={e => onCommit(e.target.value === '' ? '' : Number(e.target.value))}
-            style={{ ...inp, width: 170, textAlign: 'right' }} />}
-    </div>
-  )
-
   const tenants = tenantRows(resolved)
   const setTenants = next => onChange({ commercialProperty: { ...property, tenants: next } })
   const updTenant = (i, k, v) => setTenants(tenants.map((t, idx) => idx === i ? { ...t, [k]: v } : t))

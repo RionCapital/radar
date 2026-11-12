@@ -31,6 +31,30 @@ const NAVY = '#3D4F6B'
 const PINK = '#EB99C2'
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
 
+// Declared at module scope, not inside the component. A component defined in
+// a render body gets a new identity on every render, so React tears it down
+// and rebuilds it each time — which on a page with a text field is how a
+// caret ends up jumping out of the box mid-word.
+const Header = ({ co }) => (
+  <div style={{ background: NAVY, padding: '16px 24px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+    <span style={{ fontSize: 20, fontWeight: 800, color: '#fff', letterSpacing: '-0.01em' }}>
+      <span style={{ color: PINK }}>R</span>radar
+    </span>
+    <span style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.55)', letterSpacing: '0.06em', textTransform: 'uppercase', marginTop: 4 }}>
+      Powered by {co.tradingName || 'Rion Capital'}
+    </span>
+  </div>
+)
+
+const SenderDetails = ({ co, business }) => (
+  <div style={{ marginTop: 20, fontSize: 11.5, color: '#96A0AE', lineHeight: 1.7 }}>
+    {business}{co.abn ? ` · ABN ${co.abn}` : ''}<br />
+    {co.phone && <a href={`tel:${String(co.phone).replace(/\s/g, '')}`} style={{ color: NAVY, textDecoration: 'none' }}>{co.phone}</a>}
+    {co.phone && co.email ? ' · ' : ''}
+    {co.email && <a href={`mailto:${co.email}`} style={{ color: NAVY, textDecoration: 'none' }}>{co.email}</a>}
+  </div>
+)
+
 export default function Unsubscribe() {
   const { token } = useParams()
   const settings = loadSettings()
@@ -93,26 +117,6 @@ export default function Unsubscribe() {
   const card = { background: '#fff', border: '1px solid #E2E8F0', borderRadius: 10 }
   const wrap = { minHeight: '100vh', background: '#F4F6F9', fontFamily: 'Aptos,Calibri,Arial,sans-serif' }
 
-  const Header = () => (
-    <div style={{ background: NAVY, padding: '16px 24px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-      <span style={{ fontSize: 20, fontWeight: 800, color: '#fff', letterSpacing: '-0.01em' }}>
-        <span style={{ color: PINK }}>R</span>radar
-      </span>
-      <span style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.55)', letterSpacing: '0.06em', textTransform: 'uppercase', marginTop: 4 }}>
-        Powered by {co.tradingName || 'Rion Capital'}
-      </span>
-    </div>
-  )
-
-  const SenderDetails = () => (
-    <div style={{ marginTop: 20, fontSize: 11.5, color: '#96A0AE', lineHeight: 1.7 }}>
-      {business}{co.abn ? ` · ABN ${co.abn}` : ''}<br />
-      {co.phone && <a href={`tel:${String(co.phone).replace(/\s/g, '')}`} style={{ color: NAVY, textDecoration: 'none' }}>{co.phone}</a>}
-      {co.phone && co.email ? ' · ' : ''}
-      {co.email && <a href={`mailto:${co.email}`} style={{ color: NAVY, textDecoration: 'none' }}>{co.email}</a>}
-    </div>
-  )
-
   async function sendFeedback() {
     try { await post({ reason, note }) } catch {}
     setSent(true)
@@ -125,7 +129,7 @@ export default function Unsubscribe() {
   if (state === 'ask') {
     return (
       <div style={wrap}>
-        <Header />
+        <Header co={co} />
         <div style={{ maxWidth: 680, margin: '0 auto', padding: '40px 20px 56px' }}>
           <h1 style={{ margin: 0, fontSize: 21, fontWeight: 700, color: '#2A3545' }}>Unsubscribe from our emails</h1>
           <p style={{ margin: '8px 0 0', fontSize: 13.5, color: '#6B7686', lineHeight: 1.7 }}>
@@ -160,7 +164,7 @@ export default function Unsubscribe() {
             This only stops marketing and newsletter emails. We will still contact you about any loan or
             application in progress.
           </div>
-          <SenderDetails />
+          <SenderDetails co={co} business={business} />
         </div>
       </div>
     )
@@ -169,7 +173,7 @@ export default function Unsubscribe() {
   if (state === 'working') {
     return (
       <div style={wrap}>
-        <Header />
+        <Header co={co} />
         <div style={{ maxWidth: 680, margin: '0 auto', padding: '48px 20px', color: '#6B7686', fontSize: 14 }}>
           One moment — removing you from the list…
         </div>
@@ -180,7 +184,7 @@ export default function Unsubscribe() {
   if (state === 'failed') {
     return (
       <div style={wrap}>
-        <Header />
+        <Header co={co} />
         <div style={{ maxWidth: 680, margin: '0 auto', padding: '40px 20px' }}>
           <div style={{ ...card, borderColor: '#FECACA', background: '#FEF2F2', padding: '18px 22px' }}>
             <div style={{ fontSize: 16, fontWeight: 700, color: '#B91C1C' }}>We couldn't complete that</div>
@@ -190,7 +194,7 @@ export default function Unsubscribe() {
               we will take care of it by hand.
             </p>
           </div>
-          <SenderDetails />
+          <SenderDetails co={co} business={business} />
         </div>
       </div>
     )
@@ -199,13 +203,13 @@ export default function Unsubscribe() {
   if (resubscribed) {
     return (
       <div style={wrap}>
-        <Header />
+        <Header co={co} />
         <div style={{ maxWidth: 680, margin: '0 auto', padding: '40px 20px', textAlign: 'center' }}>
           <h1 style={{ fontSize: 22, fontWeight: 700, color: '#2A3545', margin: 0 }}>You're back on the list</h1>
           <p style={{ fontSize: 14, color: '#6B7686', lineHeight: 1.7, marginTop: 8 }}>
             Welcome back — you'll keep hearing from us.
           </p>
-          <SenderDetails />
+          <SenderDetails co={co} business={business} />
         </div>
       </div>
     )
@@ -214,7 +218,7 @@ export default function Unsubscribe() {
   // ── Done: unsubscribed, now the optional part ──
   return (
     <div style={wrap}>
-      <Header />
+      <Header co={co} />
       <div style={{ maxWidth: 680, margin: '0 auto', padding: '32px 20px 56px', display: 'flex', flexDirection: 'column', gap: 20 }}>
 
         <div style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 10, padding: '16px 20px', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
@@ -302,7 +306,7 @@ export default function Unsubscribe() {
           This only stops marketing and newsletter emails. We will still contact you about any loan or application in progress.
         </div>
 
-        <SenderDetails />
+        <SenderDetails co={co} business={business} />
       </div>
     </div>
   )

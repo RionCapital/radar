@@ -34,6 +34,28 @@ export const ELIMINATION_TYPES = [
   "Director's wages / salary", 'Rent', 'Management fee', 'Trust distribution', 'Dividend', 'Inter-entity loan repayment', 'Other',
 ]
 
+// ─── Why these live out here ─────────────────────────────────────────────────
+// Field and MoneyIn used to be declared INSIDE BusinessFinancials. A function
+// declared in a render body is a brand-new function on every render, and React
+// identifies a component by that function. So every keystroke produced a
+// component React had never seen before, it threw the old <input> away and
+// mounted a fresh one, and the focus went with it — you typed "3", the box was
+// replaced, and the caret ended up somewhere else. Declared once at module
+// scope the identity is stable, the input is updated in place, and a number
+// can be typed straight through.
+const Field = ({ label, children, w }) => (
+  <div style={{ flex: w ? `0 0 ${w}px` : '1 1 180px', minWidth: 150 }}>
+    <div style={lbl}>{label}</div>
+    {children}
+  </div>
+)
+
+const MoneyIn = ({ value, onCommit }) => (
+  <input type="number" value={value ?? ''}
+    onChange={e => onCommit(e.target.value === '' ? '' : Number(e.target.value))}
+    style={{ ...inp, width: '100%', textAlign: 'right' }} />
+)
+
 const ADD_BACKS = [
   ['interest', 'Interest'],
   ['depreciation', 'Depreciation'],
@@ -128,17 +150,6 @@ export default function BusinessFinancials({ contacts, structure, onChange }) {
   }, [businesses, eliminations])
 
   const suggestions = useMemo(() => suggestEliminations(businesses, eliminations, entityNames), [businesses, eliminations, entityNames])
-
-  const Field = ({ label, children, w }) => (
-    <div style={{ flex: w ? `0 0 ${w}px` : '1 1 180px', minWidth: 150 }}>
-      <div style={lbl}>{label}</div>
-      {children}
-    </div>
-  )
-  const MoneyIn = ({ value, onCommit }) => (
-    <input type="number" value={value ?? ''} onChange={e => onCommit(e.target.value === '' ? '' : Number(e.target.value))}
-      style={{ ...inp, width: '100%', textAlign: 'right' }} />
-  )
 
   // ── Entities ───────────────────────────────────────────────────────────────
   const entitiesTab = (
